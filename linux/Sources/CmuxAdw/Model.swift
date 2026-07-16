@@ -136,6 +136,9 @@ indirect enum PaneNode: Equatable {
 struct TerminalTab: Identifiable, Equatable {
     let id: UUID
     var title: String
+    /// User-pinned title (workspace.rename) — while set, OSC title updates
+    /// from the shell no longer overwrite `title` (macOS setCustomTitle).
+    var customTitle: String?
     var workingDirectory: String
     var layout: PaneNode
     var focusedSurfaceId: UUID
@@ -152,6 +155,7 @@ struct TerminalTab: Identifiable, Equatable {
         let leaf = PaneLeaf(workingDirectory: workingDirectory)
         self.id = id
         self.title = title
+        self.customTitle = nil
         self.workingDirectory = workingDirectory
         self.layout = .leaf(leaf)
         self.focusedSurfaceId = leaf.surfaceId

@@ -309,6 +309,12 @@ struct ControlCommandHandler {
             return v2BrowserDialogRespond(id: id, params: params, accept: true, respond: respond)
         case "browser.dialog.dismiss":
             return v2BrowserDialogRespond(id: id, params: params, accept: false, respond: respond)
+        case "browser.storage.get", "browser.storage.set", "browser.storage.clear":
+            return v2BrowserStorageVerb(method: method, id: id, params: params, respond: respond)
+        case "browser.console.list", "browser.console.clear", "browser.errors.list":
+            return v2BrowserTelemetryVerb(method: method, id: id, params: params, respond: respond)
+        case "browser.download.wait":
+            return v2BrowserDownloadWait(id: id, params: params, respond: respond)
         case "browser.cookies.get":
             return v2BrowserCookiesGet(id: id, params: params, respond: respond)
         case "browser.cookies.set":
@@ -335,7 +341,8 @@ struct ControlCommandHandler {
                     "system.ping", "system.capabilities", "system.identify",
                     "window.list",
                     "workspace.list", "workspace.create", "workspace.select",
-                    "workspace.current", "workspace.close",
+                    "workspace.current", "workspace.close", "workspace.rename",
+                    "workspace.next", "workspace.previous", "workspace.last",
                     "surface.list", "surface.create", "surface.send_text",
                     "surface.send_key", "surface.read_text", "surface.split",
                     "surface.close",
@@ -361,7 +368,12 @@ struct ControlCommandHandler {
                     "browser.frame.select", "browser.frame.main",
                     "browser.dialog.accept", "browser.dialog.dismiss",
                     "browser.cookies.get", "browser.cookies.set", "browser.cookies.clear",
-                    "notification.create", "notification.list", "notification.clear"
+                    "browser.storage.get", "browser.storage.set", "browser.storage.clear",
+                    "browser.console.list", "browser.console.clear", "browser.errors.list",
+                    "browser.download.wait",
+                    "notification.create", "notification.create_for_surface",
+                    "notification.create_for_target",
+                    "notification.list", "notification.clear"
                 ]
             ])
         case "system.identify":
@@ -386,6 +398,14 @@ struct ControlCommandHandler {
             return v2Ok(id: id, result: workspaceRefResult(selection.wrappedValue))
         case "workspace.close":
             return v2WorkspaceClose(id: id, params: params)
+        case "workspace.rename":
+            return v2WorkspaceRename(id: id, params: params)
+        case "workspace.next":
+            return v2WorkspaceStep(id: id, forward: true)
+        case "workspace.previous":
+            return v2WorkspaceStep(id: id, forward: false)
+        case "workspace.last":
+            return v2WorkspaceLast(id: id)
         case "surface.list":
             return v2SurfaceList(id: id, params: params)
         case "surface.send_text":
@@ -424,6 +444,10 @@ struct ControlCommandHandler {
             return v2BrowserIdentify(id: id, params: params)
         case "notification.create":
             return v2NotificationCreate(id: id, params: params)
+        case "notification.create_for_surface":
+            return v2NotificationCreateFor(id: id, params: params, requireWorkspace: false)
+        case "notification.create_for_target":
+            return v2NotificationCreateFor(id: id, params: params, requireWorkspace: true)
         case "notification.list":
             let items: [[String: Any]] = notifications.wrappedValue.map { notification in
                 [
@@ -559,6 +583,50 @@ struct ControlCommandHandler {
         }
         removeWorkspace(at: index)
         return v2Ok(id: id, result: workspaceRefResult(wsId))
+    }
+
+    /// Pins a custom title (macOS `setCustomTitle`): OSC updates from the
+    /// shell stop overwriting it. Requires an explicit workspace_id, like
+    /// the macOS handler — no caller-default fallback.
+    private func v2WorkspaceRename(id: Any?, params: [String: Any]) -> String {
+        guard let wsId = v2WorkspaceUUID(params),
+              let index = tabs.wrappedValue.firstIndex(where: { $0.id == wsId }) else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not found")
+        }
+        guard let titleRaw = params["title"] as? String,
+              !titleRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid title")
+        }
+        let title = titleRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+        tabs.wrappedValue[index].customTitle = title
+        tabs.wrappedValue[index].title = title
+        var result = workspaceRefResult(wsId)
+        result["title"] = title
+        return v2Ok(id: id, result: result)
+    }
+
+    /// Focus-intent verbs (socket focus policy allows selection changes):
+    /// cycle to the neighboring workspace, wrapping at the ends.
+    private func v2WorkspaceStep(id: Any?, forward: Bool) -> String {
+        let allTabs = tabs.wrappedValue
+        guard let index = allTabs.firstIndex(where: { $0.id == selection.wrappedValue }) else {
+            return v2Error(id: id, code: "not_found", message: "No workspace selected")
+        }
+        let count = allTabs.count
+        let target = allTabs[forward ? (index + 1) % count : (index + count - 1) % count].id
+        select(target)
+        return v2Ok(id: id, result: workspaceRefResult(target))
+    }
+
+    /// Most-recently-selected workspace (macOS `navigateBack`).
+    private func v2WorkspaceLast(id: Any?) -> String {
+        guard let target = SelectionHistory.shared.lastAlive(
+            in: tabs.wrappedValue, excluding: selection.wrappedValue
+        ) else {
+            return v2Error(id: id, code: "not_found", message: "No previous workspace in history")
+        }
+        select(target)
+        return v2Ok(id: id, result: workspaceRefResult(target))
     }
 
     private func v2SurfaceList(id: Any?, params: [String: Any]) -> String {
@@ -930,6 +998,48 @@ struct ControlCommandHandler {
             tabs.wrappedValue[index].needsAttention = true
         }
         return v2Ok(id: id, result: ["notification_id": notification.id.uuidString])
+    }
+
+    /// v2 aliases of the v1 notify_surface / notify_target verbs — explicit
+    /// workspace+surface targeting with the macOS param/result shapes.
+    /// `create_for_surface` falls back to the selected workspace;
+    /// `create_for_target` requires workspace_id.
+    private func v2NotificationCreateFor(id: Any?, params: [String: Any], requireWorkspace: Bool) -> String {
+        guard let surfaceRaw = params["surface_id"] as? String,
+              let surfaceId = UUID(uuidString: surfaceRaw) ?? RefRegistry.shared.resolve(surfaceRaw) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid surface_id")
+        }
+        let tab: TerminalTab?
+        if let wsId = v2WorkspaceUUID(params) {
+            tab = tabs.wrappedValue.first { $0.id == wsId }
+        } else if requireWorkspace {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid workspace_id")
+        } else {
+            tab = tabs.wrappedValue.first { $0.id == selection.wrappedValue }
+        }
+        guard let tab else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not found")
+        }
+        guard tab.contains(surfaceId: surfaceId) else {
+            return v2Error(id: id, code: "not_found", message: "Surface not found")
+        }
+
+        notifications.wrappedValue.append(TerminalNotification(
+            tabId: tab.id,
+            surfaceId: surfaceId,
+            title: (params["title"] as? String) ?? "Notification",
+            subtitle: (params["subtitle"] as? String) ?? "",
+            body: (params["body"] as? String) ?? ""
+        ))
+        if let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id }) {
+            tabs.wrappedValue[index].needsAttention = true
+        }
+
+        let registry = RefRegistry.shared
+        var result = workspaceRefResult(tab.id)
+        result["surface_id"] = surfaceId.uuidString
+        result["surface_ref"] = registry.ref(kind: "surface", uuid: surfaceId)
+        return v2Ok(id: id, result: result)
     }
 
     /// Accepts a UUID string or a `workspace:<n>` handle ref.

@@ -423,6 +423,68 @@ private let cssPathJSHelper = """
       };
 """
 
+// MARK: - telemetry hooks
+
+/// Wraps console.* and window error events into ring buffers on the page —
+/// verbatim copy of the macOS `telemetryHookBootstrapScriptSource`. Armed
+/// lazily by the first console/errors verb (macOS parity), so only entries
+/// after arming are captured.
+private let browserTelemetryHookScript = """
+(() => {
+  if (window.__cmuxHooksInstalled) return true;
+  window.__cmuxHooksInstalled = true;
+
+  window.__cmuxConsoleLog = window.__cmuxConsoleLog || [];
+  const __pushConsole = (level, args) => {
+    try {
+      const text = Array.from(args || []).map((x) => {
+        if (typeof x === 'string') return x;
+        try { return JSON.stringify(x); } catch (_) { return String(x); }
+      }).join(' ');
+      window.__cmuxConsoleLog.push({ level, text, timestamp_ms: Date.now() });
+      if (window.__cmuxConsoleLog.length > 512) {
+        window.__cmuxConsoleLog.splice(0, window.__cmuxConsoleLog.length - 512);
+      }
+    } catch (_) {}
+  };
+
+  const methods = ['log', 'info', 'warn', 'error', 'debug'];
+  for (const m of methods) {
+    const orig = (window.console && window.console[m]) ? window.console[m].bind(window.console) : null;
+    window.console[m] = function(...args) {
+      __pushConsole(m, args);
+      if (orig) return orig(...args);
+    };
+  }
+
+  window.__cmuxErrorLog = window.__cmuxErrorLog || [];
+  window.addEventListener('error', (ev) => {
+    try {
+      const message = String((ev && ev.message) || '');
+      const source = String((ev && ev.filename) || '');
+      const line = Number((ev && ev.lineno) || 0);
+      const col = Number((ev && ev.colno) || 0);
+      window.__cmuxErrorLog.push({ message, source, line, column: col, timestamp_ms: Date.now() });
+      if (window.__cmuxErrorLog.length > 512) {
+        window.__cmuxErrorLog.splice(0, window.__cmuxErrorLog.length - 512);
+      }
+    } catch (_) {}
+  });
+  window.addEventListener('unhandledrejection', (ev) => {
+    try {
+      const reason = ev && ev.reason;
+      const message = typeof reason === 'string' ? reason : (reason && reason.message ? String(reason.message) : String(reason));
+      window.__cmuxErrorLog.push({ message, source: 'unhandledrejection', line: 0, column: 0, timestamp_ms: Date.now() });
+      if (window.__cmuxErrorLog.length > 512) {
+        window.__cmuxErrorLog.splice(0, window.__cmuxErrorLog.length - 512);
+      }
+    } catch (_) {}
+  });
+
+  return true;
+})()
+"""
+
 // MARK: - dialog hooks
 
 /// Overrides window.alert/confirm/prompt with queue-recording stubs —
@@ -1520,6 +1582,183 @@ extension ControlCommandHandler {
                 respond(self.baOk(id: id, result: payload))
             }
         }
+    }
+
+    // MARK: storage
+
+    func v2BrowserStorageVerb(method: String, id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        let rawType = (stringParam(params, "storage") ?? stringParam(params, "type") ?? "local").lowercased()
+        let storageType = rawType == "session" ? "session" : "local"
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        let typeLiteral = BrowserJS.jsonLiteral(storageType)
+
+        let script: String
+        var resultExtras: [String: Any] = ["type": storageType]
+        var wantsValue = false
+
+        switch method {
+        case "browser.storage.get":
+            let key = stringParam(params, "key")
+            let keyLiteral = key.map(BrowserJS.jsonLiteral) ?? "null"
+            resultExtras["key"] = key.map { $0 as Any } ?? NSNull()
+            wantsValue = true
+            script = """
+            (() => {
+              const type = String(\(typeLiteral));
+              const key = \(keyLiteral);
+              const st = type === 'session' ? window.sessionStorage : window.localStorage;
+              if (!st) return { ok: false, error: 'not_available' };
+              if (key == null) {
+                const out = {};
+                for (let i = 0; i < st.length; i++) {
+                  const k = st.key(i);
+                  out[k] = st.getItem(k);
+                }
+                return { ok: true, value: out };
+              }
+              return { ok: true, value: st.getItem(String(key)) };
+            })()
+            """
+        case "browser.storage.set":
+            guard let key = stringParam(params, "key") else {
+                return respond(baError(id: id, code: "invalid_params", message: "Missing key"))
+            }
+            guard let value = params["value"] else {
+                return respond(baError(id: id, code: "invalid_params", message: "Missing value"))
+            }
+            resultExtras["key"] = key
+            let keyLiteral = BrowserJS.jsonLiteral(key)
+            let valueLiteral = BrowserJS.jsonLiteral(value)
+            script = """
+            (() => {
+              const type = String(\(typeLiteral));
+              const key = String(\(keyLiteral));
+              const value = \(valueLiteral);
+              const st = type === 'session' ? window.sessionStorage : window.localStorage;
+              if (!st) return { ok: false, error: 'not_available' };
+              st.setItem(key, value == null ? '' : String(value));
+              return { ok: true };
+            })()
+            """
+        default: // browser.storage.clear
+            script = """
+            (() => {
+              const type = String(\(typeLiteral));
+              const st = type === 'session' ? window.sessionStorage : window.localStorage;
+              if (!st) return { ok: false, error: 'not_available' };
+              st.clear();
+              return { ok: true };
+            })()
+            """
+        }
+
+        runTargetJS(target, script: script) { outcome in
+            switch outcome {
+            case .failure(let message):
+                respond(self.baError(id: id, code: "js_error", message: message))
+            case .success(let value):
+                guard let dict = value as? [String: Any],
+                      self.boolValue(dict["ok"]) == true else {
+                    respond(self.baError(
+                        id: id, code: "invalid_state", message: "Storage unavailable",
+                        data: ["type": storageType]
+                    ))
+                    return
+                }
+                var payload = target.refPayload
+                payload.merge(resultExtras) { _, new in new }
+                if wantsValue {
+                    payload["value"] = dict["value"] ?? NSNull()
+                }
+                respond(self.baOk(id: id, result: payload))
+            }
+        }
+    }
+
+    // MARK: console / errors telemetry
+
+    func v2BrowserTelemetryVerb(method: String, id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        let isErrors = method == "browser.errors.list"
+        let clear = method == "browser.console.clear" || (boolParam(params, "clear") ?? false)
+        let bufferName = isErrors ? "__cmuxErrorLog" : "__cmuxConsoleLog"
+        let entriesKey = isErrors ? "errors" : "entries"
+        let clearLiteral = clear ? "true" : "false"
+        // Hooks and buffers live in the TOP window (macOS uses the
+        // non-frame runner too); the idempotent install is prepended so
+        // one round-trip arms and reads.
+        let script = """
+        \(browserTelemetryHookScript);
+        (() => {
+          const items = Array.isArray(window.\(bufferName)) ? window.\(bufferName).slice() : [];
+          if (\(clearLiteral)) {
+            window.\(bufferName) = [];
+          }
+          return { ok: true, items };
+        })()
+        """
+        BrowserJS.run(target.webView, script: script) { outcome in
+            switch outcome {
+            case .failure(let message):
+                respond(self.baError(id: id, code: "js_error", message: message))
+            case .success(let value):
+                let items = ((value as? [String: Any])?["items"] as? [Any]) ?? []
+                var payload = target.refPayload
+                payload[entriesKey] = items
+                payload["count"] = items.count
+                respond(self.baOk(id: id, result: payload))
+            }
+        }
+    }
+
+    // MARK: download wait
+
+    func v2BrowserDownloadWait(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        let timeoutMs = max(1, intParam(params, "timeout_ms") ?? intParam(params, "timeout") ?? 10_000)
+        let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1000.0)
+
+        guard let path = stringParam(params, "path") else {
+            // macOS's no-path branch polls a download-event queue that
+            // nothing ever populates (no writer exists) — so it always
+            // times out. Matched here without the busywork.
+            scheduleOnMainLoop(afterMs: UInt32(timeoutMs)) {
+                respond(self.baError(
+                    id: id, code: "timeout", message: "No download event observed",
+                    data: ["timeout_ms": timeoutMs]
+                ))
+            }
+            return
+        }
+
+        func poll() {
+            let fm = FileManager.default
+            if fm.fileExists(atPath: path),
+               let attrs = try? fm.attributesOfItem(atPath: path),
+               let size = attrs[.size] as? NSNumber,
+               size.intValue > 0 {
+                var payload = target.refPayload
+                payload["path"] = path
+                payload["downloaded"] = true
+                respond(self.baOk(id: id, result: payload))
+                return
+            }
+            guard Date() < deadline else {
+                respond(self.baError(
+                    id: id, code: "timeout", message: "Timed out waiting for download file",
+                    data: ["path": path, "timeout_ms": timeoutMs]
+                ))
+                return
+            }
+            scheduleOnMainLoop(afterMs: 50) { poll() }
+        }
+        poll()
     }
 
     // MARK: cookies

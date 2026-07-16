@@ -19,7 +19,7 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | window.list | ✅ | single window; stable app-lifetime id |
 | window.create / close / current / focus | ❌ | multi-window is a later phase |
 | workspace.list / create / select / current / close | ✅ | create honors `focus:false` (background) |
-| workspace.rename / next / previous / last | ❌ | |
+| workspace.rename / next / previous / last | ✅ | rename pins a custom title (OSC updates stop overwriting; persisted in session); next/previous wrap; last uses the selection-history stack |
 | workspace.reorder / move_to_window / action | ❌ | |
 
 ### surface / pane
@@ -57,10 +57,10 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | browser.focus_webview / is_webview_focused | ❌ | focus-intent verbs |
 | browser.dialog.accept / dismiss | ✅ | macOS JS-hook approach (alert/confirm/prompt overridden into a FIFO queue + defaults), armed lazily by the first dialog verb; native GTK dialogs are NOT deferred pre-arm (macOS defers via WKUIDelegate) |
 | browser.cookies.get / set / clear | ✅ | WebKitNetworkSession cookie manager + SoupCookie, async chained add/delete; same wire shape (name/value/domain/path/secure/session_only/expires) |
-| browser.storage.get / set / clear | ❌ | |
-| browser.console.list / clear, browser.errors.list | ❌ | needs console-message capture |
+| browser.storage.get / set / clear | ✅ | local/session; get without key returns the full map |
+| browser.console.list / clear, browser.errors.list | ✅ | JS ring-buffer hooks (console.* wrap + error/unhandledrejection listeners), armed lazily by the first call — only entries after arming are captured, like macOS |
 | browser.network.requests / route / unroute | ❌ | |
-| browser.download.wait | ❌ | |
+| browser.download.wait | 🟡 | path-based wait works (non-blocking poll); the no-path event branch times out — macOS's download-event queue is never populated either (no writer exists). Real downloads need a decide-destination handler (future) |
 | browser.tab.list / new / switch / close | ❌ | |
 | browser.viewport.set / geolocation.set / offline.set | ❌ | |
 | browser.highlight / addscript / addstyle / addinitscript | ❌ | |
@@ -71,7 +71,7 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | Method | Status | Notes |
 |---|---|---|
 | notification.create / list / clear | ✅ | + desktop delivery, withdraw on workspace close |
-| notification.create_for_surface / create_for_target | 🟡 | v1 notify_surface / notify_target exist; v2 aliases missing |
+| notification.create_for_surface / create_for_target | ✅ | v2 verbs with macOS param/result shapes; for_surface defaults to the selected workspace, for_target requires workspace_id |
 | app.focus_override.set / simulate_active | ❌ | |
 | auth.login | — | socket is 0600 per-user; auth not required |
 | debug.* (~30 verbs) | ❌ | port alongside an e2e test harness, not before |

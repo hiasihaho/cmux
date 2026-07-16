@@ -77,12 +77,13 @@ you. Triage pattern: root-cause before trusting findings (cycle 2's
   (`#if canImport(Darwin)` / `#if os(Linux)`).
 - **Parity tracker**: `docs/linux-port/PARITY.md` — per-verb/per-feature
   status vs macOS. Update it in the same commit as any feature change.
-- **Done**: phases 0–5b (shell, control plane, VTE terminals, attention
+- **Done**: phases 0–5c (shell, control plane, VTE terminals, attention
   pipeline incl. notifications page + desktop delivery, splits + session
-  persistence, browser panes, browser automation verbs over an async
-  completion-based socket dispatcher) plus four dogfood cycles.
-- **Next milestones**: browser.screenshot + find.*/frame/dialog/cookie
-  verbs (see PARITY.md), Ghostty fidelity via a Zig C-shim around the
+  persistence, browser panes, the full browser automation surface —
+  eval/snapshot/actions/screenshot/find/frame/dialog/cookies/storage/
+  console — plus workspace rename/next/previous/last and notification v2
+  aliases) plus five dogfood cycles.
+- **Next milestones**: Ghostty fidelity via a Zig C-shim around the
   fork's GTK apprt (libghostty builds on Linux — zig 0.15.2 at
   `~/.local/zig/`; its C API is Apple-only today), Flatpak packaging.
 - **Environment**: Fedora 43 host (GNOME 49 → adwaita-swift pinned;

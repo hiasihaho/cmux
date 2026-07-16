@@ -18,6 +18,8 @@ enum SessionStore {
 
     struct WorkspaceSnapshot: Codable, Equatable {
         var title: String
+        /// Optional so version-2 files without it keep decoding.
+        var customTitle: String?
         var workingDirectory: String
         var layout: LayoutSnapshot
         var focusedLeafIndex: Int
@@ -74,6 +76,7 @@ enum SessionStore {
             workspaces: tabs.map { tab in
                 WorkspaceSnapshot(
                     title: tab.title,
+                    customTitle: tab.customTitle,
                     workingDirectory: tab.workingDirectory,
                     layout: layoutSnapshot(tab.layout),
                     focusedLeafIndex: tab.surfaces.firstIndex {
@@ -120,6 +123,7 @@ enum SessionStore {
                 title: workspace.title,
                 workingDirectory: workspace.workingDirectory
             )
+            tab.customTitle = workspace.customTitle
             tab.layout = layoutNode(workspace.layout)
             let leaves = tab.surfaces
             tab.focusedSurfaceId = (leaves[safe: workspace.focusedLeafIndex] ?? leaves.first

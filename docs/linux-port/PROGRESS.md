@@ -531,6 +531,42 @@ matching in cookies.get/clear, and the `all`-key quirk in cookies.clear
 are all **verbatim macOS envelope/handler semantics** — kept for parity,
 not bugs to fix unilaterally.
 
+## 2026-07-16 — Parity sweep: storage, console/errors, download.wait, workspace verbs, notification aliases
+
+Small-verb sweep that finishes the agent-facing automation surface, all on
+the established patterns (async browser verbs, sync workspace verbs):
+
+- **browser.storage.get/set/clear** — local/session via the frame-aware
+  runner; get without a key returns the whole map (macOS scripts).
+- **browser.console.list/clear + browser.errors.list** — the macOS
+  telemetry hook script (console.* wrap + error/unhandledrejection ring
+  buffers) ported like the dialog hooks: idempotent install prepended to
+  the read script, one JS round-trip, armed lazily by the first call.
+- **browser.download.wait** — path branch polls the filesystem off the
+  main loop (g_timeout, 50ms). The no-path event branch times out by
+  design: macOS's `v2BrowserDownloadEventsBySurface` has no writer
+  anywhere, so its event branch *also* always times out. Real WebKitGTK
+  downloads need a decide-destination handler — future work, noted in
+  PARITY.
+- **workspace.rename/next/previous/last** — rename pins a `customTitle`
+  on the tab (new model field, persisted in the session snapshot as an
+  optional so v2 files keep decoding): OSC title updates stop overwriting
+  it, verified across a dev-instance restart. next/previous wrap;
+  last reuses `SelectionHistory` (all selection paths already funnel
+  through `select()`, including sidebar clicks). Focus-intent verbs per
+  the socket focus policy.
+- **notification.create_for_surface/create_for_target** — v2 aliases with
+  macOS param/result shapes; for_surface defaults to the selected
+  workspace, for_target requires workspace_id; both validate the surface
+  belongs to the workspace.
+
+Everything verified against the dev instance (storage isolation between
+local/session, console capture-after-arming, error events, download file
+appearing mid-wait, wrap-around stepping, last-toggling, rename pin
+surviving restart + fresh OSC titles, both notification aliases over the
+raw wire). INSIDE-CMUX.md's milestone line updated — the automation
+surface is done; next up is the Ghostty Zig C-shim, then Flatpak.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

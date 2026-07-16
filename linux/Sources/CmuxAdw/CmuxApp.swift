@@ -191,10 +191,12 @@ struct CmuxApp: App {
     }
 
     /// OSC title updates from the shell (VTE `window-title-changed`). Only
-    /// the focused surface drives the tab title.
+    /// the focused surface drives the tab title; a user-pinned title
+    /// (workspace.rename) wins over OSC updates entirely.
     private func handleTitleChange(_ tabId: UUID, _ surfaceId: UUID, _ title: String) {
         guard !title.isEmpty,
               let index = tabs.firstIndex(where: { $0.id == tabId }),
+              tabs[index].customTitle == nil,
               tabs[index].focusedSurface?.surfaceId == surfaceId,
               tabs[index].title != title else { return }
         tabs[index].title = title
