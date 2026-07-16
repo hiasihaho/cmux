@@ -276,6 +276,20 @@ struct ControlCommandHandler {
             return v2PaneList(id: id, params: params)
         case "pane.focus":
             return v2PaneFocus(id: id, params: params)
+        case "browser.open_split":
+            return v2BrowserOpenSplit(id: id, params: params)
+        case "browser.navigate":
+            return v2BrowserNavigate(id: id, params: params)
+        case "browser.url.get":
+            return v2BrowserGetURL(id: id, params: params)
+        case "browser.get.title":
+            return v2BrowserGetTitle(id: id, params: params)
+        case "browser.back":
+            return v2BrowserHistory(id: id, params: params, action: "back")
+        case "browser.forward":
+            return v2BrowserHistory(id: id, params: params, action: "forward")
+        case "browser.reload":
+            return v2BrowserHistory(id: id, params: params, action: "reload")
         case "notification.create":
             return v2NotificationCreate(id: id, params: params)
         case "notification.list":
@@ -401,7 +415,7 @@ struct ControlCommandHandler {
                 "ref": registry.ref(kind: "surface", uuid: leaf.surfaceId),
                 "index": index,
                 "focused": leaf.surfaceId == focusedId,
-                "type": "terminal",
+                "type": leaf.kind.typeName,
                 "title": tab.title
             ]
         }
@@ -515,15 +529,20 @@ struct ControlCommandHandler {
         }
     }
 
-    /// Splits the pane holding `surfaceId`; the new shell inherits the
+    /// Splits the pane holding `surfaceId`; a new terminal inherits the
     /// split-off shell's current directory (OSC 7) when known. Returns the
     /// new leaf, or nil for an invalid direction/surface.
     @discardableResult
-    func split(tab: TerminalTab, surfaceId: UUID, direction: String) -> PaneLeaf? {
+    func split(
+        tab: TerminalTab,
+        surfaceId: UUID,
+        direction: String,
+        kind: SurfaceKind = .terminal
+    ) -> PaneLeaf? {
         guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id }) else { return nil }
         let cwd = SurfaceRegistry.shared.currentDirectory(for: surfaceId)
             ?? tab.workingDirectory
-        let newLeaf = PaneLeaf(workingDirectory: cwd)
+        let newLeaf = PaneLeaf(kind: kind, workingDirectory: cwd)
         guard let layout = tabs.wrappedValue[index].layout.splitting(
             surfaceId: surfaceId,
             direction: direction,

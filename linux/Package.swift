@@ -29,10 +29,16 @@ let package = Package(
             path: "Sources/CVte",
             pkgConfig: "vte-2.91-gtk4"
         ),
+        .systemLibrary(
+            name: "CWebKit",
+            path: "Sources/CWebKit",
+            pkgConfig: "webkitgtk-6.0"
+        ),
         .executableTarget(
             name: "CmuxAdw",
             dependencies: [
                 "CVte",
+                "CWebKit",
                 .product(name: "Adwaita", package: "adwaita-swift")
             ],
             path: "Sources/CmuxAdw",

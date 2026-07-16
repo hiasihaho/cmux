@@ -35,7 +35,12 @@ full analysis and phased plan.
 - [x] Phase 4b — session persistence: workspaces/pane trees/live cwds to
       `$XDG_DATA_HOME/cmux/session-linux.json`, restored on launch; divider
       positions survive layout changes; Ctrl+Shift+T/D/S/W shortcuts
-- [ ] Phase 5 — browser panel via WebKitGTK (`webkitgtk-6.0`)
+- [x] Phase 5 (part 1) — browser panes via WebKitGTK: `cmux browser open
+      <url>` splits a live web view into the workspace; navigate/back/
+      forward/reload/url/title over the socket; page titles drive tab
+      titles; URLs persist across restarts
+- [ ] Phase 5 (part 2) — browser automation verbs (eval/snapshot/click…),
+      address-bar UI
 
 ## Trying the control plane
 

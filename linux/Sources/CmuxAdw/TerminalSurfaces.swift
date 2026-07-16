@@ -2,31 +2,49 @@ import Adwaita
 import CVte
 import Foundation
 
-/// Main-thread map of surface → live VTE terminal (+ its scrolled-window
-/// container), used by the control protocol and for pane-tree reparenting.
+/// Main-thread map of surface → live widget (VTE terminal or WebKit view,
+/// plus the container that goes into the pane tree), used by the control
+/// protocol and for pane-tree reparenting. Containers are stored as
+/// `OpaquePointer` so files bound to different GTK-importing C modules
+/// (CVte, CWebKit) can share them without type clashes.
 final class SurfaceRegistry {
 
     static let shared = SurfaceRegistry()
 
     private(set) var terminals: [UUID: UnsafeMutablePointer<VteTerminal>] = [:]
-    private(set) var containers: [UUID: UnsafeMutablePointer<GtkWidget>] = [:]
+    private(set) var browsers: [UUID: OpaquePointer] = [:]
+    private(set) var containers: [UUID: OpaquePointer] = [:]
 
-    func register(
-        terminal: UnsafeMutablePointer<VteTerminal>,
-        container: UnsafeMutablePointer<GtkWidget>,
+    func registerTerminal(
+        _ terminal: UnsafeMutablePointer<VteTerminal>,
+        container: OpaquePointer,
         for surfaceId: UUID
     ) {
         terminals[surfaceId] = terminal
         containers[surfaceId] = container
     }
 
+    func registerBrowser(
+        _ webView: OpaquePointer,
+        container: OpaquePointer,
+        for surfaceId: UUID
+    ) {
+        browsers[surfaceId] = webView
+        containers[surfaceId] = container
+    }
+
     func unregister(_ surfaceId: UUID) {
         terminals.removeValue(forKey: surfaceId)
+        browsers.removeValue(forKey: surfaceId)
         containers.removeValue(forKey: surfaceId)
     }
 
     func terminal(for surfaceId: UUID) -> UnsafeMutablePointer<VteTerminal>? {
         terminals[surfaceId]
+    }
+
+    func browser(for surfaceId: UUID) -> OpaquePointer? {
+        browsers[surfaceId]
     }
 
     /// Shell working directory reported via OSC 7 (vte.sh), if any.
@@ -75,16 +93,27 @@ struct TerminalStackWidget: AdwaitaWidget {
         guard let stack = storage.opaquePointer else { return }
         var shapes = storage.fields["tab-shapes"] as? [UUID: String] ?? [:]
 
-        // Terminals for every leaf (new tabs and fresh splits alike).
+        // Widgets for every leaf (new tabs and fresh splits alike).
         for tab in tabs {
-            for leaf in tab.surfaces where SurfaceRegistry.shared.terminal(for: leaf.surfaceId) == nil {
-                createTerminal(for: leaf, in: tab, storage: storage)
+            for leaf in tab.surfaces where SurfaceRegistry.shared.containers[leaf.surfaceId] == nil {
+                switch leaf.kind {
+                case .terminal:
+                    createTerminal(for: leaf, in: tab, storage: storage)
+                case .browser:
+                    BrowserSurfaceFactory.create(
+                        for: leaf,
+                        in: tab,
+                        storage: storage,
+                        onTitleChanged: onTitleChanged,
+                        onSurfaceFocused: onSurfaceFocused
+                    )
+                }
             }
         }
 
         // Drop registry entries for surfaces that no longer exist anywhere.
         let liveSurfaces = Set(tabs.flatMap { $0.surfaces.map(\.surfaceId) })
-        for surfaceId in SurfaceRegistry.shared.terminals.keys where !liveSurfaces.contains(surfaceId) {
+        for surfaceId in SurfaceRegistry.shared.containers.keys where !liveSurfaces.contains(surfaceId) {
             SurfaceRegistry.shared.unregister(surfaceId)
         }
 
@@ -103,14 +132,14 @@ struct TerminalStackWidget: AdwaitaWidget {
             let existing = gtk_stack_get_child_by_name(stack, tab.id.uuidString)
             guard shapes[tab.id] != signature || existing == nil else { continue }
 
-            // Keep live terminal containers alive across the rebuild and
+            // Keep live surface containers alive across the rebuild and
             // detach them from their old parents — GtkPaned refuses children
             // that are still parented elsewhere, and a silently rejected
             // child dies with the old skeleton (dangling registry pointers).
             for leaf in tab.surfaces {
                 if let container = SurfaceRegistry.shared.containers[leaf.surfaceId] {
                     g_object_ref_sink(UnsafeMutableRawPointer(container))
-                    detachFromParent(container)
+                    detachFromParent(UnsafeMutablePointer<GtkWidget>(container))
                 }
             }
             // Preserve dragged divider positions across the rebuild (keyed
@@ -140,9 +169,12 @@ struct TerminalStackWidget: AdwaitaWidget {
 
         if let tab = tabs.first(where: { $0.id == selection }) {
             gtk_stack_set_visible_child_name(stack, tab.id.uuidString)
-            if let focused = tab.focusedSurface,
-               let terminal = SurfaceRegistry.shared.terminal(for: focused.surfaceId) {
-                gtk_widget_grab_focus(asWidget(terminal))
+            if let focused = tab.focusedSurface {
+                if let terminal = SurfaceRegistry.shared.terminal(for: focused.surfaceId) {
+                    gtk_widget_grab_focus(asWidget(terminal))
+                } else if let container = SurfaceRegistry.shared.containers[focused.surfaceId] {
+                    gtk_widget_grab_focus(UnsafeMutablePointer<GtkWidget>(container))
+                }
             }
         }
     }
@@ -198,6 +230,7 @@ struct TerminalStackWidget: AdwaitaWidget {
         switch node {
         case .leaf(let leaf):
             return SurfaceRegistry.shared.containers[leaf.surfaceId]
+                .map { UnsafeMutablePointer<GtkWidget>($0) }
         case .split(let orientation, let first, let second):
             let paned = gtk_paned_new(
                 orientation == .horizontal ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL
@@ -225,7 +258,7 @@ struct TerminalStackWidget: AdwaitaWidget {
         gtk_widget_set_vexpand(scrolled, 1)
 
         spawnShell(in: terminal, leaf: leaf, tab: tab)
-        SurfaceRegistry.shared.register(terminal: terminal, container: scrolled, for: leaf.surfaceId)
+        SurfaceRegistry.shared.registerTerminal(terminal, container: OpaquePointer(scrolled), for: leaf.surfaceId)
         connectSignals(for: leaf, in: tab, terminal: terminal, widget: widget, storage: storage)
     }
 

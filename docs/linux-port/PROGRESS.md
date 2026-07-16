@@ -255,6 +255,27 @@ Session persistence (`SessionStore.swift`):
   after session restore (single occurrence; likely prompt/startup output
   containing BEL).
 
+### Phase 5 (part 1) — WebKitGTK browser panels ✅
+
+- `CWebKit` system-library target (`webkitgtk-6.0`); `PaneLeaf` gained a
+  `kind` (terminal | browser(initialURL)). Browser surfaces are plain
+  `WebKitWebView` widgets in the same pane tree/registry — the registry
+  stores containers as `OpaquePointer` so CVte- and CWebKit-bound files
+  never mix typed GTK imports.
+- Page titles flow through `notify::title` into the tab title; focus
+  controller same as terminals. Session persistence stores the **live page
+  URL** (schema v2 — v1 files are discarded once).
+- Protocol: `browser.open_split` (splits right of the target surface),
+  `browser.navigate`, `browser.url.get`, `browser.get.title`,
+  `browser.back/forward/reload`. Note the CLI's verb names are irregular:
+  `url` → `browser.url.get` but `back` → `browser.back` (template).
+- Verified: `browser open https://example.org` → rendered page, tab title
+  "Example Domain", `url`/`goto`/`back` round-trips, browser pane +
+  URL restored across an app restart. Zero criticals.
+- Remaining for later: the big `browser.*` automation surface (eval,
+  snapshot, click/type/find — needs async JS eval plumbing), address-bar UI,
+  downloads, cookies.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

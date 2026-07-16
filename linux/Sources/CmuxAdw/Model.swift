@@ -1,20 +1,40 @@
 import Foundation
 
-/// One terminal surface inside a workspace's pane tree. MVP: one surface per
+/// What a pane surface hosts — a shell terminal or a WebKit browser view
+/// (macOS `Panel.PanelKind` counterpart).
+enum SurfaceKind: Equatable {
+    case terminal
+    case browser(initialURL: String)
+
+    var typeName: String {
+        switch self {
+        case .terminal:
+            return "terminal"
+        case .browser:
+            return "browser"
+        }
+    }
+}
+
+/// One surface inside a workspace's pane tree. MVP: one surface per
 /// pane (macOS Bonsplit panes carry their own tab strips — later phase).
 struct PaneLeaf: Equatable {
     let paneId: UUID
     let surfaceId: UUID
-    /// Working directory the surface's shell was (or will be) spawned in.
+    var kind: SurfaceKind
+    /// Working directory the surface's shell was (or will be) spawned in
+    /// (terminals only).
     var workingDirectory: String
 
     init(
         paneId: UUID = UUID(),
         surfaceId: UUID = UUID(),
+        kind: SurfaceKind = .terminal,
         workingDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path
     ) {
         self.paneId = paneId
         self.surfaceId = surfaceId
+        self.kind = kind
         self.workingDirectory = workingDirectory
     }
 }

@@ -7,7 +7,7 @@ import Foundation
 /// restored session reopens shells where they were.
 enum SessionStore {
 
-    static let schemaVersion = 1
+    static let schemaVersion = 2
 
     struct Snapshot: Codable, Equatable {
         var version: Int
@@ -24,7 +24,7 @@ enum SessionStore {
     }
 
     indirect enum LayoutSnapshot: Codable, Equatable {
-        case leaf(workingDirectory: String)
+        case leaf(kind: String, workingDirectory: String, url: String)
         case split(orientation: String, first: LayoutSnapshot, second: LayoutSnapshot)
     }
 
@@ -84,10 +84,17 @@ enum SessionStore {
     private static func layoutSnapshot(_ node: PaneNode) -> LayoutSnapshot {
         switch node {
         case .leaf(let leaf):
-            // Live cwd via OSC 7 beats the spawn-time directory.
-            let cwd = SurfaceRegistry.shared.currentDirectory(for: leaf.surfaceId)
-                ?? leaf.workingDirectory
-            return .leaf(workingDirectory: cwd)
+            switch leaf.kind {
+            case .terminal:
+                // Live cwd via OSC 7 beats the spawn-time directory.
+                let cwd = SurfaceRegistry.shared.currentDirectory(for: leaf.surfaceId)
+                    ?? leaf.workingDirectory
+                return .leaf(kind: "terminal", workingDirectory: cwd, url: "")
+            case .browser(let initialURL):
+                // Live page URL beats the initial one.
+                let url = SurfaceRegistry.shared.currentURL(for: leaf.surfaceId) ?? initialURL
+                return .leaf(kind: "browser", workingDirectory: "", url: url)
+            }
         case .split(let orientation, let first, let second):
             return .split(
                 orientation: orientation.rawValue,
@@ -122,8 +129,14 @@ enum SessionStore {
 
     private static func layoutNode(_ snapshot: LayoutSnapshot) -> PaneNode {
         switch snapshot {
-        case .leaf(let workingDirectory):
-            return .leaf(PaneLeaf(workingDirectory: workingDirectory))
+        case .leaf(let kind, let workingDirectory, let url):
+            if kind == "browser" {
+                return .leaf(PaneLeaf(kind: .browser(initialURL: url)))
+            }
+            let cwd = workingDirectory.isEmpty
+                ? FileManager.default.homeDirectoryForCurrentUser.path
+                : workingDirectory
+            return .leaf(PaneLeaf(workingDirectory: cwd))
         case .split(let orientation, let first, let second):
             return .split(
                 orientation: PaneNode.SplitOrientation(rawValue: orientation) ?? .horizontal,
