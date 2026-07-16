@@ -491,6 +491,28 @@ struct WorkspaceForkConversationContextMenuTests {
     }
 
     @Test
+    func commandPaletteProbeRequiredResultClearsOnPanelPresentationChange() {
+        let workspaceId = UUID()
+        let panelId = UUID()
+        let panelKey = ContentView.commandPaletteForkableAgentPanelKey(workspaceId: workspaceId, panelId: panelId)
+        let fingerprint = "probe-required-fingerprint"
+
+        #expect(
+            ContentView.commandPaletteShouldClearForkableAgentProbeResultBeforeProbe(
+                panelKey: panelKey,
+                supportedPanelKeys: [panelKey],
+                supportedRemoteContextsByPanelKey: [panelKey: false],
+                snapshotFingerprintsByPanelKey: [panelKey: fingerprint],
+                expectedSnapshotFingerprint: fingerprint,
+                isRemoteTerminal: false,
+                cachedResultHadFallback: false,
+                panelChanged: true
+            ),
+            "Probe-required palette positives must clear on panel changes while the async probe recomputes CLI support."
+        )
+    }
+
+    @Test
     func forkCapabilityProbeCacheEvictsOldestEntriesPastCapacity() async {
         let cache = AgentForkCapabilityProbeCache(maxEntries: 2)
         await cache.store(true, for: "first", now: 0, expiresAt: 100)
@@ -700,6 +722,311 @@ struct WorkspaceForkConversationContextMenuTests {
     }
 
     @Test
+    func sharedForkProbeValidationInvalidatesWhenExecutableChanges() async throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
+            .appendingPathComponent("cmux-fork-executable-watch-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: root) }
+        try fm.createDirectory(at: root.appendingPathComponent(".cmuxterm", isDirectory: true), withIntermediateDirectories: true)
+
+        let executable = root.appendingPathComponent("pi", isDirectory: false)
+        let supportedExecutable = root.appendingPathComponent("pi-supported", isDirectory: false)
+        let unsupportedExecutable = root.appendingPathComponent("pi-unsupported", isDirectory: false)
+        func writePiProbe(_ url: URL, output: String) throws {
+            try """
+            #!/bin/sh
+            printf '%s\\n' '\(output)'
+            """
+                .write(to: url, atomically: false, encoding: .utf8)
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+        try writePiProbe(supportedExecutable, output: "pi 0.80.6")
+        try writePiProbe(unsupportedExecutable, output: "pi 0.59.0")
+        try fm.createSymbolicLink(at: executable, withDestinationURL: supportedExecutable)
+
+        let workspaceId = UUID()
+        let panelId = UUID()
+        let panelKey = RestorableAgentSessionIndex.PanelKey(workspaceId: workspaceId, panelId: panelId)
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .pi,
+            sessionId: "pi-watch-session",
+            workingDirectory: root.path,
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "pi",
+                executablePath: executable.path,
+                arguments: [executable.path, "--session", "pi-watch-session"],
+                workingDirectory: root.path,
+                environment: nil,
+                capturedAt: 123,
+                source: "process"
+            )
+        )
+        let sharedIndex = SharedLiveAgentIndex(
+            indexLoader: {
+                let index = RestorableAgentSessionIndex.load(
+                    homeDirectory: root.path,
+                    fileManager: fm,
+                    registry: CmuxVaultAgentRegistry(registrations: [
+                        .builtInPi,
+                    ]),
+                    detectedSnapshots: [
+                        panelKey: (
+                            snapshot: snapshot,
+                            updatedAt: 0,
+                            processIDs: [],
+                            agentProcessIDs: [],
+                            sessionIDSource: .explicit
+                        ),
+                    ]
+                )
+                return (
+                    index: index,
+                    liveAgentProcessFingerprint: [],
+                    processScopeFingerprint: [],
+                    forkValidatedPanels: [panelKey]
+                )
+            },
+            hookStoreDirectoryProvider: {
+                root.appendingPathComponent(".cmuxterm", isDirectory: true).path
+            }
+        )
+
+        await sharedIndex.refreshForkAvailabilityNow(workspaceId: workspaceId, panelId: panelId)
+        #expect(sharedIndex.prepareForkAvailabilityProbe(workspaceId: workspaceId, panelId: panelId))
+        #expect(sharedIndex.snapshotForForkAvailability(workspaceId: workspaceId, panelId: panelId) != nil)
+
+        try fm.removeItem(at: executable)
+        try fm.createSymbolicLink(at: executable, withDestinationURL: unsupportedExecutable)
+        for _ in 0..<20 {
+            if sharedIndex.snapshotForForkAvailability(workspaceId: workspaceId, panelId: panelId) == nil {
+                break
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(
+            sharedIndex.snapshotForForkAvailability(workspaceId: workspaceId, panelId: panelId) == nil,
+            "Swapping the executable symlink should invalidate the outer fork validation before its TTL expires."
+        )
+
+        await sharedIndex.refreshForkAvailabilityNow(workspaceId: workspaceId, panelId: panelId)
+        #expect(sharedIndex.prepareForkAvailabilityProbe(workspaceId: workspaceId, panelId: panelId))
+        #expect(sharedIndex.forkSupportProbeRejected(workspaceId: workspaceId, panelId: panelId))
+    }
+
+    @Test
+    func sharedForkProbeValidationInvalidatesWhenEarlierPathExecutableAppearsForPiAndOmp() async throws {
+        struct Scenario {
+            let launcher: String
+            let kind: RestorableAgentKind
+            let registration: CmuxVaultAgentRegistration
+            let supportedOutput: String
+            let unsupportedOutput: String
+        }
+
+        let scenarios = [
+            Scenario(
+                launcher: "pi",
+                kind: .pi,
+                registration: .builtInPi,
+                supportedOutput: "pi 0.80.6",
+                unsupportedOutput: "pi 0.59.0"
+            ),
+            Scenario(
+                launcher: "omp",
+                kind: .custom("omp"),
+                registration: .builtInOmp,
+                supportedOutput: "omp/13.15.0",
+                unsupportedOutput: "omp/13.14.2"
+            ),
+        ]
+
+        let fm = FileManager.default
+        for scenario in scenarios {
+            let root = fm.temporaryDirectory
+                .appendingPathComponent("cmux-\(scenario.launcher)-path-watch-\(UUID().uuidString)", isDirectory: true)
+            defer { try? fm.removeItem(at: root) }
+            let earlyPathDirectory = root.appendingPathComponent("early-bin", isDirectory: true)
+            let latePathDirectory = root.appendingPathComponent("late-bin", isDirectory: true)
+            try fm.createDirectory(at: root.appendingPathComponent(".cmuxterm", isDirectory: true), withIntermediateDirectories: true)
+            try fm.createDirectory(at: earlyPathDirectory, withIntermediateDirectories: true)
+            try fm.createDirectory(at: latePathDirectory, withIntermediateDirectories: true)
+
+            func writeProbe(_ directory: URL, output: String) throws {
+                let executable = directory.appendingPathComponent(scenario.launcher, isDirectory: false)
+                try """
+                #!/bin/sh
+                printf '%s\\n' '\(output)'
+                """
+                    .write(to: executable, atomically: false, encoding: .utf8)
+                try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+            }
+
+            try writeProbe(latePathDirectory, output: scenario.supportedOutput)
+
+            let workspaceId = UUID()
+            let panelId = UUID()
+            let panelKey = RestorableAgentSessionIndex.PanelKey(workspaceId: workspaceId, panelId: panelId)
+            let sessionId = "\(scenario.launcher)-path-watch-session"
+            let snapshot = SessionRestorableAgentSnapshot(
+                kind: scenario.kind,
+                sessionId: sessionId,
+                workingDirectory: root.path,
+                launchCommand: AgentLaunchCommandSnapshot(
+                    launcher: scenario.launcher,
+                    executablePath: scenario.launcher,
+                    arguments: [scenario.launcher, "--session", sessionId],
+                    workingDirectory: root.path,
+                    environment: [
+                        "PATH": "\(earlyPathDirectory.path):\(latePathDirectory.path):/usr/bin:/bin",
+                    ],
+                    capturedAt: 123,
+                    source: "process"
+                ),
+                registration: scenario.registration
+            )
+            let sharedIndex = SharedLiveAgentIndex(
+                indexLoader: {
+                    let index = RestorableAgentSessionIndex.load(
+                        homeDirectory: root.path,
+                        fileManager: fm,
+                        registry: CmuxVaultAgentRegistry(registrations: [
+                            scenario.registration,
+                        ]),
+                        detectedSnapshots: [
+                            panelKey: (
+                                snapshot: snapshot,
+                                updatedAt: 0,
+                                processIDs: [],
+                                agentProcessIDs: [],
+                                sessionIDSource: .explicit
+                            ),
+                        ]
+                    )
+                    return (
+                        index: index,
+                        liveAgentProcessFingerprint: [],
+                        processScopeFingerprint: [],
+                        forkValidatedPanels: [panelKey]
+                    )
+                },
+                hookStoreDirectoryProvider: {
+                    root.appendingPathComponent(".cmuxterm", isDirectory: true).path
+                }
+            )
+
+            await sharedIndex.refreshForkAvailabilityNow(workspaceId: workspaceId, panelId: panelId)
+            #expect(sharedIndex.prepareForkAvailabilityProbe(workspaceId: workspaceId, panelId: panelId))
+            #expect(sharedIndex.snapshotForForkAvailability(workspaceId: workspaceId, panelId: panelId) != nil)
+
+            try writeProbe(earlyPathDirectory, output: scenario.unsupportedOutput)
+            for _ in 0..<20 {
+                if sharedIndex.snapshotForForkAvailability(workspaceId: workspaceId, panelId: panelId) == nil {
+                    break
+                }
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            #expect(
+                sharedIndex.snapshotForForkAvailability(workspaceId: workspaceId, panelId: panelId) == nil,
+                "Creating an earlier PATH \(scenario.launcher) should invalidate the shared validation before its TTL expires."
+            )
+
+            await sharedIndex.refreshForkAvailabilityNow(workspaceId: workspaceId, panelId: panelId)
+            #expect(sharedIndex.prepareForkAvailabilityProbe(workspaceId: workspaceId, panelId: panelId))
+            #expect(sharedIndex.forkSupportProbeRejected(workspaceId: workspaceId, panelId: panelId))
+        }
+    }
+
+    @Test
+    func sharedOpenCodeMissingWorkingDirectoryPublishesSupportedValidation() async throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
+            .appendingPathComponent("cmux-opencode-missing-cwd-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: root) }
+        try fm.createDirectory(at: root.appendingPathComponent(".cmuxterm", isDirectory: true), withIntermediateDirectories: true)
+
+        let workspaceId = UUID()
+        let panelId = UUID()
+        let panelKey = RestorableAgentSessionIndex.PanelKey(workspaceId: workspaceId, panelId: panelId)
+        let missingWorkingDirectory = root.appendingPathComponent("deleted-working-directory", isDirectory: true).path
+        let snapshot = makeProbeRequiredOpenCodeSnapshot(
+            sessionId: "opencode-missing-cwd-session",
+            workingDirectory: missingWorkingDirectory
+        )
+        let sharedIndex = SharedLiveAgentIndex(
+            indexLoader: {
+                let index = RestorableAgentSessionIndex.load(
+                    homeDirectory: root.path,
+                    fileManager: fm,
+                    registry: CmuxVaultAgentRegistry(registrations: []),
+                    detectedSnapshots: [
+                        panelKey: (
+                            snapshot: snapshot,
+                            updatedAt: 0,
+                            processIDs: [],
+                            agentProcessIDs: [],
+                            sessionIDSource: .explicit
+                        ),
+                    ]
+                )
+                return (
+                    index: index,
+                    liveAgentProcessFingerprint: [],
+                    processScopeFingerprint: [],
+                    forkValidatedPanels: [panelKey]
+                )
+            },
+            hookStoreDirectoryProvider: {
+                root.appendingPathComponent(".cmuxterm", isDirectory: true).path
+            }
+        )
+
+        await sharedIndex.refreshForkAvailabilityNow(workspaceId: workspaceId, panelId: panelId)
+        #expect(sharedIndex.forkSupportProbeAccepted(workspaceId: workspaceId, panelId: panelId))
+        #expect(
+            sharedIndex.snapshotForForkAvailability(workspaceId: workspaceId, panelId: panelId) != nil,
+            "OpenCode snapshots with deleted local cwd should use the same remote-like supported result as the command-palette path."
+        )
+    }
+
+    @Test
+    func openCodeValidationIdentityUsesCapturedClaudeConfigDirWithoutMigrationProbe() throws {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser
+        let codexAccountsRoot = home.appendingPathComponent(".codex-accounts", isDirectory: true)
+        let claudeAccountRoot = codexAccountsRoot.appendingPathComponent("claude", isDirectory: true)
+        let accountsRootExisted = fm.fileExists(atPath: codexAccountsRoot.path)
+        let claudeRootExisted = fm.fileExists(atPath: claudeAccountRoot.path)
+        let uniqueName = "cmux-validation-identity-\(UUID().uuidString)"
+        let legacyConfigDir = home
+            .appendingPathComponent(".subrouter", isDirectory: true)
+            .appendingPathComponent("codex", isDirectory: true)
+            .appendingPathComponent("claude", isDirectory: true)
+            .appendingPathComponent(uniqueName, isDirectory: true)
+        let migratedConfigDir = claudeAccountRoot.appendingPathComponent(uniqueName, isDirectory: true)
+        try fm.createDirectory(at: migratedConfigDir, withIntermediateDirectories: true)
+        defer {
+            try? fm.removeItem(at: migratedConfigDir)
+            if !claudeRootExisted {
+                try? fm.removeItem(at: claudeAccountRoot)
+            }
+            if !accountsRootExisted {
+                try? fm.removeItem(at: codexAccountsRoot)
+            }
+        }
+
+        let snapshot = makeProbeRequiredOpenCodeSnapshot(
+            environment: [
+                "CLAUDE_CONFIG_DIR": legacyConfigDir.path,
+                "PATH": "/usr/bin:/bin",
+            ]
+        )
+        let identity = try #require(AgentForkSupport.forkValidationIdentity(snapshot: snapshot))
+
+        #expect(identity.contains("CLAUDE_CONFIG_DIR=\(legacyConfigDir.path)"))
+        #expect(!identity.contains("CLAUDE_CONFIG_DIR=\(migratedConfigDir.path)"))
+    }
+
+    @Test
     func builtInOmpRequiresProbeButProjectForkOverrideDoesNot() {
         let builtIn = SessionRestorableAgentSnapshot(
             kind: .custom("omp"),
@@ -778,6 +1105,25 @@ struct WorkspaceForkConversationContextMenuTests {
         #expect(await AgentForkSupport.supportsFork(snapshot: snapshot))
         #expect(!(await AgentForkSupport.supportsFork(snapshot: snapshot, isRemoteContext: true)))
 
+        var relativeExecutableSnapshot = snapshot
+        relativeExecutableSnapshot.launchCommand?.executablePath = "./pi"
+        relativeExecutableSnapshot.launchCommand?.arguments = ["./pi", "--session", "pi-session"]
+        #expect(
+            !(await AgentForkSupport.supportsFork(snapshot: relativeExecutableSnapshot)),
+            "A missing saved cwd must not probe a relative Pi executable from cmux's own process cwd."
+        )
+        #expect(AgentForkSupport.forkValidationExecutableIdentity(snapshot: relativeExecutableSnapshot) == nil)
+
+        var relativePathSnapshot = snapshot
+        relativePathSnapshot.launchCommand?.executablePath = "pi"
+        relativePathSnapshot.launchCommand?.arguments = ["pi", "--session", "pi-session"]
+        relativePathSnapshot.launchCommand?.environment = ["PATH": "./bin:/usr/bin:/bin"]
+        #expect(
+            !(await AgentForkSupport.supportsFork(snapshot: relativePathSnapshot)),
+            "A missing saved cwd must not probe relative PATH entries from cmux's own process cwd."
+        )
+        #expect(AgentForkSupport.forkValidationExecutableIdentity(snapshot: relativePathSnapshot) == nil)
+
         let oldOmp = root.appendingPathComponent("omp", isDirectory: false)
         try "#!/bin/sh\nprintf '%s\\n' 'omp/13.14.2'\n"
             .write(to: oldOmp, atomically: true, encoding: .utf8)
@@ -798,6 +1144,16 @@ struct WorkspaceForkConversationContextMenuTests {
         failedSnapshot.launchCommand?.executablePath = failedPi.path
         failedSnapshot.launchCommand?.arguments = [failedPi.path, "--session", "pi-session"]
         #expect(!(await AgentForkSupport.supportsFork(snapshot: failedSnapshot)))
+
+        let piAlias = root.appendingPathComponent("pi-coding-agent", isDirectory: false)
+        try "#!/bin/sh\nprintf '%s\\n' '0.80.6'\n"
+            .write(to: piAlias, atomically: true, encoding: .utf8)
+        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: piAlias.path)
+        var piAliasSnapshot = snapshot
+        piAliasSnapshot.sessionId = "pi-alias-session"
+        piAliasSnapshot.launchCommand?.executablePath = piAlias.path
+        piAliasSnapshot.launchCommand?.arguments = [piAlias.path, "--session", "pi-alias-session"]
+        #expect(await AgentForkSupport.supportsFork(snapshot: piAliasSnapshot))
 
         let sharedWrapper = root.appendingPathComponent("agent-wrapper", isDirectory: false)
         try "#!/bin/sh\nprintf '%s\\n' 'pi 1.0.0'\n"
@@ -857,6 +1213,61 @@ struct WorkspaceForkConversationContextMenuTests {
     }
 
     @Test
+    func piFamilyProbeCacheInvalidatesWhenExecutableFileIdentityChanges() async throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appendingPathComponent("cmux-pi-executable-identity-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: root) }
+
+        let executable = root.appendingPathComponent("pi", isDirectory: false)
+        func writePiProbe(output: String, modifiedAt: TimeInterval) throws {
+            try """
+            #!/bin/sh
+            printf '%s\\n' '\(output)'
+            """
+                .write(to: executable, atomically: true, encoding: .utf8)
+            try fileManager.setAttributes(
+                [
+                    .posixPermissions: 0o755,
+                    .modificationDate: Date(timeIntervalSince1970: modifiedAt),
+                ],
+                ofItemAtPath: executable.path
+            )
+        }
+
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .pi,
+            sessionId: "pi-file-identity-session",
+            workingDirectory: root.path,
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "pi",
+                executablePath: executable.path,
+                arguments: [executable.path, "--session", "pi-file-identity-session"],
+                workingDirectory: root.path,
+                environment: nil,
+                capturedAt: 123,
+                source: "process"
+            )
+        )
+
+        try writePiProbe(output: "pi 0.80.6", modifiedAt: 10)
+        #expect(await AgentForkSupport.supportsFork(snapshot: snapshot))
+
+        try writePiProbe(output: "pi 0.59.0", modifiedAt: 20)
+        #expect(
+            !(await AgentForkSupport.supportsFork(snapshot: snapshot)),
+            "A Pi downgrade at the same executable path must not reuse the prior positive probe cache entry."
+        )
+
+        try writePiProbe(output: "pi 0.80.6", modifiedAt: 30)
+        #expect(
+            await AgentForkSupport.supportsFork(snapshot: snapshot),
+            "A Pi upgrade at the same executable path must not reuse the prior negative probe cache entry."
+        )
+    }
+
+    @Test
     func forkCapabilityProbeTimesOutWhenWrapperLeavesOutputPipeOpen() async throws {
         let fileManager = FileManager.default
         let root = fileManager.temporaryDirectory
@@ -865,9 +1276,12 @@ struct WorkspaceForkConversationContextMenuTests {
         defer { try? fileManager.removeItem(at: root) }
 
         let executable = root.appendingPathComponent("pi", isDirectory: false)
+        let leakedChildMarker = root.appendingPathComponent("leaked-child", isDirectory: false)
+        let escapedLeakedChildMarker = leakedChildMarker.path
+            .replacingOccurrences(of: "'", with: "'\\''")
         try """
         #!/bin/sh
-        (sleep 6) &
+        (sleep 4; touch '\(escapedLeakedChildMarker)') &
         printf '%s\\n' '0.80.6'
         """
             .write(to: executable, atomically: true, encoding: .utf8)
@@ -890,6 +1304,8 @@ struct WorkspaceForkConversationContextMenuTests {
         let start = Date()
         #expect(!(await AgentForkSupport.supportsFork(snapshot: snapshot)))
         #expect(Date().timeIntervalSince(start) < 5)
+        try await Task.sleep(nanoseconds: 1_500_000_000)
+        #expect(!fileManager.fileExists(atPath: leakedChildMarker.path))
     }
 
     @Test
@@ -1294,7 +1710,8 @@ struct WorkspaceForkConversationContextMenuTests {
 
     private func makeProbeRequiredOpenCodeSnapshot(
         sessionId: String = "019dad34-d218-7943-b81a-eddac5c87952",
-        workingDirectory: String = "/tmp/fork repo"
+        workingDirectory: String = "/tmp/fork repo",
+        environment: [String: String]? = nil
     ) -> SessionRestorableAgentSnapshot {
         SessionRestorableAgentSnapshot(
             kind: .opencode,
@@ -1305,7 +1722,7 @@ struct WorkspaceForkConversationContextMenuTests {
                 executablePath: "/opt/homebrew/bin/opencode",
                 arguments: ["/opt/homebrew/bin/opencode", "--session", sessionId],
                 workingDirectory: workingDirectory,
-                environment: nil,
+                environment: environment,
                 capturedAt: 123,
                 source: "process"
             )
