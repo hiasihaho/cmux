@@ -276,6 +276,8 @@ struct ControlCommandHandler {
             return v2PaneList(id: id, params: params)
         case "pane.focus":
             return v2PaneFocus(id: id, params: params)
+        case "pane.surfaces":
+            return v2PaneSurfaces(id: id, params: params)
         case "browser.open_split":
             return v2BrowserOpenSplit(id: id, params: params)
         case "browser.navigate":
@@ -455,6 +457,39 @@ struct ControlCommandHandler {
         ])
     }
 
+    private func v2PaneSurfaces(id: Any?, params: [String: Any]) -> String {
+        let wsId = v2WorkspaceUUID(params) ?? selection.wrappedValue
+        guard let tab = tabs.wrappedValue.first(where: { $0.id == wsId }) else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not found")
+        }
+        let leaf: PaneLeaf?
+        if let raw = params["pane_id"] as? String, !raw.isEmpty {
+            let paneId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw)
+            leaf = tab.surfaces.first { $0.paneId == paneId }
+        } else {
+            leaf = tab.focusedSurface
+        }
+        guard let leaf else {
+            return v2Error(id: id, code: "not_found", message: "Pane not found")
+        }
+        let registry = RefRegistry.shared
+        return v2Ok(id: id, result: [
+            "workspace_id": tab.id.uuidString,
+            "workspace_ref": registry.ref(kind: "workspace", uuid: tab.id),
+            "pane_id": leaf.paneId.uuidString,
+            "pane_ref": registry.ref(kind: "pane", uuid: leaf.paneId),
+            "surfaces": [[
+                "id": leaf.surfaceId.uuidString,
+                "ref": registry.ref(kind: "surface", uuid: leaf.surfaceId),
+                "index": 0,
+                "selected": true,
+                "focused": leaf.surfaceId == tab.focusedSurface?.surfaceId,
+                "type": leaf.kind.typeName,
+                "title": tab.title
+            ]]
+        ])
+    }
+
     private func v2PaneFocus(id: Any?, params: [String: Any]) -> String {
         guard let raw = params["pane_id"] as? String,
               let paneId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw) else {
@@ -511,8 +546,15 @@ struct ControlCommandHandler {
     }
 
     /// Removes a surface's pane; closing the last pane closes the workspace.
+    /// Notifications belonging to the closed surface (or the whole closed
+    /// workspace) are dropped so the list never points at dead targets.
     func closeSurface(tabId: UUID, surfaceId: UUID) {
         guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }) else { return }
+        if tabs.wrappedValue[index].layout.removing(surfaceId: surfaceId) != nil {
+            notifications.wrappedValue.removeAll { $0.surfaceId == surfaceId }
+        } else {
+            notifications.wrappedValue.removeAll { $0.tabId == tabId }
+        }
         if let remaining = tabs.wrappedValue[index].layout.removing(surfaceId: surfaceId) {
             tabs.wrappedValue[index].layout = remaining
             if tabs.wrappedValue[index].focusedSurfaceId == surfaceId,

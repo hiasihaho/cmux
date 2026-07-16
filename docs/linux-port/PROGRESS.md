@@ -276,6 +276,22 @@ Session persistence (`SessionStore.swift`):
   snapshot, click/type/find — needs async JS eval plumbing), address-bar UI,
   downloads, cookies.
 
+### Dogfooding fixes (reported by a Claude session running inside the port)
+
+- `pane.surfaces` implemented (CLI `list-pane-surfaces` — was unknown_method).
+- Closing a surface drops its notifications (whole workspace's on last
+  pane) — the list no longer points at dead surface ids.
+- Bell policy: 2 s post-spawn grace (fastfetch-style startup banners emit
+  BEL — this was also the "phantom bell on restore") and 1 s burst
+  coalescing (dot refresh, no duplicate entries). Mirrors macOS's
+  notification-burst coalescing.
+- Dev-instance support: `CMUX_APP_ID` + `CMUX_SESSION_PATH` env overrides
+  (with the existing `CMUX_SOCKET_PATH`) let a second instance run beside
+  the daily one — used to verify these fixes without killing the primary
+  instance (which was hosting a live Claude session).
+- `read-screen` truncating wide startup banners = VTE line wrapping at the
+  pane's actual width; expected, not a bug.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

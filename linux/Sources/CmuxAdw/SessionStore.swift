@@ -30,6 +30,9 @@ enum SessionStore {
 
     static var fileURL: URL {
         let environment = ProcessInfo.processInfo.environment
+        if let override = environment["CMUX_SESSION_PATH"], !override.isEmpty {
+            return URL(fileURLWithPath: override)
+        }
         let base: URL
         if let dataHome = environment["XDG_DATA_HOME"], !dataHome.isEmpty {
             base = URL(fileURLWithPath: dataHome)

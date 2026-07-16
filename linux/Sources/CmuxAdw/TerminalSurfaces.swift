@@ -14,6 +14,8 @@ final class SurfaceRegistry {
     private(set) var terminals: [UUID: UnsafeMutablePointer<VteTerminal>] = [:]
     private(set) var browsers: [UUID: OpaquePointer] = [:]
     private(set) var containers: [UUID: OpaquePointer] = [:]
+    private var spawnTimes: [UUID: Date] = [:]
+    private var lastBellTimes: [UUID: Date] = [:]
 
     func registerTerminal(
         _ terminal: UnsafeMutablePointer<VteTerminal>,
@@ -22,6 +24,30 @@ final class SurfaceRegistry {
     ) {
         terminals[surfaceId] = terminal
         containers[surfaceId] = container
+        spawnTimes[surfaceId] = Date()
+    }
+
+    /// Bell policy — shell startup banners (fastfetch & friends) often emit
+    /// BEL, and agents can ring in bursts; macOS coalesces these too.
+    enum BellVerdict {
+        /// Within the post-spawn grace period — ignore entirely.
+        case suppress
+        /// Burst continuation — refresh the attention dot, no new entry.
+        case coalesce
+        /// A genuine, reportable bell.
+        case notify
+    }
+
+    func bellVerdict(for surfaceId: UUID) -> BellVerdict {
+        let now = Date()
+        defer { lastBellTimes[surfaceId] = now }
+        if let spawned = spawnTimes[surfaceId], now.timeIntervalSince(spawned) < 2 {
+            return .suppress
+        }
+        if let last = lastBellTimes[surfaceId], now.timeIntervalSince(last) < 1 {
+            return .coalesce
+        }
+        return .notify
     }
 
     func registerBrowser(
@@ -37,6 +63,8 @@ final class SurfaceRegistry {
         terminals.removeValue(forKey: surfaceId)
         browsers.removeValue(forKey: surfaceId)
         containers.removeValue(forKey: surfaceId)
+        spawnTimes.removeValue(forKey: surfaceId)
+        lastBellTimes.removeValue(forKey: surfaceId)
     }
 
     func terminal(for surfaceId: UUID) -> UnsafeMutablePointer<VteTerminal>? {

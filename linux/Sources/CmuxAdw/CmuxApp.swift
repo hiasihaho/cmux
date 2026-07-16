@@ -6,7 +6,11 @@ struct CmuxApp: App {
 
     static let initialTab = TerminalTab(title: "Terminal 1")
 
-    let app = AdwaitaApp(id: "com.manaflow.cmux")
+    /// `CMUX_APP_ID` lets a dev instance run beside the daily one
+    /// (GApplication ids are unique per session bus).
+    let app = AdwaitaApp(
+        id: ProcessInfo.processInfo.environment["CMUX_APP_ID"] ?? "com.manaflow.cmux"
+    )
 
     @State private var tabs: [TerminalTab] = [CmuxApp.initialTab]
     @State private var selection: UUID = CmuxApp.initialTab.id
@@ -186,22 +190,30 @@ struct CmuxApp: App {
     }
 
     /// Terminal bell — the first real attention signal (agents ring the bell
-    /// or use `cmux notify`; libghostty adds OSC 9/777 later).
+    /// or use `cmux notify`; libghostty adds OSC 9/777 later). Startup-banner
+    /// bells are suppressed and bursts coalesce into one entry.
     private func handleBell(_ tabId: UUID, _ surfaceId: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == tabId }) else { return }
-        tabs[index].needsAttention = true
-        notifications.append(TerminalNotification(
-            tabId: tabId,
-            surfaceId: surfaceId,
-            title: "Bell",
-            body: "Terminal bell in \(tabs[index].title)"
-        ))
-        if tabId != selection {
-            DesktopNotifier.send(
-                id: "cmux-\(tabId.uuidString)",
-                title: tabs[index].title,
-                body: "Terminal bell"
-            )
+        switch SurfaceRegistry.shared.bellVerdict(for: surfaceId) {
+        case .suppress:
+            return
+        case .coalesce:
+            tabs[index].needsAttention = true
+        case .notify:
+            tabs[index].needsAttention = true
+            notifications.append(TerminalNotification(
+                tabId: tabId,
+                surfaceId: surfaceId,
+                title: "Bell",
+                body: "Terminal bell in \(tabs[index].title)"
+            ))
+            if tabId != selection {
+                DesktopNotifier.send(
+                    id: "cmux-\(tabId.uuidString)",
+                    title: tabs[index].title,
+                    body: "Terminal bell"
+                )
+            }
         }
     }
 
