@@ -291,6 +291,13 @@ Session persistence (`SessionStore.swift`):
   instance (which was hosting a live Claude session).
 - `read-screen` truncating wide startup banners = VTE line wrapping at the
   pane's actual width; expected, not a bug.
+- **Shared-CLI fix (upstreamable):** `browser <subcommand>` parsing consumed
+  any first word as the optional positional surface handle, so
+  `browser url` failed with "requires a subcommand". Now only
+  UUID/ref/index-shaped args are treated as handles, and when no handle is
+  given the CLI falls back to the workspace's **only** browser surface
+  (clear errors for none/multiple). `cmux browser url` from a terminal pane
+  next to one browser pane now just works.
 
 ## Known gotchas (for future sessions)
 

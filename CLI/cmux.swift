@@ -2316,7 +2316,12 @@ struct CMUXCLI {
 
         let verbsWithoutSurface: Set<String> = ["open", "open-split", "new", "identify"]
         if surfaceRaw == nil, let first = args.first {
-            if !first.hasPrefix("-") && !verbsWithoutSurface.contains(first.lowercased()) {
+            // Only consume the optional positional surface when it actually
+            // looks like a handle (UUID, ref like surface:3, or an index) —
+            // otherwise `browser url` eats "url" as a surface and reports
+            // "browser requires a subcommand".
+            let looksLikeHandle = isUUID(first) || isHandleRef(first) || Int(first) != nil
+            if looksLikeHandle && !verbsWithoutSurface.contains(first.lowercased()) {
                 surfaceRaw = first
                 args = Array(args.dropFirst())
             }
@@ -2329,13 +2334,29 @@ struct CMUXCLI {
         let subArgs = Array(args.dropFirst())
 
         func requireSurface() throws -> String {
-            guard let raw = surfaceRaw else {
-                throw CLIError(message: "browser \(subcommand) requires a surface handle (use: browser <surface> \(subcommand) ... or --surface)")
+            if let raw = surfaceRaw {
+                guard let resolved = try normalizeSurfaceHandle(raw, client: client) else {
+                    throw CLIError(message: "Invalid surface handle")
+                }
+                return resolved
             }
-            guard let resolved = try normalizeSurfaceHandle(raw, client: client) else {
-                throw CLIError(message: "Invalid surface handle")
+            // No handle given: fall back to the workspace's only browser
+            // surface, so `cmux browser url` works from a terminal pane
+            // sitting next to a single browser pane.
+            var params: [String: Any] = [:]
+            if let workspaceEnv = ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"],
+               let workspace = try? normalizeWorkspaceHandle(workspaceEnv, client: client) {
+                params["workspace_id"] = workspace
             }
-            return resolved
+            let listed = try client.sendV2(method: "surface.list", params: params)
+            let items = listed["surfaces"] as? [[String: Any]] ?? []
+            let browserSurfaces = items.filter { ($0["type"] as? String) == "browser" }
+            if browserSurfaces.count == 1, let id = browserSurfaces[0]["id"] as? String {
+                return id
+            }
+            throw CLIError(message: browserSurfaces.isEmpty
+                ? "browser \(subcommand): no browser surface in this workspace (use: browser <surface> \(subcommand) ... or --surface)"
+                : "browser \(subcommand): multiple browser surfaces in this workspace — pick one (use: browser <surface> \(subcommand) ... or --surface)")
         }
 
         func output(_ payload: [String: Any], fallback: String) {
