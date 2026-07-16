@@ -294,6 +294,27 @@ struct ControlCommandHandler {
             return v2BrowserScroll(id: id, params: params, respond: respond)
         case "browser.get.count":
             return v2BrowserGetCount(id: id, params: params, respond: respond)
+        case "browser.screenshot":
+            return v2BrowserScreenshot(id: id, params: params, respond: respond)
+        case "browser.find.role", "browser.find.text", "browser.find.label",
+             "browser.find.placeholder", "browser.find.alt", "browser.find.title",
+             "browser.find.testid", "browser.find.first", "browser.find.last",
+             "browser.find.nth":
+            return v2BrowserFindVerb(method: method, id: id, params: params, respond: respond)
+        case "browser.frame.select":
+            return v2BrowserFrameSelect(id: id, params: params, respond: respond)
+        case "browser.frame.main":
+            return v2BrowserFrameMain(id: id, params: params, respond: respond)
+        case "browser.dialog.accept":
+            return v2BrowserDialogRespond(id: id, params: params, accept: true, respond: respond)
+        case "browser.dialog.dismiss":
+            return v2BrowserDialogRespond(id: id, params: params, accept: false, respond: respond)
+        case "browser.cookies.get":
+            return v2BrowserCookiesGet(id: id, params: params, respond: respond)
+        case "browser.cookies.set":
+            return v2BrowserCookiesSet(id: id, params: params, respond: respond)
+        case "browser.cookies.clear":
+            return v2BrowserCookiesClear(id: id, params: params, respond: respond)
         default:
             break
         }
@@ -309,7 +330,7 @@ struct ControlCommandHandler {
             return v2Ok(id: id, result: [
                 "protocol": 2,
                 "platform": "linux",
-                "port": "phase-5b",
+                "port": "phase-5c",
                 "methods": [
                     "system.ping", "system.capabilities", "system.identify",
                     "window.list",
@@ -332,6 +353,14 @@ struct ControlCommandHandler {
                     "browser.get.attr", "browser.get.title", "browser.get.count",
                     "browser.get.box", "browser.get.styles",
                     "browser.is.visible", "browser.is.enabled", "browser.is.checked",
+                    "browser.screenshot",
+                    "browser.find.role", "browser.find.text", "browser.find.label",
+                    "browser.find.placeholder", "browser.find.alt", "browser.find.title",
+                    "browser.find.testid", "browser.find.first", "browser.find.last",
+                    "browser.find.nth",
+                    "browser.frame.select", "browser.frame.main",
+                    "browser.dialog.accept", "browser.dialog.dismiss",
+                    "browser.cookies.get", "browser.cookies.set", "browser.cookies.clear",
                     "notification.create", "notification.list", "notification.clear"
                 ]
             ])

@@ -59,6 +59,13 @@ final class BrowserElementRefs {
         return ref
     }
 
+    /// Drops all refs of a closed surface (called from
+    /// `SurfaceRegistry.unregister` so long automation sessions don't
+    /// accumulate entries forever).
+    func clear(for surfaceId: UUID) {
+        entries = entries.filter { $0.value.surfaceId != surfaceId }
+    }
+
     /// `@e3`/`e3` handle → stored selector (nil when unknown or from another
     /// surface); any other string passes through as a CSS selector.
     func resolve(_ raw: String, surfaceId: UUID) -> String? {
@@ -77,6 +84,20 @@ final class BrowserElementRefs {
     }
 }
 
+// MARK: - frame selection
+
+/// Per-surface iframe selector set by `browser.frame.select` — automation
+/// scripts run against that frame's document until `browser.frame.main`
+/// clears it (macOS `v2BrowserFrameSelectorBySurface`). Main-loop confined.
+final class BrowserFrameSelectors {
+    static let shared = BrowserFrameSelectors()
+    private var bySurface: [UUID: String] = [:]
+
+    func selector(for surfaceId: UUID) -> String? { bySurface[surfaceId] }
+    func set(_ selector: String, for surfaceId: UUID) { bySurface[surfaceId] = selector }
+    func clear(for surfaceId: UUID) { bySurface.removeValue(forKey: surfaceId) }
+}
+
 // MARK: - async JS bridge
 
 enum BrowserJSOutcome {
@@ -89,18 +110,37 @@ enum BrowserJS {
 
     /// Runs `script` inside the same envelope the macOS port uses: promises
     /// are awaited, exceptions surface as `.failure`, and `undefined` is
-    /// distinguished from `null` via the `__cmux_t` marker. The completion
-    /// fires on the GLib main loop.
+    /// distinguished from `null` via the `__cmux_t` marker. When
+    /// `frameSelector` is set, `document` is shadowed with that iframe's
+    /// contentDocument (same-origin only), like the macOS frame prelude.
+    /// The completion fires on the GLib main loop.
     static func run(
         _ webView: UnsafeMutablePointer<WebKitWebView>,
         script: String,
+        frameSelector: String? = nil,
         completion: @escaping (BrowserJSOutcome) -> Void
     ) {
         let scriptLiteral = jsonLiteral(script)
+        let framePrelude: String
+        if let frameSelector {
+            let selectorLiteral = jsonLiteral(frameSelector)
+            framePrelude = """
+            let __cmuxDoc = document;
+            try {
+              const __cmuxFrame = document.querySelector(\(selectorLiteral));
+              if (__cmuxFrame && __cmuxFrame.contentDocument) {
+                __cmuxDoc = __cmuxFrame.contentDocument;
+              }
+            } catch (_) {}
+            """
+        } else {
+            framePrelude = "const __cmuxDoc = document;"
+        }
         // Function body for call_async_javascript_function (an implicit
         // async function, so `await`/`return` are valid) — the GTK analog
         // of WKWebView.callAsyncJavaScript, same envelope as macOS.
         let body = """
+        \(framePrelude)
         const __cmuxMaybeAwait = async (__r) => {
           if (__r !== null && (typeof __r === 'object' || typeof __r === 'function') && typeof __r.then === 'function') {
             return await __r;
@@ -108,6 +148,7 @@ enum BrowserJS {
           return __r;
         };
         const __cmuxEval = async function() {
+          const document = __cmuxDoc;
           const __r = eval(\(scriptLiteral));
           const __value = await __cmuxMaybeAwait(__r);
           return {
@@ -191,6 +232,242 @@ private func finishBrowserJSCall(box: JSCallbackBox, result: OpaquePointer?) {
     box.completion(.success(BrowserJS.unwrapEnvelope(decoded)))
 }
 
+// MARK: - snapshot (screenshot) C-callback plumbing
+
+private final class SnapshotCallbackBox {
+    let webView: UnsafeMutablePointer<WebKitWebView>
+    /// (png_base64, errorMessage) — exactly one is non-nil.
+    let completion: (String?, String?) -> Void
+    init(webView: UnsafeMutablePointer<WebKitWebView>,
+         completion: @escaping (String?, String?) -> Void) {
+        self.webView = webView
+        self.completion = completion
+    }
+}
+
+private func finishBrowserSnapshot(box: SnapshotCallbackBox, result: OpaquePointer?) {
+    var gerror: UnsafeMutablePointer<GError>?
+    let texture = webkit_web_view_get_snapshot_finish(box.webView, result, &gerror)
+    if let gerror {
+        let message = String(cString: gerror.pointee.message)
+        g_error_free(gerror)
+        box.completion(nil, message)
+        return
+    }
+    guard let texture else {
+        box.completion(nil, "Snapshot returned no image")
+        return
+    }
+    defer { g_object_unref(UnsafeMutableRawPointer(texture)) }
+    guard let bytes = gdk_texture_save_to_png_bytes(texture) else {
+        box.completion(nil, "Failed to encode PNG")
+        return
+    }
+    defer { g_bytes_unref(bytes) }
+    var size: gsize = 0
+    guard let data = g_bytes_get_data(bytes, &size), size > 0 else {
+        box.completion(nil, "Snapshot produced empty image data")
+        return
+    }
+    guard let encoded = g_base64_encode(data.assumingMemoryBound(to: guchar.self), size) else {
+        box.completion(nil, "Failed to base64-encode PNG")
+        return
+    }
+    let base64 = String(cString: encoded)
+    g_free(encoded)
+    box.completion(base64, nil)
+}
+
+// MARK: - cookie C-callback plumbing
+
+/// get_all_cookies carrier. The completion receives OWNED SoupCookie
+/// pointers (transfer full from WebKit) — the receiver must
+/// `soup_cookie_free` every one of them.
+private final class CookieListBox {
+    let manager: OpaquePointer
+    let completion: ([OpaquePointer]?, String?) -> Void
+    init(manager: OpaquePointer,
+         completion: @escaping ([OpaquePointer]?, String?) -> Void) {
+        self.manager = manager
+        self.completion = completion
+    }
+}
+
+private func finishCookieList(box: CookieListBox, result: OpaquePointer?) {
+    var gerror: UnsafeMutablePointer<GError>?
+    let list = webkit_cookie_manager_get_all_cookies_finish(box.manager, result, &gerror)
+    if let gerror {
+        let message = String(cString: gerror.pointee.message)
+        g_error_free(gerror)
+        box.completion(nil, message)
+        return
+    }
+    var cookies: [OpaquePointer] = []
+    var node = list
+    while let current = node {
+        if let data = current.pointee.data {
+            cookies.append(OpaquePointer(data))
+        }
+        node = current.pointee.next
+    }
+    // Free only the list nodes; cookie ownership moves to the completion.
+    g_list_free(list)
+    box.completion(cookies, nil)
+}
+
+/// Sequential add/delete over the async cookie manager API. Owns the
+/// cookies for the duration and frees all of them when the chain ends
+/// (success, per-step error, or empty list).
+private final class CookieChainBox {
+    let manager: OpaquePointer
+    var cookies: [OpaquePointer]
+    let isDelete: Bool
+    var index = 0
+    var succeeded = 0
+    /// (succeededCount, errorMessage)
+    let onDone: (Int, String?) -> Void
+
+    init(manager: OpaquePointer, cookies: [OpaquePointer], isDelete: Bool,
+         onDone: @escaping (Int, String?) -> Void) {
+        self.manager = manager
+        self.cookies = cookies
+        self.isDelete = isDelete
+        self.onDone = onDone
+    }
+
+    func freeCookies() {
+        for cookie in cookies { soup_cookie_free(cookie) }
+        cookies = []
+    }
+}
+
+private func cookieChainStep(_ box: CookieChainBox) {
+    guard box.index < box.cookies.count else {
+        box.freeCookies()
+        box.onDone(box.succeeded, nil)
+        return
+    }
+    let cookie = box.cookies[box.index]
+    let userData = Unmanaged.passRetained(box).toOpaque()
+    let callback: GAsyncReadyCallback = { _, result, userData in
+        guard let userData else { return }
+        let box = Unmanaged<CookieChainBox>.fromOpaque(userData).takeRetainedValue()
+        var gerror: UnsafeMutablePointer<GError>?
+        let ok: gboolean
+        if box.isDelete {
+            ok = webkit_cookie_manager_delete_cookie_finish(box.manager, result, &gerror)
+        } else {
+            ok = webkit_cookie_manager_add_cookie_finish(box.manager, result, &gerror)
+        }
+        if let gerror {
+            let message = String(cString: gerror.pointee.message)
+            g_error_free(gerror)
+            box.freeCookies()
+            box.onDone(box.succeeded, message)
+            return
+        }
+        if ok != 0 { box.succeeded += 1 }
+        box.index += 1
+        cookieChainStep(box)
+    }
+    if box.isDelete {
+        webkit_cookie_manager_delete_cookie(box.manager, cookie, nil, callback, userData)
+    } else {
+        webkit_cookie_manager_add_cookie(box.manager, cookie, nil, callback, userData)
+    }
+}
+
+/// Wire shape of one cookie — mirrors the macOS `v2BrowserCookieDict`
+/// built from HTTPCookie (name/value/domain/path/secure/session_only/expires).
+private func soupCookieDict(_ cookie: OpaquePointer) -> [String: Any] {
+    let expires = soup_cookie_get_expires(cookie)
+    return [
+        "name": soup_cookie_get_name(cookie).map { String(cString: $0) } ?? "",
+        "value": soup_cookie_get_value(cookie).map { String(cString: $0) } ?? "",
+        "domain": soup_cookie_get_domain(cookie).map { String(cString: $0) } ?? "",
+        "path": soup_cookie_get_path(cookie).map { String(cString: $0) } ?? "",
+        "secure": soup_cookie_get_secure(cookie) != 0,
+        "session_only": expires == nil,
+        "expires": expires.map { Int(g_date_time_to_unix($0)) as Any } ?? NSNull()
+    ]
+}
+
+// MARK: - shared JS helpers
+
+/// `__cmuxCssPath(el)` — stable CSS path for a found element (verbatim from
+/// the macOS `v2BrowserFindWithScript`); shared by the find locators.
+private let cssPathJSHelper = """
+      const __cmuxCssPath = (el) => {
+        if (!el || el.nodeType !== 1) return null;
+        if (el.id) return '#' + CSS.escape(el.id);
+        const parts = [];
+        let cur = el;
+        while (cur && cur.nodeType === 1) {
+          let part = String(cur.tagName || '').toLowerCase();
+          if (!part) break;
+          if (cur.id) {
+            part += '#' + CSS.escape(cur.id);
+            parts.unshift(part);
+            break;
+          }
+          const tag = part;
+          let siblings = cur.parentElement ? Array.from(cur.parentElement.children).filter((n) => String(n.tagName || '').toLowerCase() === tag) : [];
+          if (siblings.length > 1) {
+            const pos = siblings.indexOf(cur) + 1;
+            part += `:nth-of-type(${pos})`;
+          }
+          parts.unshift(part);
+          cur = cur.parentElement;
+        }
+        return parts.join(' > ');
+      };
+"""
+
+// MARK: - dialog hooks
+
+/// Overrides window.alert/confirm/prompt with queue-recording stubs —
+/// verbatim copy of the macOS `dialogTelemetryHookBootstrapScriptSource`.
+/// Installed lazily by the first dialog verb (macOS parity): interactive
+/// pages keep WebKitGTK's native dialogs until automation arms the hooks.
+private let browserDialogHookScript = """
+(() => {
+  if (window.__cmuxDialogHooksInstalled) return true;
+  window.__cmuxDialogHooksInstalled = true;
+
+  window.__cmuxDialogQueue = window.__cmuxDialogQueue || [];
+  window.__cmuxDialogDefaults = window.__cmuxDialogDefaults || { confirm: false, prompt: null };
+  const __pushDialog = (type, message, defaultText) => {
+    window.__cmuxDialogQueue.push({
+      type,
+      message: String(message || ''),
+      default_text: defaultText == null ? null : String(defaultText),
+      timestamp_ms: Date.now()
+    });
+    if (window.__cmuxDialogQueue.length > 128) {
+      window.__cmuxDialogQueue.splice(0, window.__cmuxDialogQueue.length - 128);
+    }
+  };
+
+  window.alert = function(message) {
+    __pushDialog('alert', message, null);
+  };
+  window.confirm = function(message) {
+    __pushDialog('confirm', message, null);
+    return !!window.__cmuxDialogDefaults.confirm;
+  };
+  window.prompt = function(message, defaultValue) {
+    __pushDialog('prompt', message, defaultValue == null ? null : defaultValue);
+    const v = window.__cmuxDialogDefaults.prompt;
+    if (v === null || v === undefined) {
+      return defaultValue == null ? '' : String(defaultValue);
+    }
+    return String(v);
+  };
+
+  return true;
+})()
+"""
+
 // MARK: - automation verbs
 
 extension ControlCommandHandler {
@@ -213,6 +490,21 @@ extension ControlCommandHandler {
 
     // MARK: verbs
 
+    /// Frame-aware script runner: routes through the surface's selected
+    /// iframe (browser.frame.select), the macOS `v2RunBrowserJavaScript`.
+    private func runTargetJS(
+        _ target: AutomationTarget,
+        script: String,
+        completion: @escaping (BrowserJSOutcome) -> Void
+    ) {
+        BrowserJS.run(
+            target.webView,
+            script: script,
+            frameSelector: BrowserFrameSelectors.shared.selector(for: target.surfaceId),
+            completion: completion
+        )
+    }
+
     func v2BrowserEval(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
         guard let script = stringParam(params, "script") else {
             return respond(baError(id: id, code: "invalid_params", message: "Missing script"))
@@ -220,7 +512,7 @@ extension ControlCommandHandler {
         guard let target = automationTarget(params) else {
             return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
         }
-        BrowserJS.run(target.webView, script: script) { outcome in
+        runTargetJS(target, script: script) { outcome in
             switch outcome {
             case .failure(let message):
                 respond(self.baError(id: id, code: "js_error", message: message))
@@ -288,7 +580,7 @@ extension ControlCommandHandler {
         let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1000.0)
 
         func poll() {
-            BrowserJS.run(target.webView, script: wrapped) { outcome in
+            self.runTargetJS(target, script: wrapped) { outcome in
                 if case .success(let value) = outcome, self.boolValue(value) == true {
                     var payload = target.refPayload
                     payload["waited"] = true
@@ -626,7 +918,7 @@ extension ControlCommandHandler {
               return { ok: true };
             })()
             """
-        BrowserJS.run(target.webView, script: script) { outcome in
+        runTargetJS(target, script: script) { outcome in
             switch outcome {
             case .failure(let message):
                 respond(self.baError(id: id, code: "js_error", message: message))
@@ -671,7 +963,7 @@ extension ControlCommandHandler {
         } else {
             script = "window.scrollBy({ left: \(dx), top: \(dy), behavior: 'instant' }); ({ ok: true })"
         }
-        BrowserJS.run(target.webView, script: script) { outcome in
+        runTargetJS(target, script: script) { outcome in
             switch outcome {
             case .failure(let message):
                 respond(self.baError(id: id, code: "js_error", message: message))
@@ -713,7 +1005,7 @@ extension ControlCommandHandler {
             ))
         }
         let script = "document.querySelectorAll(\(BrowserJS.jsonLiteral(selector))).length"
-        BrowserJS.run(target.webView, script: script) { outcome in
+        runTargetJS(target, script: script) { outcome in
             switch outcome {
             case .failure(let message):
                 respond(self.baError(id: id, code: "js_error", message: message))
@@ -723,6 +1015,696 @@ extension ControlCommandHandler {
                 respond(self.baOk(id: id, result: payload))
             }
         }
+    }
+
+    // MARK: screenshot
+
+    func v2BrowserScreenshot(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        // WebKitGTK can only snapshot a mapped web view; surfaces in
+        // never-shown background workspaces are unmapped (GtkStack doesn't
+        // allocate them) and get_snapshot fails with a localized GError.
+        // Fail early with a stable message instead (dogfood cycle 5).
+        let widget = UnsafeMutableRawPointer(target.webView).assumingMemoryBound(to: GtkWidget.self)
+        guard gtk_widget_get_mapped(widget) != 0 else {
+            return respond(baError(
+                id: id, code: "invalid_state",
+                message: "Browser surface is not visible (background workspace); select its workspace once to enable screenshots",
+                data: ["surface_id": target.surfaceId.uuidString]
+            ))
+        }
+        let box = Unmanaged.passRetained(SnapshotCallbackBox(webView: target.webView) { png, errorMessage in
+            guard let png else {
+                respond(self.baError(
+                    id: id, code: "internal_error",
+                    message: errorMessage ?? "Failed to capture snapshot"
+                ))
+                return
+            }
+            var payload = target.refPayload
+            payload["png_base64"] = png
+            respond(self.baOk(id: id, result: payload))
+        }).toOpaque()
+        webkit_web_view_get_snapshot(
+            target.webView,
+            WEBKIT_SNAPSHOT_REGION_VISIBLE,
+            WEBKIT_SNAPSHOT_OPTIONS_NONE,
+            nil,
+            { _, result, userData in
+                guard let userData else { return }
+                let box = Unmanaged<SnapshotCallbackBox>.fromOpaque(userData).takeRetainedValue()
+                finishBrowserSnapshot(box: box, result: result)
+            },
+            box
+        )
+    }
+
+    // MARK: find.* locators
+
+    func v2BrowserFindVerb(method: String, id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        switch method {
+        case "browser.find.role":
+            guard let role = (stringParam(params, "role") ?? stringParam(params, "value"))?.lowercased() else {
+                return respond(baError(id: id, code: "invalid_params", message: "Missing role"))
+            }
+            let name = stringParam(params, "name")?.lowercased()
+            let exact = boolParam(params, "exact") ?? false
+            let roleLiteral = BrowserJS.jsonLiteral(role)
+            let nameLiteral = name.map(BrowserJS.jsonLiteral) ?? "null"
+            let exactLiteral = exact ? "true" : "false"
+            let finder = """
+                    const __targetRole = String(\(roleLiteral)).toLowerCase();
+                    const __targetName = \(nameLiteral);
+                    const __exact = \(exactLiteral);
+                    const __implicitRole = (el) => {
+                      const tag = String(el.tagName || '').toLowerCase();
+                      if (tag === 'button') return 'button';
+                      if (tag === 'a' && el.hasAttribute('href')) return 'link';
+                      if (tag === 'input') {
+                        const type = String(el.getAttribute('type') || 'text').toLowerCase();
+                        if (type === 'checkbox') return 'checkbox';
+                        if (type === 'radio') return 'radio';
+                        if (type === 'submit' || type === 'button') return 'button';
+                        return 'textbox';
+                      }
+                      if (tag === 'textarea') return 'textbox';
+                      if (tag === 'select') return 'combobox';
+                      return null;
+                    };
+                    const __nameFor = (el) => {
+                      const aria = String(el.getAttribute('aria-label') || '').trim();
+                      if (aria) return aria.toLowerCase();
+                      const labelledBy = String(el.getAttribute('aria-labelledby') || '').trim();
+                      if (labelledBy) {
+                        const text = labelledBy.split(/\\s+/).map((id) => document.getElementById(id)).filter(Boolean).map((n) => String(n.textContent || '').trim()).join(' ').trim();
+                        if (text) return text.toLowerCase();
+                      }
+                      const txt = String(el.innerText || el.textContent || '').trim();
+                      if (txt) return txt.toLowerCase();
+                      if ('value' in el) {
+                        const v = String(el.value || '').trim();
+                        if (v) return v.toLowerCase();
+                      }
+                      return '';
+                    };
+                    const __nodes = Array.from(document.querySelectorAll('*'));
+                    return __nodes.find((el) => {
+                      const explicit = String(el.getAttribute('role') || '').toLowerCase();
+                      const resolved = explicit || __implicitRole(el) || '';
+                      if (resolved !== __targetRole) return false;
+                      if (__targetName == null) return true;
+                      const currentName = __nameFor(el);
+                      return __exact ? (currentName === __targetName) : currentName.includes(__targetName);
+                    }) || null;
+            """
+            runFindWithScript(
+                id: id, params: params, actionName: "find.role", finderBody: finder,
+                metadata: [
+                    "role": role,
+                    "name": name.map { $0 as Any } ?? NSNull(),
+                    "exact": exact
+                ],
+                respond: respond
+            )
+
+        case "browser.find.text":
+            guard let text = (stringParam(params, "text") ?? stringParam(params, "value"))?.lowercased() else {
+                return respond(baError(id: id, code: "invalid_params", message: "Missing text"))
+            }
+            let exact = boolParam(params, "exact") ?? false
+            let textLiteral = BrowserJS.jsonLiteral(text)
+            let exactLiteral = exact ? "true" : "false"
+            let finder = """
+                    const __target = String(\(textLiteral));
+                    const __exact = \(exactLiteral);
+                    const __norm = (s) => String(s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                    const __nodes = Array.from(document.querySelectorAll('body *'));
+                    return __nodes.find((el) => {
+                      const v = __norm(el.innerText || el.textContent || '');
+                      if (!v) return false;
+                      return __exact ? (v === __target) : v.includes(__target);
+                    }) || null;
+            """
+            runFindWithScript(
+                id: id, params: params, actionName: "find.text", finderBody: finder,
+                metadata: ["text": text, "exact": exact], respond: respond
+            )
+
+        case "browser.find.label":
+            guard let label = (stringParam(params, "label") ?? stringParam(params, "text") ?? stringParam(params, "value"))?.lowercased() else {
+                return respond(baError(id: id, code: "invalid_params", message: "Missing label"))
+            }
+            let exact = boolParam(params, "exact") ?? false
+            let labelLiteral = BrowserJS.jsonLiteral(label)
+            let exactLiteral = exact ? "true" : "false"
+            let finder = """
+                    const __target = String(\(labelLiteral));
+                    const __exact = \(exactLiteral);
+                    const __norm = (s) => String(s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                    const __labels = Array.from(document.querySelectorAll('label'));
+                    const __label = __labels.find((el) => {
+                      const v = __norm(el.innerText || el.textContent || '');
+                      return __exact ? (v === __target) : v.includes(__target);
+                    });
+                    if (!__label) return null;
+                    const htmlFor = String(__label.getAttribute('for') || '').trim();
+                    if (htmlFor) {
+                      return document.getElementById(htmlFor);
+                    }
+                    return __label.querySelector('input,textarea,select,button,[contenteditable="true"]');
+            """
+            runFindWithScript(
+                id: id, params: params, actionName: "find.label", finderBody: finder,
+                metadata: ["label": label, "exact": exact], respond: respond
+            )
+
+        case "browser.find.placeholder", "browser.find.alt", "browser.find.title":
+            let attr = String(method.dropFirst("browser.find.".count))
+            guard let value = (stringParam(params, attr) ?? stringParam(params, "text") ?? stringParam(params, "value"))?.lowercased() else {
+                return respond(baError(id: id, code: "invalid_params", message: "Missing \(attr)"))
+            }
+            let exact = boolParam(params, "exact") ?? false
+            let valueLiteral = BrowserJS.jsonLiteral(value)
+            let exactLiteral = exact ? "true" : "false"
+            let finder = """
+                    const __target = String(\(valueLiteral));
+                    const __exact = \(exactLiteral);
+                    const __nodes = Array.from(document.querySelectorAll('[\(attr)]'));
+                    return __nodes.find((el) => {
+                      const a = String(el.getAttribute('\(attr)') || '').trim().toLowerCase();
+                      if (!a) return false;
+                      return __exact ? (a === __target) : a.includes(__target);
+                    }) || null;
+            """
+            runFindWithScript(
+                id: id, params: params, actionName: "find.\(attr)", finderBody: finder,
+                metadata: [attr: value, "exact": exact], respond: respond
+            )
+
+        case "browser.find.testid":
+            guard let testId = stringParam(params, "testid") ?? stringParam(params, "test_id") ?? stringParam(params, "value") else {
+                return respond(baError(id: id, code: "invalid_params", message: "Missing testid"))
+            }
+            let testIdLiteral = BrowserJS.jsonLiteral(testId)
+            let finder = """
+                    const __target = String(\(testIdLiteral));
+                    const __selectors = ['[data-testid]', '[data-test-id]', '[data-test]'];
+                    for (const sel of __selectors) {
+                      const nodes = Array.from(document.querySelectorAll(sel));
+                      const found = nodes.find((el) => {
+                        return String(el.getAttribute('data-testid') || el.getAttribute('data-test-id') || el.getAttribute('data-test') || '') === __target;
+                      });
+                      if (found) return found;
+                    }
+                    return null;
+            """
+            runFindWithScript(
+                id: id, params: params, actionName: "find.testid", finderBody: finder,
+                metadata: ["testid": testId], respond: respond
+            )
+
+        case "browser.find.first", "browser.find.last":
+            v2BrowserFindByIndex(
+                id: id, params: params,
+                index: method == "browser.find.first" ? 0 : -1,
+                indexInPayload: false, respond: respond
+            )
+
+        case "browser.find.nth":
+            guard let index = intParam(params, "index") ?? intParam(params, "nth") else {
+                return respond(baError(id: id, code: "invalid_params", message: "Missing index"))
+            }
+            v2BrowserFindByIndex(
+                id: id, params: params, index: index,
+                indexInPayload: true, respond: respond
+            )
+
+        default:
+            respond(baError(id: id, code: "unknown_method", message: "Unknown browser verb: \(method)"))
+        }
+    }
+
+    /// Shared locator machinery — the macOS `v2BrowserFindWithScript`:
+    /// `finderBody` returns an element (or null); its CSS path is allocated
+    /// as an element ref.
+    private func runFindWithScript(
+        id: Any?,
+        params: [String: Any],
+        actionName: String,
+        finderBody: String,
+        metadata: [String: Any],
+        respond: @escaping (String) -> Void
+    ) {
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        let script = """
+        (() => {
+        \(cssPathJSHelper)
+
+          const __cmuxFound = (() => {
+        \(finderBody)
+          })();
+          if (!__cmuxFound) return { ok: false, error: 'not_found' };
+          const selector = __cmuxCssPath(__cmuxFound);
+          if (!selector) return { ok: false, error: 'not_found' };
+          return {
+            ok: true,
+            selector,
+            tag: String(__cmuxFound.tagName || '').toLowerCase(),
+            text: String(__cmuxFound.textContent || '').trim()
+          };
+        })()
+        """
+
+        runTargetJS(target, script: script) { outcome in
+            switch outcome {
+            case .failure(let message):
+                respond(self.baError(id: id, code: "js_error", message: message, data: ["action": actionName]))
+            case .success(let value):
+                guard let dict = value as? [String: Any],
+                      self.boolValue(dict["ok"]) == true,
+                      let selector = dict["selector"] as? String,
+                      !selector.isEmpty else {
+                    respond(self.baError(id: id, code: "not_found", message: "Element not found", data: metadata))
+                    return
+                }
+                let ref = BrowserElementRefs.shared.allocate(surfaceId: target.surfaceId, selector: selector)
+                var payload = target.refPayload
+                payload["action"] = actionName
+                payload["selector"] = selector
+                payload["element_ref"] = ref
+                payload["ref"] = ref
+                for (key, value) in metadata {
+                    payload[key] = value
+                }
+                if let tag = dict["tag"] as? String {
+                    payload["tag"] = tag
+                }
+                if let text = dict["text"] as? String {
+                    payload["text"] = text
+                }
+                respond(self.baOk(id: id, result: payload))
+            }
+        }
+    }
+
+    /// find.first / find.last / find.nth — list-position locators. Index 0
+    /// keeps the caller's selector (macOS find.first); other indexes append
+    /// `:nth-of-type` like the macOS find.last/nth handlers.
+    private func v2BrowserFindByIndex(
+        id: Any?,
+        params: [String: Any],
+        index: Int,
+        indexInPayload: Bool,
+        respond: @escaping (String) -> Void
+    ) {
+        guard let selectorRaw = selectorParam(params) else {
+            return respond(baError(id: id, code: "invalid_params", message: "Missing selector"))
+        }
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        guard let selector = BrowserElementRefs.shared.resolve(selectorRaw, surfaceId: target.surfaceId) else {
+            return respond(baError(
+                id: id, code: "not_found", message: "Element reference not found",
+                data: ["selector": selectorRaw]
+            ))
+        }
+        let selectorLiteral = BrowserJS.jsonLiteral(selector)
+        let script: String
+        if index == 0 && !indexInPayload {
+            script = """
+            (() => {
+              const el = document.querySelector(\(selectorLiteral));
+              if (!el) return { ok: false, error: 'not_found' };
+              return { ok: true, selector: \(selectorLiteral), text: String(el.textContent || '').trim() };
+            })()
+            """
+        } else {
+            // Deviation from macOS, which returns `${selector}:nth-of-type(n)`
+            // — :nth-of-type counts per-parent/per-tag, so for matches spread
+            // across parents that selector points at a DIFFERENT element than
+            // the one found. Return the element's own CSS path instead.
+            script = """
+            (() => {
+            \(cssPathJSHelper)
+              const list = Array.from(document.querySelectorAll(\(selectorLiteral)));
+              if (!list.length) return { ok: false, error: 'not_found' };
+              let idx = \(index);
+              if (idx < 0) idx = list.length + idx;
+              if (idx < 0 || idx >= list.length) return { ok: false, error: 'not_found' };
+              const el = list[idx];
+              const finalSelector = __cmuxCssPath(el) || `${\(selectorLiteral)}:nth-of-type(${idx + 1})`;
+              return { ok: true, selector: finalSelector, index: idx, text: String(el.textContent || '').trim() };
+            })()
+            """
+        }
+        runTargetJS(target, script: script) { outcome in
+            switch outcome {
+            case .failure(let message):
+                respond(self.baError(id: id, code: "js_error", message: message))
+            case .success(let value):
+                guard let dict = value as? [String: Any],
+                      self.boolValue(dict["ok"]) == true,
+                      let finalSelector = dict["selector"] as? String,
+                      !finalSelector.isEmpty else {
+                    var data: [String: Any] = ["selector": selector]
+                    if indexInPayload { data["index"] = index }
+                    respond(self.baError(id: id, code: "not_found", message: "Element not found", data: data))
+                    return
+                }
+                let ref = BrowserElementRefs.shared.allocate(surfaceId: target.surfaceId, selector: finalSelector)
+                var payload = target.refPayload
+                payload["selector"] = finalSelector
+                payload["element_ref"] = ref
+                payload["ref"] = ref
+                payload["text"] = dict["text"] ?? NSNull()
+                if indexInPayload {
+                    payload["index"] = dict["index"] ?? NSNull()
+                }
+                respond(self.baOk(id: id, result: payload))
+            }
+        }
+    }
+
+    // MARK: frame selection
+
+    func v2BrowserFrameSelect(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        guard let selectorRaw = selectorParam(params) else {
+            return respond(baError(id: id, code: "invalid_params", message: "Missing selector"))
+        }
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        guard let selector = BrowserElementRefs.shared.resolve(selectorRaw, surfaceId: target.surfaceId) else {
+            return respond(baError(
+                id: id, code: "not_found", message: "Element reference not found",
+                data: ["selector": selectorRaw]
+            ))
+        }
+        let selectorLiteral = BrowserJS.jsonLiteral(selector)
+        let script = """
+        (() => {
+          const frame = document.querySelector(\(selectorLiteral));
+          if (!frame) return { ok: false, error: 'not_found' };
+          if (!('contentDocument' in frame)) return { ok: false, error: 'not_frame' };
+          try {
+            const sameOrigin = !!frame.contentDocument;
+            if (!sameOrigin) return { ok: false, error: 'cross_origin' };
+          } catch (_) {
+            return { ok: false, error: 'cross_origin' };
+          }
+          return { ok: true };
+        })()
+        """
+        // Deviation from macOS: validation runs against the TOP document,
+        // not the currently selected frame — the run-time prelude resolves
+        // the stored selector top-relative, so validating inside the old
+        // frame would accept selectors that later fail (and reject valid
+        // ones when switching directly between sibling iframes).
+        BrowserJS.run(target.webView, script: script) { outcome in
+            switch outcome {
+            case .failure(let message):
+                respond(self.baError(id: id, code: "js_error", message: message))
+            case .success(let value):
+                let dict = value as? [String: Any]
+                if let dict, self.boolValue(dict["ok"]) == true {
+                    BrowserFrameSelectors.shared.set(selector, for: target.surfaceId)
+                    var payload = target.refPayload
+                    payload["frame_selector"] = selector
+                    respond(self.baOk(id: id, result: payload))
+                    return
+                }
+                if let dict, (dict["error"] as? String) == "cross_origin" {
+                    respond(self.baError(
+                        id: id, code: "not_supported",
+                        message: "Cross-origin iframe control is not supported",
+                        data: ["selector": selector]
+                    ))
+                    return
+                }
+                respond(self.baError(
+                    id: id, code: "not_found", message: "Frame not found",
+                    data: ["selector": selector]
+                ))
+            }
+        }
+    }
+
+    func v2BrowserFrameMain(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        BrowserFrameSelectors.shared.clear(for: target.surfaceId)
+        var payload = target.refPayload
+        payload["frame_selector"] = NSNull()
+        respond(baOk(id: id, result: payload))
+    }
+
+    // MARK: dialogs
+
+    func v2BrowserDialogRespond(id: Any?, params: [String: Any], accept: Bool, respond: @escaping (String) -> Void) {
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        let text = stringParam(params, "text") ?? stringParam(params, "prompt_text")
+        let acceptLiteral = accept ? "true" : "false"
+        let textLiteral = text.map(BrowserJS.jsonLiteral) ?? "null"
+        // Hooks and queue live in the TOP window regardless of frame
+        // selection — same as macOS, which uses the non-frame runner here.
+        // The (idempotent) hook install is prepended to the queue-shift
+        // script so one JS round-trip arms and answers.
+        let script = """
+        \(browserDialogHookScript);
+        (() => {
+          const q = window.__cmuxDialogQueue || [];
+          if (!q.length) return { ok: false, error: 'not_found' };
+          const entry = q.shift();
+          if (entry.type === 'confirm') {
+            window.__cmuxDialogDefaults = window.__cmuxDialogDefaults || { confirm: false, prompt: null };
+            window.__cmuxDialogDefaults.confirm = \(acceptLiteral);
+          }
+          if (entry.type === 'prompt') {
+            window.__cmuxDialogDefaults = window.__cmuxDialogDefaults || { confirm: false, prompt: null };
+            if (\(acceptLiteral)) {
+              window.__cmuxDialogDefaults.prompt = \(textLiteral);
+            } else {
+              window.__cmuxDialogDefaults.prompt = null;
+            }
+          }
+          return { ok: true, dialog: entry, remaining: q.length };
+        })()
+        """
+        BrowserJS.run(target.webView, script: script) { outcome in
+            switch outcome {
+            case .failure(let message):
+                respond(self.baError(id: id, code: "js_error", message: message))
+            case .success(let value):
+                guard let dict = value as? [String: Any],
+                      self.boolValue(dict["ok"]) == true else {
+                    // The shift script just proved the queue empty, so the
+                    // macOS `pending` diagnostic list is always [] here.
+                    respond(self.baError(
+                        id: id, code: "not_found", message: "No pending dialog",
+                        data: ["pending": [Any]()]
+                    ))
+                    return
+                }
+                var payload = target.refPayload
+                payload["accepted"] = accept
+                payload["dialog"] = dict["dialog"] ?? NSNull()
+                payload["remaining"] = dict["remaining"] ?? NSNull()
+                respond(self.baOk(id: id, result: payload))
+            }
+        }
+    }
+
+    // MARK: cookies
+
+    func v2BrowserCookiesGet(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        guard let manager = cookieManager(for: target) else {
+            return respond(baError(id: id, code: "internal_error", message: "Cookie manager unavailable"))
+        }
+        let name = stringParam(params, "name")
+        let domain = stringParam(params, "domain")
+        let path = stringParam(params, "path")
+        fetchAllCookies(manager: manager) { cookies, errorMessage in
+            guard let cookies else {
+                respond(self.baError(
+                    id: id, code: "internal_error",
+                    message: errorMessage ?? "Failed to read cookies"
+                ))
+                return
+            }
+            var rows: [[String: Any]] = []
+            for cookie in cookies {
+                let dict = soupCookieDict(cookie)
+                soup_cookie_free(cookie)
+                if let name, (dict["name"] as? String) != name { continue }
+                if let domain, !((dict["domain"] as? String) ?? "").contains(domain) { continue }
+                if let path, (dict["path"] as? String) != path { continue }
+                rows.append(dict)
+            }
+            var payload = target.refPayload
+            payload["cookies"] = rows
+            respond(self.baOk(id: id, result: payload))
+        }
+    }
+
+    func v2BrowserCookiesSet(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        guard let manager = cookieManager(for: target) else {
+            return respond(baError(id: id, code: "internal_error", message: "Cookie manager unavailable"))
+        }
+        let fallbackHost = SurfaceRegistry.shared.currentURL(for: target.surfaceId)
+            .flatMap { URL(string: $0)?.host }
+
+        var cookieObjects: [[String: Any]] = []
+        if let rows = params["cookies"] as? [[String: Any]] {
+            cookieObjects = rows
+        } else {
+            var single: [String: Any] = [:]
+            if let name = stringParam(params, "name") { single["name"] = name }
+            if let value = params["value"] as? String { single["value"] = value }
+            if let url = stringParam(params, "url") { single["url"] = url }
+            if let domain = stringParam(params, "domain") { single["domain"] = domain }
+            if let path = stringParam(params, "path") { single["path"] = path }
+            if let secure = boolParam(params, "secure") { single["secure"] = secure }
+            if let expires = intParam(params, "expires") { single["expires"] = expires }
+            if !single.isEmpty {
+                cookieObjects = [single]
+            }
+        }
+
+        guard !cookieObjects.isEmpty else {
+            return respond(baError(id: id, code: "invalid_params", message: "Missing cookies payload"))
+        }
+
+        var built: [OpaquePointer] = []
+        for raw in cookieObjects {
+            guard let cookie = makeSoupCookie(raw, fallbackHost: fallbackHost) else {
+                for cookie in built { soup_cookie_free(cookie) }
+                return respond(baError(
+                    id: id, code: "invalid_params", message: "Invalid cookie payload",
+                    data: ["cookie": raw]
+                ))
+            }
+            built.append(cookie)
+        }
+
+        cookieChainStep(CookieChainBox(manager: manager, cookies: built, isDelete: false) { succeeded, errorMessage in
+            if let errorMessage {
+                respond(self.baError(id: id, code: "internal_error", message: errorMessage))
+                return
+            }
+            var payload = target.refPayload
+            payload["set"] = succeeded
+            respond(self.baOk(id: id, result: payload))
+        })
+    }
+
+    func v2BrowserCookiesClear(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        guard let manager = cookieManager(for: target) else {
+            return respond(baError(id: id, code: "internal_error", message: "Cookie manager unavailable"))
+        }
+        let name = stringParam(params, "name")
+        let domain = stringParam(params, "domain")
+        // macOS quirk preserved: any explicit name/domain/all narrows the
+        // filter below; a bare clear (none of them) removes everything.
+        let clearAll = params["all"] == nil && name == nil && domain == nil
+        fetchAllCookies(manager: manager) { cookies, errorMessage in
+            guard let cookies else {
+                respond(self.baError(
+                    id: id, code: "internal_error",
+                    message: errorMessage ?? "Failed to read cookies"
+                ))
+                return
+            }
+            var targets: [OpaquePointer] = []
+            for cookie in cookies {
+                let cookieName = soup_cookie_get_name(cookie).map { String(cString: $0) } ?? ""
+                let cookieDomain = soup_cookie_get_domain(cookie).map { String(cString: $0) } ?? ""
+                let matches: Bool = {
+                    if clearAll { return true }
+                    if let name, cookieName != name { return false }
+                    if let domain, !cookieDomain.contains(domain) { return false }
+                    return true
+                }()
+                if matches {
+                    targets.append(cookie)
+                } else {
+                    soup_cookie_free(cookie)
+                }
+            }
+            cookieChainStep(CookieChainBox(manager: manager, cookies: targets, isDelete: true) { succeeded, errorMessage in
+                if let errorMessage {
+                    respond(self.baError(id: id, code: "internal_error", message: errorMessage))
+                    return
+                }
+                var payload = target.refPayload
+                payload["cleared"] = succeeded
+                respond(self.baOk(id: id, result: payload))
+            })
+        }
+    }
+
+    // MARK: cookie helpers
+
+    private func cookieManager(for target: AutomationTarget) -> OpaquePointer? {
+        guard let session = webkit_web_view_get_network_session(target.webView) else { return nil }
+        return webkit_network_session_get_cookie_manager(session)
+    }
+
+    private func fetchAllCookies(
+        manager: OpaquePointer,
+        completion: @escaping ([OpaquePointer]?, String?) -> Void
+    ) {
+        let box = Unmanaged.passRetained(
+            CookieListBox(manager: manager, completion: completion)
+        ).toOpaque()
+        webkit_cookie_manager_get_all_cookies(
+            manager, nil,
+            { _, result, userData in
+                guard let userData else { return }
+                let box = Unmanaged<CookieListBox>.fromOpaque(userData).takeRetainedValue()
+                finishCookieList(box: box, result: result)
+            },
+            box
+        )
+    }
+
+    /// Wire cookie object → owned SoupCookie (nil = invalid payload, macOS
+    /// `v2BrowserCookieFromObject` semantics: name+value required, domain
+    /// falls back to the `url` param's host, then the current page host).
+    private func makeSoupCookie(_ raw: [String: Any], fallbackHost: String?) -> OpaquePointer? {
+        guard let name = raw["name"] as? String, !name.isEmpty,
+              let value = raw["value"] as? String else { return nil }
+        let urlHost = (raw["url"] as? String).flatMap { URL(string: $0)?.host }
+        guard let domain = (raw["domain"] as? String) ?? urlHost ?? fallbackHost, !domain.isEmpty else {
+            return nil
+        }
+        let path = (raw["path"] as? String) ?? "/"
+        guard let cookie = soup_cookie_new(name, value, domain, path, -1) else { return nil }
+        if boolValue(raw["secure"]) == true {
+            soup_cookie_set_secure(cookie, 1)
+        }
+        if let expires = intParam(raw, "expires"),
+           let dateTime = g_date_time_new_from_unix_utc(gint64(expires)) {
+            soup_cookie_set_expires(cookie, dateTime)
+            g_date_time_unref(dateTime)
+        }
+        return cookie
     }
 
     // MARK: selector-action machinery
@@ -750,7 +1732,7 @@ extension ControlCommandHandler {
         let retryAttempts = max(1, intParam(params, "retry_attempts") ?? 3)
 
         func attempt(_ number: Int) {
-            BrowserJS.run(target.webView, script: script) { outcome in
+            runTargetJS(target, script: script) { outcome in
                 switch outcome {
                 case .failure(let message):
                     respond(self.baError(
@@ -875,7 +1857,7 @@ extension ControlCommandHandler {
         })()
         """
 
-        BrowserJS.run(target.webView, script: script) { outcome in
+        runTargetJS(target, script: script) { outcome in
             var data: [String: Any] = ["selector": selector]
             switch outcome {
             case .failure(let message):
@@ -1123,7 +2105,7 @@ extension ControlCommandHandler {
         })()
         """
 
-        BrowserJS.run(target.webView, script: script) { outcome in
+        runTargetJS(target, script: script) { outcome in
             switch outcome {
             case .failure(let message):
                 completion(.failure(AutomationError(code: "js_error", message: message, data: nil)))

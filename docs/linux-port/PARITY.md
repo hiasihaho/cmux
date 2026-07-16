@@ -51,12 +51,12 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | browser.get.text / html / value / attr / count / box / styles | ✅ | |
 | browser.is.visible / enabled / checked | ✅ | |
 | snapshot_after (post-action snapshot merge) | ✅ | on all action verbs |
-| browser.screenshot | ❌ | WebKitGTK `get_snapshot` → PNG is feasible; next candidate |
-| browser.find.role / text / label / placeholder / alt / title / testid / first / last / nth | ❌ | |
-| browser.frame.select / main | ❌ | eval envelope has no frame prelude yet |
+| browser.screenshot | ✅ | WebKitGTK `get_snapshot` (visible region) → GdkTexture → PNG base64; unmapped background-workspace webviews can't be snapshotted → stable `invalid_state` error (macOS captures offscreen views) |
+| browser.find.role / text / label / placeholder / alt / title / testid / first / last / nth | ✅ | same finder scripts + cssPath ref allocation as macOS; frame-aware. Deviation: find.last/nth return the element's own CSS path — macOS returns `<query>:nth-of-type(n)`, which can point at a different element than the one matched |
+| browser.frame.select / main | ✅ | eval envelope now has the macOS frame prelude (`document` shadowed with the same-origin iframe's contentDocument); all automation verbs are frame-aware. Deviation: select validates top-relative (macOS validates inside the currently selected frame, breaking direct sibling-frame switches) |
 | browser.focus_webview / is_webview_focused | ❌ | focus-intent verbs |
-| browser.dialog.accept / dismiss | ❌ | needs WebKit script-dialog signal handler |
-| browser.cookies.get / set / clear | ❌ | WebKitCookieManager |
+| browser.dialog.accept / dismiss | ✅ | macOS JS-hook approach (alert/confirm/prompt overridden into a FIFO queue + defaults), armed lazily by the first dialog verb; native GTK dialogs are NOT deferred pre-arm (macOS defers via WKUIDelegate) |
+| browser.cookies.get / set / clear | ✅ | WebKitNetworkSession cookie manager + SoupCookie, async chained add/delete; same wire shape (name/value/domain/path/secure/session_only/expires) |
 | browser.storage.get / set / clear | ❌ | |
 | browser.console.list / clear, browser.errors.list | ❌ | needs console-message capture |
 | browser.network.requests / route / unroute | ❌ | |

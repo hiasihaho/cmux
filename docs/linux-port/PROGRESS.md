@@ -443,6 +443,94 @@ unmapped children. Event-driven verbs (click/fill/eval) work fine;
 layout-dependent reads (snapshot visibility, get.box) see degenerate
 geometry until the workspace is first shown.
 
+## 2026-07-16 — Phase 5c: screenshot, find locators, frames, dialogs, cookies
+
+Closes the main browser-automation parity gaps flagged in PARITY.md after
+5b. All five verb groups reuse the phase-5b async completion pattern
+(respond fires from GLib callbacks, main loop never blocks):
+
+- **browser.screenshot** — `webkit_web_view_get_snapshot` (visible region)
+  → `GdkTexture` → `gdk_texture_save_to_png_bytes` → `g_base64_encode`,
+  carried through a file-scope `SnapshotCallbackBox` (the C-callback
+  no-capture rule again). The shared CLI's `--out` path writes a valid PNG.
+- **browser.find.*** — all ten locators (role/text/label/placeholder/alt/
+  title/testid/first/last/nth), finder scripts copied verbatim from the
+  macOS `v2BrowserFind*` handlers; found elements get `@eN` refs via the
+  same cssPath machinery as snapshot. find.first keeps the caller's
+  selector, last/nth append `:nth-of-type` (macOS quirks preserved).
+- **browser.frame.select / main** — `BrowserJS.run` grew the macOS frame
+  prelude: a per-surface selector (`BrowserFrameSelectors`) resolves the
+  same-origin iframe and shadows `document` inside the eval envelope, so
+  *every* automation verb (eval/click/find/snapshot/…) is frame-aware.
+  Cross-origin iframes → `not_supported`, like macOS.
+- **browser.dialog.accept / dismiss** — the macOS JS-hook design:
+  window.alert/confirm/prompt are overridden into `__cmuxDialogQueue`
+  (FIFO) + `__cmuxDialogDefaults`, armed lazily by the first dialog verb
+  (which returns `not_found` on an empty queue — that call is the arming
+  step). Deviation noted in PARITY: pre-arm native dialogs are WebKitGTK's
+  own, not deferred like macOS's WKUIDelegate queue.
+- **browser.cookies.get / set / clear** — WebKitNetworkSession cookie
+  manager. get_all_cookies transfers ownership of the GList *and* the
+  SoupCookies (free both); add/delete are async per cookie, so a
+  file-scope `CookieChainBox` chains them sequentially and frees the
+  cookies when the chain ends. Wire shape matches the macOS HTTPCookie
+  dict (session_only == no expiry; expires as Unix seconds).
+
+Verified end-to-end against the dev instance on a local HTTP test page
+(cookies need an http origin — data: URLs won't exercise them): all ten
+locators return working selectors/refs, clicking a returned `@ref`
+mutates the page, frame-scoped eval/click/find round-trip through
+`frame #inner` → `frame main`, dialog FIFO + defaults behave exactly like
+macOS (accept consumes the *oldest* entry; a prompt default only applies
+once a prompt entry is consumed), cookie set/get/clear round-trips
+including `document.cookie` visibility and expires, and the screenshot is
+a pixel-faithful capture of the mutated page.
+
+**Dogfood cycle 5** (focused on these verbs) passed everything except two
+real bugs, both fixed and re-verified:
+
+- **browser.screenshot on background-workspace surfaces** failed with a
+  raw localized WebKit GError — unmapped GtkStack children can't be
+  snapshotted. Now guarded with `gtk_widget_get_mapped` and a stable
+  `invalid_state` message ("select its workspace once to enable
+  screenshots"). Testing gotcha found while reproducing: `new-workspace
+  --background` prints plain `OK workspace:N` even under `--json`, so
+  scripts that grep JSON out of it get an empty ref and silently target
+  the *selected* workspace — the first repro attempt tested nothing.
+- **CLI `find role <role> <name>`** silently dropped a positional name
+  and matched the first element of that role (shared-CLI bug, macOS
+  inherits the fix): positional name is now honored Playwright-style
+  (`--name` still takes precedence); the `browser find` help lines now
+  spell out all locator forms.
+
+A code-review pass over the diff (8 finder angles) surfaced four more
+fixes, applied in the same commit:
+
+- **frame.select validation now runs top-relative** (deviation from
+  macOS, which validates inside the currently selected frame): the
+  run-time prelude resolves stored selectors against the top document,
+  so validating in the old frame rejected valid sibling-iframe switches
+  (`frame '#a'` → `frame '#b'` failed with "Frame not found").
+- **find.last/nth return the element's own CSS path** instead of the
+  macOS `<query>:nth-of-type(n)` composite — :nth-of-type counts
+  per-parent/per-tag, so for matches spread across parents the macOS
+  selector points at a *different* element than the one matched (or
+  none). Verified with a three-parent fixture.
+- **Closed surfaces now clear their automation registries**
+  (`BrowserElementRefs` + `BrowserFrameSelectors`) in
+  `SurfaceRegistry.unregister` — previously refs accumulated for the
+  process lifetime.
+- Dialog verbs collapsed to a single JS round-trip; cookie helpers
+  deduplicated (single `soup_cookie_get_expires` bind, `intParam` for
+  expires parsing).
+
+Rejected review candidates worth remembering: the always-on
+`const document = __cmuxDoc` shadowing, the silent top-document fallback
+when a selected frame disappears/turns cross-origin, substring domain
+matching in cookies.get/clear, and the `all`-key quirk in cookies.clear
+are all **verbatim macOS envelope/handler semantics** — kept for parity,
+not bugs to fix unilaterally.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge
@@ -467,3 +555,9 @@ geometry until the workspace is first shown.
   `CMUX_WORKSPACE_ID`/`CMUX_SURFACE_ID` or pass explicit `--workspace`:
   the CLI injects your caller identity as the default target and those
   UUIDs don't exist over there ("Workspace not found").
+- `cmux new-workspace --background` prints plain `OK workspace:N` even
+  with `--json` — a script that greps JSON keys out of it gets an empty
+  ref, and a later `--workspace $EMPTY` silently falls through to the
+  SELECTED workspace (the flag value gets eaten by the adjacent arg).
+  Parse the `OK <ref>` line, and verify the target workspace in the
+  reply of whatever you create next.

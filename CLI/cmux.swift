@@ -2962,6 +2962,11 @@ struct CMUXCLI {
                 params["role"] = role
                 if let nameOpt {
                     params["name"] = nameOpt
+                } else if candidates.count >= 2 {
+                    // Playwright-style positional name: `find role button "Fire alert"`.
+                    // Previously this argument was silently dropped and the
+                    // first element of the role matched instead.
+                    params["name"] = candidates.dropFirst().joined(separator: " ")
                 }
                 if hasFlag(locatorArgs, name: "--exact") {
                     params["exact"] = true
@@ -6537,7 +6542,10 @@ struct CMUXCLI {
           browser scroll [--selector <css>] [--dx <n>] [--dy <n>] [--snapshot-after]
           browser get <url|title|text|html|value|attr|count|box|styles> [...]
           browser is <visible|enabled|checked> <selector>
-          browser find <role|text|label|placeholder|alt|title|testid|first|last|nth> ...
+          browser find role <role> [name] [--name <name>] [--exact]
+          browser find <text|label|placeholder|alt|title|testid> <value> [--exact]
+          browser find <first|last> <selector>
+          browser find nth <index> <selector>   (0-based; negative counts from end)
           browser frame <selector|main>
           browser dialog <accept|dismiss> [text]
           browser download [wait] [--path <path>] [--timeout-ms <ms>]

@@ -65,6 +65,8 @@ final class SurfaceRegistry {
         containers.removeValue(forKey: surfaceId)
         spawnTimes.removeValue(forKey: surfaceId)
         lastBellTimes.removeValue(forKey: surfaceId)
+        BrowserElementRefs.shared.clear(for: surfaceId)
+        BrowserFrameSelectors.shared.clear(for: surfaceId)
     }
 
     func terminal(for surfaceId: UUID) -> UnsafeMutablePointer<VteTerminal>? {
