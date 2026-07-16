@@ -1,5 +1,13 @@
 # cmux agent notes
 
+## Linux port — READ FIRST if `$CMUX_SURFACE_ID` is set
+
+Development of the Linux port happens inside the port itself (closed loop).
+The full self-hosting briefing — host-survival rules, dev-instance pattern,
+socket etiquette, dogfooding harness, project state — is imported here:
+
+@docs/linux-port/INSIDE-CMUX.md
+
 ## Initial setup
 
 Run the setup script to initialize submodules and build GhosttyKit:
