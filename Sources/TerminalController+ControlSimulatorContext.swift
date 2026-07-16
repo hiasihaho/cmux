@@ -113,6 +113,32 @@ extension TerminalController: ControlSimulatorContext {
             return .panel(simulator)
         }
 
+        if let paneID = routing.paneID {
+            guard let pane = workspace.bonsplitController.allPaneIds.first(where: {
+                $0.id == paneID
+            }) else {
+                return .failure(.simulatorNotFound)
+            }
+            if let selected = workspace.bonsplitController.selectedTab(inPane: pane),
+               let simulator = workspace.panels[selected.id] as? SimulatorPanel {
+                return .panel(simulator)
+            }
+            let simulators = workspace.bonsplitController.tabs(inPane: pane).compactMap {
+                workspace.panels[$0.id] as? SimulatorPanel
+            }
+            switch simulators.count {
+            case 1:
+                return .panel(simulators[0])
+            case 0:
+                if let selected = workspace.bonsplitController.selectedTab(inPane: pane) {
+                    return .failure(.surfaceNotSimulator(selected.id))
+                }
+                return .failure(.simulatorNotFound)
+            default:
+                return .failure(.ambiguousSimulatorSurfaces(simulators.count))
+            }
+        }
+
         if let focusedID = workspace.focusedPanelId,
            let focused = workspace.panels[focusedID] as? SimulatorPanel {
             return .panel(focused)
