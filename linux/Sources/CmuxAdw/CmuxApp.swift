@@ -12,6 +12,7 @@ struct CmuxApp: App {
     @State private var selection: UUID = CmuxApp.initialTab.id
     @State private var notifications: [TerminalNotification] = []
     @State private var sidebarVisible = true
+    @State private var showNotifications = false
     @State private var tabCounter = 1
 
     init() {
@@ -45,19 +46,43 @@ struct CmuxApp: App {
         let _ = SessionStore.saveIfChanged(tabs: tabs, selection: selection, tabCounter: tabCounter)
         Window(id: "main") { _ in
             OverlaySplitView(visible: $sidebarVisible) {
-                SidebarView(tabs: tabs, selection: selectionBinding)
-                    .topToolbar {
-                        HeaderBar.end {
-                            Button(icon: .custom(name: "tab-new-symbolic")) {
-                                newTab()
-                            }
-                            .keyboardShortcut("t".ctrl().shift())
-                            .tooltip("New tab (Ctrl+Shift+T)")
+                EitherView(showNotifications, view1: {
+                    NotificationsListView(
+                        notifications: notifications,
+                        open: openNotification,
+                        clearAll: clearAllNotifications
+                    )
+                }, else: {
+                    SidebarView(tabs: tabs, selection: selectionBinding)
+                })
+                .topToolbar {
+                    HeaderBar {
+                        Button(icon: .custom(
+                            name: showNotifications
+                                ? "go-previous-symbolic"
+                                : "preferences-system-notifications-symbolic"
+                        )) {
+                            showNotifications.toggle()
                         }
-                        .headerBarTitle {
-                            WindowTitle(subtitle: "", title: "cmux")
+                        .tooltip(showNotifications
+                            ? "Back to workspaces"
+                            : unreadCount > 0
+                                ? "Notifications (\(unreadCount) unread)"
+                                : "Notifications")
+                    } end: {
+                        Button(icon: .custom(name: "tab-new-symbolic")) {
+                            newTab()
                         }
+                        .keyboardShortcut("t".ctrl().shift())
+                        .tooltip("New tab (Ctrl+Shift+T)")
                     }
+                    .headerBarTitle {
+                        WindowTitle(
+                            subtitle: unreadCount > 0 ? "\(unreadCount) unread" : "",
+                            title: showNotifications ? "Notifications" : "cmux"
+                        )
+                    }
+                }
             } content: {
                 EitherView(tabs.isEmpty, view1: {
                     ContentAreaView(
@@ -177,6 +202,35 @@ struct CmuxApp: App {
                 title: tabs[index].title,
                 body: "Terminal bell"
             )
+        }
+    }
+
+    private var unreadCount: Int {
+        notifications.filter { !$0.isRead }.count
+    }
+
+    /// Jump to the notification's workspace (marks its notifications read);
+    /// focuses the exact surface when it still exists.
+    private func openNotification(_ notification: TerminalNotification) {
+        if let index = tabs.firstIndex(where: { $0.id == notification.tabId }) {
+            controlHandler.select(notification.tabId)
+            if let surfaceId = notification.surfaceId,
+               tabs[index].contains(surfaceId: surfaceId) {
+                tabs[index].focusedSurfaceId = surfaceId
+            }
+        } else if let index = notifications.firstIndex(where: { $0.id == notification.id }) {
+            // Workspace is gone — just mark the entry read.
+            notifications[index].isRead = true
+        }
+        showNotifications = false
+    }
+
+    private func clearAllNotifications() {
+        notifications.removeAll()
+        tabs = tabs.map { tab in
+            var copy = tab
+            copy.needsAttention = false
+            return copy
         }
     }
 

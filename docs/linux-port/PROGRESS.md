@@ -243,6 +243,18 @@ Session persistence (`SessionStore.swift`):
   pane → kill → relaunch → layout, selection, focus and the `/tmp` cwd all
   restored.
 
+### Phase 3b — notifications page UI ✅
+
+- Sidebar toggles between the workspace list and a notifications page
+  (bell button in the sidebar header; window title shows unread count).
+- Rows render `● title: subtitle — body` (dot = unread, newest first);
+  clicking a row jumps to the workspace, focuses the exact surface when it
+  still exists, marks read (select-marks-read semantics), and flips back to
+  the workspace list. "Clear all" wipes entries + attention dots.
+- Minor quirk to watch: a restored shell emitted one phantom bell right
+  after session restore (single occurrence; likely prompt/startup output
+  containing BEL).
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

@@ -25,7 +25,9 @@ full analysis and phased plan.
 - [x] Phase 3 (part 1) — XDG desktop notifications for background tabs
       (GNotification; run `scripts/install-desktop-entry.sh` once so GNOME
       displays them) and `send-key` (enter/ctrl-c/arrows/…)
-- [ ] Phase 3 (part 2) — notifications page UI, unread badge polish
+- [x] Phase 3 (part 2) — notifications page in the sidebar (bell button):
+      unread dots, click-to-jump (focuses the exact surface), clear-all,
+      unread count in the sidebar title
 - [x] Phase 4a — split panes: nested GtkPaned tree per workspace, one live
       shell per pane (reparented across layout changes, never respawned),
       focus-follows-click, cwd inheritance; `new-split`/`list-panes`/
