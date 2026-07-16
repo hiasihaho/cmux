@@ -24,14 +24,25 @@ hosting you is `linux/.build/debug/cmux-adw`.
 ## The isolated dev instance
 
 Anything that needs a fresh binary or risky runtime experiments runs here,
-never on the instance hosting you:
+never on the instance hosting you. Use the launcher (it encodes the
+etiquette: refuses double-daily, kills dev strictly by app id):
+
+```sh
+linux/scripts/start.sh dev [--ghostty]   # isolated instance, log in ~/.local/state/cmux/
+linux/scripts/start.sh stop-dev          # kills ONLY the dev instance
+linux/scripts/start.sh status            # who is running, which terminal backend
+# talk to it: CMUX_SOCKET_PATH=/tmp/cmux-dev.sock cmux ping
+```
+
+(`start.sh daily` starts the human's instance after a crash/close; it
+refuses to start a second one while the daily socket responds.) The raw
+env-var pattern behind it, if you ever need it manually:
 
 ```sh
 CMUX_APP_ID=com.manaflow.cmux.dev \
 CMUX_SOCKET_PATH=/tmp/cmux-dev.sock \
 CMUX_SESSION_PATH=/tmp/cmux-dev-session.json \
 nohup linux/.build/debug/cmux-adw >/tmp/cmux-dev.log 2>&1 &
-# talk to it:   CMUX_SOCKET_PATH=/tmp/cmux-dev.sock cmux ping
 # kill ONLY it: match CMUX_APP_ID in /proc/<pid>/environ, never by name
 for pid in $(pgrep -x cmux-adw); do
   tr '\0' '\n' < /proc/$pid/environ | grep -q cmux.dev && kill $pid
