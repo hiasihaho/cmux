@@ -3791,7 +3791,7 @@ struct CMUXCLI {
             """
         case "new-workspace":
             return """
-            Usage: cmux new-workspace [--cwd <path>] [--command <text>]
+            Usage: cmux new-workspace [--cwd <path>] [--command <text>] [--background]
 
             Create a new workspace in the current window.
 
@@ -6420,7 +6420,7 @@ struct CMUXCLI {
           reorder-workspace --workspace <id|ref|index> (--index <n> | --before <id|ref|index> | --after <id|ref|index>) [--window <id|ref|index>]
           workspace-action --action <name> [--workspace <id|ref|index>] [--title <text>]
           list-workspaces
-          new-workspace [--cwd <path>] [--command <text>]
+          new-workspace [--cwd <path>] [--command <text>] [--background]
           new-split <left|right|up|down> [--workspace <id|ref>] [--surface <id|ref>] [--panel <id|ref>]
           list-panes [--workspace <id|ref>]
           list-pane-surfaces [--workspace <id|ref>] [--pane <id|ref>]

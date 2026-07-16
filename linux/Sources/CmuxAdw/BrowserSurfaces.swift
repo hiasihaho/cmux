@@ -128,6 +128,26 @@ extension ControlCommandHandler {
         return v2BrowserOk(id: id, result: ["url": url])
     }
 
+    func v2BrowserIdentify(id: Any?, params: [String: Any]) -> String {
+        guard let raw = params["surface_id"] as? String,
+              let uuid = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw),
+              let tab = tabs.wrappedValue.first(where: { $0.contains(surfaceId: uuid) }),
+              let webView = SurfaceRegistry.shared.browser(for: uuid)
+                  .map({ UnsafeMutablePointer<WebKitWebView>($0) }) else {
+            return v2BrowserError(id: id, code: "not_found", message: "Browser surface not found")
+        }
+        let registry = RefRegistry.shared
+        return v2BrowserOk(id: id, result: [
+            "workspace_id": tab.id.uuidString,
+            "workspace_ref": registry.ref(kind: "workspace", uuid: tab.id),
+            "surface_id": uuid.uuidString,
+            "surface_ref": registry.ref(kind: "surface", uuid: uuid),
+            "type": "browser",
+            "url": webkit_web_view_get_uri(webView).map { String(cString: $0) } ?? "",
+            "title": webkit_web_view_get_title(webView).map { String(cString: $0) } ?? ""
+        ])
+    }
+
     func v2BrowserGetTitle(id: Any?, params: [String: Any]) -> String {
         guard let webView = browserWebView(params) else {
             return v2BrowserError(id: id, code: "not_found", message: "Browser surface not found")

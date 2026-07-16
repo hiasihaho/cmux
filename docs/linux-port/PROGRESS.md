@@ -343,6 +343,27 @@ manufactured two phantom bugs (browser split "in the wrong workspace",
   subcommand (upstream CLI ergonomics), help doesn't mark Linux-unimplemented
   verbs, merging repeat bell entries per surface.
 
+### Dogfood cycle 3 → fixes
+
+Cycle 3 (with the taught tester: flag order, env identity, `--background`)
+confirmed the cycle-2 fixes and left three real items, all fixed:
+
+- **Workspace close now drops the workspace's notifications** (cleanup had
+  only been wired into the surface-close path) — central `removeWorkspace`.
+- **Selection-steal race fixed**: the sidebar GtkListBox emits
+  `selected_rows_changed` echoes while its rows are diffed after
+  socket-driven tab mutations; a `SocketDispatchGuard` marks socket dispatch
+  windows and the selection binding ignores row echoes during them (they are
+  never user clicks — both run serialized on the main loop).
+- **`pane.create`/`surface.create` implemented** (CLI `new-pane`/
+  `new-surface`) — with one surface per pane, both are "split with a typed
+  surface"; enables browser panes in background workspaces. `browser.identify`
+  returns a payload (CLI prints bare OK without `--json` by design).
+- Explained, not bugs: `identify --workspace X` reports X as caller because
+  the CLI *replaces* the caller env with the flag (macOS-identical);
+  the "swallowed bell" was the 2s post-spawn grace on a young scratch
+  workspace.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

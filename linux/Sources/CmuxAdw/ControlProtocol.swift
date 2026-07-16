@@ -2,6 +2,15 @@ import Adwaita
 import CVte
 import Foundation
 
+/// True while a socket command (and its synchronous view update) is being
+/// dispatched on the main loop. The sidebar's GtkListBox emits
+/// `selected_rows_changed` while its rows are diffed after tab mutations —
+/// without this guard such echoes get mistaken for user clicks and steal
+/// the human's workspace selection (observed once in dogfood cycle 3).
+enum SocketDispatchGuard {
+    static var active = false
+}
+
 /// Most-recently-selected workspace order (macOS `TabManager` keeps a
 /// workspace history too) — closing the selected workspace returns to the
 /// previously selected one instead of an arbitrary neighbor.
@@ -128,13 +137,22 @@ struct ControlCommandHandler {
               let index = tabs.wrappedValue.firstIndex(of: tab) else {
             return "ERROR: Tab not found"
         }
+        removeWorkspace(at: index)
+        return "OK"
+    }
+
+    /// Removes a workspace, its notifications, and restores the previously
+    /// selected workspace when the removed one was selected.
+    private func removeWorkspace(at index: Int) {
+        let tabId = tabs.wrappedValue[index].id
+        notifications.wrappedValue.removeAll { $0.tabId == tabId }
         tabs.wrappedValue.remove(at: index)
-        if selection.wrappedValue == tab.id,
-           let next = SelectionHistory.shared.lastAlive(in: tabs.wrappedValue, excluding: tab.id)
-               ?? (tabs.wrappedValue[safe: index] ?? tabs.wrappedValue.last)?.id {
+        if selection.wrappedValue == tabId,
+           let next = SelectionHistory.shared.lastAlive(in: tabs.wrappedValue, excluding: tabId)
+               ?? (tabs.wrappedValue[safe: min(index, tabs.wrappedValue.count - 1)]
+                   ?? tabs.wrappedValue.first)?.id {
             select(next)
         }
-        return "OK"
     }
 
     /// Same escape handling as the macOS `sendInput`: `\n` becomes Enter.
@@ -290,6 +308,8 @@ struct ControlCommandHandler {
             return v2SurfaceReadText(id: id, params: params)
         case "surface.split":
             return v2SurfaceSplit(id: id, params: params)
+        case "pane.create", "surface.create":
+            return v2PaneCreate(id: id, params: params)
         case "surface.close":
             return v2SurfaceClose(id: id, params: params)
         case "pane.list":
@@ -312,6 +332,8 @@ struct ControlCommandHandler {
             return v2BrowserHistory(id: id, params: params, action: "forward")
         case "browser.reload":
             return v2BrowserHistory(id: id, params: params, action: "reload")
+        case "browser.identify":
+            return v2BrowserIdentify(id: id, params: params)
         case "notification.create":
             return v2NotificationCreate(id: id, params: params)
         case "notification.list":
@@ -447,13 +469,7 @@ struct ControlCommandHandler {
               let index = tabs.wrappedValue.firstIndex(where: { $0.id == wsId }) else {
             return v2Error(id: id, code: "not_found", message: "Workspace not found")
         }
-        tabs.wrappedValue.remove(at: index)
-        if selection.wrappedValue == wsId,
-           let next = SelectionHistory.shared.lastAlive(in: tabs.wrappedValue, excluding: wsId)
-               ?? (tabs.wrappedValue[safe: min(index, tabs.wrappedValue.count - 1)]
-                   ?? tabs.wrappedValue.first)?.id {
-            select(next)
-        }
+        removeWorkspace(at: index)
         return v2Ok(id: id, result: workspaceRefResult(wsId))
     }
 
@@ -588,6 +604,40 @@ struct ControlCommandHandler {
         ])
     }
 
+    /// `pane.create`/`surface.create` (CLI `new-pane`/`new-surface`) — with
+    /// one surface per pane these are both "split with a typed surface".
+    private func v2PaneCreate(id: Any?, params: [String: Any]) -> String {
+        guard let target = v2TargetSurface(params) else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not found")
+        }
+        let direction = (params["direction"] as? String) ?? "right"
+        let kind: SurfaceKind
+        if (params["type"] as? String) == "browser" {
+            let url = (params["url"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "about:blank"
+            kind = .browser(initialURL: url)
+        } else {
+            kind = .terminal
+        }
+        guard let newLeaf = split(
+            tab: target.tab,
+            surfaceId: target.surfaceId,
+            direction: direction,
+            kind: kind
+        ) else {
+            return v2Error(id: id, code: "invalid_params", message: "Invalid direction. Use left, right, up, or down.")
+        }
+        let registry = RefRegistry.shared
+        return v2Ok(id: id, result: [
+            "workspace_id": target.tab.id.uuidString,
+            "workspace_ref": registry.ref(kind: "workspace", uuid: target.tab.id),
+            "pane_id": newLeaf.paneId.uuidString,
+            "pane_ref": registry.ref(kind: "pane", uuid: newLeaf.paneId),
+            "surface_id": newLeaf.surfaceId.uuidString,
+            "surface_ref": registry.ref(kind: "surface", uuid: newLeaf.surfaceId),
+            "type": newLeaf.kind.typeName
+        ])
+    }
+
     private func v2SurfaceClose(id: Any?, params: [String: Any]) -> String {
         guard let target = v2TargetSurface(params) else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")
@@ -617,13 +667,7 @@ struct ControlCommandHandler {
             }
             refreshTitle(tabId: tabId)
         } else {
-            tabs.wrappedValue.remove(at: index)
-            if selection.wrappedValue == tabId,
-               let next = SelectionHistory.shared.lastAlive(in: tabs.wrappedValue, excluding: tabId)
-                   ?? (tabs.wrappedValue[safe: min(index, tabs.wrappedValue.count - 1)]
-                       ?? tabs.wrappedValue.first)?.id {
-                select(next)
-            }
+            removeWorkspace(at: index)
         }
     }
 

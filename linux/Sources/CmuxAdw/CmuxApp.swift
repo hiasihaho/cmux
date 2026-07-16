@@ -32,7 +32,11 @@ struct CmuxApp: App {
             notifications: $notifications,
             tabCounter: $tabCounter
         )
-        ControlSocketServer.shared.dispatcher = { line in handler.handle(line: line) }
+        ControlSocketServer.shared.dispatcher = { line in
+            SocketDispatchGuard.active = true
+            defer { SocketDispatchGuard.active = false }
+            return handler.handle(line: line)
+        }
         ControlSocketServer.shared.start()
 
         // Structural changes save immediately (scene body); this periodic
@@ -145,6 +149,10 @@ struct CmuxApp: App {
         .init {
             selection
         } set: { newValue in
+            // Row-diff echoes during socket-driven tab mutations are not
+            // user clicks — ignoring them keeps agents from stealing the
+            // human's selection.
+            guard !SocketDispatchGuard.active, newValue != selection else { return }
             controlHandler.select(newValue)
         }
     }
