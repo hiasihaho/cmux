@@ -40,7 +40,8 @@ enum GhosttySurfaceFactory {
         storage: ViewStorage,
         onTitleChanged: @escaping (UUID, UUID, String) -> Void,
         onBell: @escaping (UUID, UUID) -> Void,
-        onSurfaceFocused: @escaping (UUID, UUID) -> Void
+        onSurfaceFocused: @escaping (UUID, UUID) -> Void,
+        onCloseRequest: @escaping (UUID, UUID) -> Void
     ) {
         // Same identity environment as the VTE spawn path — bare `cmux`
         // commands in the shell must target this pane.
@@ -73,16 +74,18 @@ enum GhosttySurfaceFactory {
         gtk_widget_set_hexpand(widget, 1)
         gtk_widget_set_vexpand(widget, 1)
 
-        // Ghostty's own hierarchy hosts the (GtkScrollable) surface in a
-        // scrolled window; mirror that so scrollback gets a scrollbar.
-        guard let scrolled = gtk_scrolled_window_new() else { return }
-        gtk_scrolled_window_set_child(OpaquePointer(scrolled), widget)
-        gtk_widget_set_hexpand(scrolled, 1)
-        gtk_widget_set_vexpand(scrolled, 1)
+        // Ghostty's own container class (SurfaceScrolledWindow): config-
+        // bound scrollbar, hscroll disabled. A plain GtkScrolledWindow with
+        // automatic policies let the surface keep its natural size instead
+        // of tracking the host window — panes never resized with it.
+        guard let containerRaw = ghostty_embed_surface_container_new(widget) else { return }
+        let container = containerRaw.assumingMemoryBound(to: GtkWidget.self)
+        gtk_widget_set_hexpand(container, 1)
+        gtk_widget_set_vexpand(container, 1)
 
         SurfaceRegistry.shared.registerGhostty(
             OpaquePointer(widget),
-            container: OpaquePointer(scrolled),
+            container: OpaquePointer(container),
             for: leaf.surfaceId
         )
 
@@ -122,6 +125,17 @@ enum GhosttySurfaceFactory {
             ) {
                 onSurfaceFocused(tabId, surfaceId)
             }
+        }
+
+        // Ghostty asks the container to close the surface (clean child
+        // exit with wait-after-command off, Ctrl+D, confirmed closes);
+        // abnormal exits show the overlay instead and never emit this.
+        storage.connectSignal(
+            name: "close-request",
+            id: "ghostty-close-\(surfaceId.uuidString)",
+            pointer: OpaquePointer(widget)
+        ) {
+            onCloseRequest(tabId, surfaceId)
         }
     }
 

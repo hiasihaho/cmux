@@ -107,7 +107,14 @@ struct CmuxApp: App {
                         selection: selection,
                         onTitleChanged: handleTitleChange,
                         onBell: handleBell,
-                        onSurfaceFocused: handleSurfaceFocused
+                        onSurfaceFocused: handleSurfaceFocused,
+                        onCloseRequest: { tabId, surfaceId in
+                            // Ghostty surface asked to close (clean shell
+                            // exit, Ctrl+D). Same path as the close-pane
+                            // shortcut; closing the last pane closes the
+                            // workspace.
+                            controlHandler.closeSurface(tabId: tabId, surfaceId: surfaceId)
+                        }
                     )
                 })
                 .topToolbar {

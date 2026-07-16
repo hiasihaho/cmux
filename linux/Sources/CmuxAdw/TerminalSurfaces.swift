@@ -159,6 +159,9 @@ struct TerminalStackWidget: AdwaitaWidget {
     var onTitleChanged: (UUID, UUID, String) -> Void
     var onBell: (UUID, UUID) -> Void
     var onSurfaceFocused: (UUID, UUID) -> Void
+    /// Surface asks to be closed (ghostty close-request: clean shell
+    /// exit, Ctrl+D, …). VTE surfaces never call this (they linger).
+    var onCloseRequest: (UUID, UUID) -> Void
 
     func container<Data>(data: WidgetData, type: Data.Type) -> ViewStorage where Data: ViewRenderData {
         let stack = gtk_stack_new()
@@ -197,7 +200,8 @@ struct TerminalStackWidget: AdwaitaWidget {
                             storage: storage,
                             onTitleChanged: onTitleChanged,
                             onBell: onBell,
-                            onSurfaceFocused: onSurfaceFocused
+                            onSurfaceFocused: onSurfaceFocused,
+                            onCloseRequest: onCloseRequest
                         )
                     } else {
                         createTerminal(for: leaf, in: tab, storage: storage)
