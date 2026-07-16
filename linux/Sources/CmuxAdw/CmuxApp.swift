@@ -41,11 +41,20 @@ struct CmuxApp: App {
                         }
                     }
             } content: {
-                ContentAreaView(
-                    tab: tabs.first { $0.id == selection },
-                    unreadCount: notifications.filter { !$0.isRead }.count,
-                    socketPath: ControlSocketServer.shared.path
-                )
+                EitherView(tabs.isEmpty, view1: {
+                    ContentAreaView(
+                        tab: nil,
+                        unreadCount: notifications.filter { !$0.isRead }.count,
+                        socketPath: ControlSocketServer.shared.path
+                    )
+                }, else: {
+                    TerminalStackWidget(
+                        tabs: tabs,
+                        selection: selection,
+                        onTitleChanged: handleTitleChange,
+                        onBell: handleBell
+                    )
+                })
                 .topToolbar {
                     HeaderBar {
                         Button(icon: .custom(name: "sidebar-show-symbolic")) {
@@ -110,6 +119,27 @@ struct CmuxApp: App {
     private func simulateAttention() {
         guard let index = tabs.firstIndex(where: { $0.id == selection }) else { return }
         tabs[index].needsAttention.toggle()
+    }
+
+    /// OSC title updates from the shell (VTE `window-title-changed`).
+    private func handleTitleChange(_ tabId: UUID, _ title: String) {
+        guard !title.isEmpty,
+              let index = tabs.firstIndex(where: { $0.id == tabId }),
+              tabs[index].title != title else { return }
+        tabs[index].title = title
+    }
+
+    /// Terminal bell — the first real attention signal (agents ring the bell
+    /// or use `cmux notify`; libghostty adds OSC 9/777 later).
+    private func handleBell(_ tabId: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        tabs[index].needsAttention = true
+        notifications.append(TerminalNotification(
+            tabId: tabId,
+            surfaceId: tabs[index].surfaceId,
+            title: "Bell",
+            body: "Terminal bell in \(tabs[index].title)"
+        ))
     }
 }
 

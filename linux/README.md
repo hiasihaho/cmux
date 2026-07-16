@@ -16,9 +16,12 @@ full analysis and phased plan.
       `CLI/cmux.swift` builds as the `cmux` binary and works against it
       (`ping`, `list-workspaces`, `new-workspace`, `select-workspace`,
       `notify` → sidebar attention dots, `list-notifications`, …)
-- [ ] Phase 2 — terminal surface: libghostty builds on Linux (see
-      `../docs/linux-port/PROGRESS.md`); next: `TerminalSurfaceWidget` with a
-      VTE-GTK4 stopgap, Ghostty embedding behind it
+- [x] Phase 2 (part 1) — real terminals: VTE-GTK4 surfaces, one live shell
+      per tab (kept alive across switches), OSC titles → tab titles, bell →
+      attention dots, `cmux send`/`read-screen` work; shells get
+      `CMUX_WORKSPACE_ID`/`CMUX_SURFACE_ID`/`CMUX_SOCKET_PATH`
+- [ ] Phase 2 (part 2) — Ghostty fidelity behind the same surface slot
+      (libghostty builds on Linux — see `../docs/linux-port/PROGRESS.md`)
 - [ ] Phase 3 — attention detection wired to real terminal events,
       XDG desktop notifications
 - [ ] Phase 4 — splits (Bonsplit → GtkPaned tree), session persistence

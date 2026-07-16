@@ -1,4 +1,5 @@
 import Adwaita
+import CVte
 import Foundation
 
 /// Implements the cmux control-socket wire protocol (the verb subset that
@@ -36,6 +37,8 @@ struct ControlCommandHandler {
             return currentWorkspace()
         case "close_workspace":
             return closeWorkspace(args)
+        case "send":
+            return sendInput(args)
         case "notify":
             return notifyCurrent(args)
         case "notify_surface":
@@ -112,6 +115,29 @@ struct ControlCommandHandler {
             select(next.id)
         }
         return "OK"
+    }
+
+    /// Same escape handling as the macOS `sendInput`: `\n` becomes Enter.
+    private func sendInput(_ args: String) -> String {
+        guard let tab = tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue }),
+              let terminal = SurfaceRegistry.shared.terminal(for: tab.surfaceId) else {
+            return "ERROR: No focused terminal"
+        }
+        let unescaped = args
+            .replacingOccurrences(of: "\\n", with: "\r")
+            .replacingOccurrences(of: "\\r", with: "\r")
+            .replacingOccurrences(of: "\\t", with: "\t")
+        feed(terminal, unescaped)
+        return "OK"
+    }
+
+    private func feed(_ terminal: UnsafeMutablePointer<VteTerminal>, _ text: String) {
+        let bytes = Array(text.utf8)
+        bytes.withUnsafeBufferPointer { buffer in
+            buffer.baseAddress!.withMemoryRebound(to: CChar.self, capacity: bytes.count) {
+                vte_terminal_feed_child(terminal, $0, bytes.count)
+            }
+        }
     }
 
     private func notifyCurrent(_ args: String) -> String {
@@ -215,6 +241,10 @@ struct ControlCommandHandler {
             return v2WorkspaceClose(id: id, params: params)
         case "surface.list":
             return v2SurfaceList(id: id, params: params)
+        case "surface.send_text":
+            return v2SurfaceSendText(id: id, params: params)
+        case "surface.read_text":
+            return v2SurfaceReadText(id: id, params: params)
         case "notification.create":
             return v2NotificationCreate(id: id, params: params)
         case "notification.list":
@@ -330,6 +360,51 @@ struct ControlCommandHandler {
                 "title": tab.title
             ]]
         ])
+    }
+
+    private func v2SurfaceSendText(id: Any?, params: [String: Any]) -> String {
+        guard let text = params["text"] as? String else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing text")
+        }
+        guard let tab = v2TargetTab(params),
+              let terminal = SurfaceRegistry.shared.terminal(for: tab.surfaceId) else {
+            return v2Error(id: id, code: "not_found", message: "Surface not found")
+        }
+        feed(terminal, text)
+        return v2Ok(id: id, result: [
+            "workspace_id": tab.id.uuidString,
+            "surface_id": tab.surfaceId.uuidString
+        ])
+    }
+
+    private func v2SurfaceReadText(id: Any?, params: [String: Any]) -> String {
+        guard let tab = v2TargetTab(params),
+              let terminal = SurfaceRegistry.shared.terminal(for: tab.surfaceId) else {
+            return v2Error(id: id, code: "not_found", message: "Surface not found")
+        }
+        var text = ""
+        if let raw = vte_terminal_get_text_format(terminal, VTE_FORMAT_TEXT) {
+            text = String(cString: raw)
+            g_free(raw)
+        }
+        return v2Ok(id: id, result: [
+            "workspace_id": tab.id.uuidString,
+            "surface_id": tab.surfaceId.uuidString,
+            "text": text
+        ])
+    }
+
+    /// Resolves the target tab from `surface_id`/`workspace_id` params
+    /// (UUIDs or handle refs), defaulting to the selected tab.
+    private func v2TargetTab(_ params: [String: Any]) -> TerminalTab? {
+        if let raw = params["surface_id"] as? String, !raw.isEmpty {
+            let uuid = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw)
+            return tabs.wrappedValue.first { $0.surfaceId == uuid }
+        }
+        if let wsId = v2WorkspaceUUID(params) {
+            return tabs.wrappedValue.first { $0.id == wsId }
+        }
+        return tabs.wrappedValue.first { $0.id == selection.wrappedValue }
     }
 
     private func v2NotificationCreate(id: Any?, params: [String: Any]) -> String {

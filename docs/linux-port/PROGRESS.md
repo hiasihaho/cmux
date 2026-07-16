@@ -134,6 +134,46 @@ mark-read-on-focus semantics).
      pieces (`libghostty-vt` already ships — VT state machine without
      renderer); a cross-platform embedder API is the stated direction.
 
+### Phase 2 (part 1) — real terminals via VTE ✅
+
+Repo forked to https://github.com/hiasihaho/cmux (branch `linux-port`;
+`upstream` remote = manaflow-ai). Then:
+
+- `CVte` system-library target (`pkgConfig: vte-2.91-gtk4`) — GTK4 widget
+  structs are opaque in GTK4 headers, so most gtk_* calls take
+  `OpaquePointer`; only `VteTerminal*`/`GtkWidget*` are typed.
+- `TerminalSurfaces.swift` — `TerminalStackWidget`, a custom `AdwaitaWidget`
+  hosting a `GtkStack` with one VTE terminal (in a `GtkScrolledWindow`) per
+  tab. Children are managed imperatively in `update()` and kept alive across
+  tab switches (declarative diffing would respawn shells). `SurfaceRegistry`
+  maps surfaceId → `VteTerminal*` for the control protocol.
+- Shells spawn via `vte_terminal_spawn_async` with the cmux environment:
+  `CMUX_WORKSPACE_ID`, `CMUX_SURFACE_ID`, `CMUX_SOCKET_PATH` — so `cmux`
+  invoked *inside* a tab targets that tab, like on macOS.
+- Signals: `window-title-changed` → tab title (bash's OSC title works out of
+  the box: tabs show `user@host:dir`); `bell` → attention dot + notification.
+- New protocol methods: v2 `surface.send_text` / `surface.read_text`
+  (CLI `send` / `read-screen`), v1 `send`.
+
+Verified end-to-end against the running app:
+
+```text
+$ cmux list-workspaces          → * workspace:1  hias@fedora:~  [selected]
+$ cmux send 'echo linux-port-test-2\n'; cmux read-screen
+  hias@fedora:~$ echo linux-port-test-2
+  linux-port-test-2
+$ cmux send 'printf "\\a"\n'; cmux list-notifications
+  0:…|unread|Bell||Terminal bell in hias@fedora:~
+$ cmux new-workspace --cwd /tmp; cmux send 'pwd\n'; cmux read-screen
+  hias@fedora:/tmp$ pwd
+  /tmp
+```
+
+Remaining for Phase 2: Ghostty fidelity behind the same
+`SurfaceRegistry`/stack slot (Zig C-shim around the fork's GTK apprt or
+upstream's embedder API), scrollbar polish, `send-key`, focus-follows-click
+feedback into the model.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

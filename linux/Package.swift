@@ -24,9 +24,15 @@ let package = Package(
     ],
     dependencies: [adwaitaSwift],
     targets: [
+        .systemLibrary(
+            name: "CVte",
+            path: "Sources/CVte",
+            pkgConfig: "vte-2.91-gtk4"
+        ),
         .executableTarget(
             name: "CmuxAdw",
             dependencies: [
+                "CVte",
                 .product(name: "Adwaita", package: "adwaita-swift")
             ],
             path: "Sources/CmuxAdw",
