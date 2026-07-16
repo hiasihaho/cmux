@@ -140,6 +140,13 @@ struct CmuxApp: App {
             title: "Bell",
             body: "Terminal bell in \(tabs[index].title)"
         ))
+        if tabId != selection {
+            DesktopNotifier.send(
+                id: "cmux-\(tabId.uuidString)",
+                title: tabs[index].title,
+                body: "Terminal bell"
+            )
+        }
     }
 }
 

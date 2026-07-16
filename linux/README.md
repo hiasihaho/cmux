@@ -22,8 +22,10 @@ full analysis and phased plan.
       `CMUX_WORKSPACE_ID`/`CMUX_SURFACE_ID`/`CMUX_SOCKET_PATH`
 - [ ] Phase 2 (part 2) — Ghostty fidelity behind the same surface slot
       (libghostty builds on Linux — see `../docs/linux-port/PROGRESS.md`)
-- [ ] Phase 3 — attention detection wired to real terminal events,
-      XDG desktop notifications
+- [x] Phase 3 (part 1) — XDG desktop notifications for background tabs
+      (GNotification; run `scripts/install-desktop-entry.sh` once so GNOME
+      displays them) and `send-key` (enter/ctrl-c/arrows/…)
+- [ ] Phase 3 (part 2) — notifications page UI, unread badge polish
 - [ ] Phase 4 — splits (Bonsplit → GtkPaned tree), session persistence
 - [ ] Phase 5 — browser panel via WebKitGTK (`webkitgtk-6.0`)
 

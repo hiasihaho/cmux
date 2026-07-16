@@ -174,6 +174,19 @@ Remaining for Phase 2: Ghostty fidelity behind the same
 upstream's embedder API), scrollbar polish, `send-key`, focus-follows-click
 feedback into the model.
 
+### Phase 3 (part 1) — desktop notifications + send-key ✅
+
+- `DesktopNotifier.swift`: GNotification via `g_application_get_default()`
+  (AdwaitaApp's GtkApplication pointer is module-internal). Delivered only
+  when the target tab is not selected — approximates macOS
+  suppress-when-focused. GNOME requires a matching `.desktop` file to display
+  GNotifications → `linux/scripts/install-desktop-entry.sh` installs
+  `com.manaflow.cmux.desktop` per user.
+- v2 `surface.send_key` (CLI `send-key`): named keys → PTY bytes
+  (enter/tab/esc/backspace/arrows/ctrl-<letter>/sigint/eof/sigtstp/sigquit —
+  same names as macOS `sendNamedKey`). Verified: `send 'sleep 60\n'` +
+  `send-key sigint` → `^C` on screen, sleep interrupted.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

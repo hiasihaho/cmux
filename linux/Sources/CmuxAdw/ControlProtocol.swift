@@ -243,6 +243,8 @@ struct ControlCommandHandler {
             return v2SurfaceList(id: id, params: params)
         case "surface.send_text":
             return v2SurfaceSendText(id: id, params: params)
+        case "surface.send_key":
+            return v2SurfaceSendKey(id: id, params: params)
         case "surface.read_text":
             return v2SurfaceReadText(id: id, params: params)
         case "notification.create":
@@ -377,6 +379,71 @@ struct ControlCommandHandler {
         ])
     }
 
+    private func v2SurfaceSendKey(id: Any?, params: [String: Any]) -> String {
+        guard let key = params["key"] as? String, !key.isEmpty else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing key")
+        }
+        guard let tab = v2TargetTab(params),
+              let terminal = SurfaceRegistry.shared.terminal(for: tab.surfaceId) else {
+            return v2Error(id: id, code: "not_found", message: "Surface not found")
+        }
+        guard let bytes = Self.namedKeyBytes(key) else {
+            return v2Error(id: id, code: "invalid_params", message: "Unknown key: \(key)")
+        }
+        feed(terminal, bytes)
+        return v2Ok(id: id, result: [
+            "workspace_id": tab.id.uuidString,
+            "surface_id": tab.surfaceId.uuidString,
+            "key": key
+        ])
+    }
+
+    /// Named keys → PTY bytes. Same names as the macOS `sendNamedKey`, plus
+    /// arrow keys (which VTE takes as escape sequences rather than keycodes).
+    static func namedKeyBytes(_ name: String) -> String? {
+        switch name.lowercased() {
+        case "enter", "return":
+            return "\r"
+        case "tab":
+            return "\t"
+        case "escape", "esc":
+            return "\u{1b}"
+        case "backspace":
+            return "\u{7f}"
+        case "space":
+            return " "
+        case "up":
+            return "\u{1b}[A"
+        case "down":
+            return "\u{1b}[B"
+        case "right":
+            return "\u{1b}[C"
+        case "left":
+            return "\u{1b}[D"
+        case "sigint":
+            return "\u{03}"
+        case "eof":
+            return "\u{04}"
+        case "sigtstp":
+            return "\u{1a}"
+        case "sigquit":
+            return "\u{1c}"
+        default:
+            let lowered = name.lowercased()
+            if lowered.hasPrefix("ctrl-") || lowered.hasPrefix("ctrl+") {
+                let rest = lowered.dropFirst(5)
+                if rest == "\\" {
+                    return "\u{1c}"
+                }
+                if rest.count == 1, let char = rest.first,
+                   let ascii = char.asciiValue, ascii >= 97, ascii <= 122 {
+                    return String(UnicodeScalar(ascii - 96))
+                }
+            }
+            return nil
+        }
+    }
+
     private func v2SurfaceReadText(id: Any?, params: [String: Any]) -> String {
         guard let tab = v2TargetTab(params),
               let terminal = SurfaceRegistry.shared.terminal(for: tab.surfaceId) else {
@@ -494,6 +561,17 @@ struct ControlCommandHandler {
         ))
         if let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }) {
             tabs.wrappedValue[index].needsAttention = true
+        }
+        // Desktop delivery only for tabs the user isn't looking at,
+        // approximating macOS's suppress-when-focused behavior.
+        if tabId != selection.wrappedValue {
+            DesktopNotifier.send(
+                id: "cmux-\(tabId.uuidString)",
+                title: title,
+                body: [parts.count > 1 ? parts[1] : "", parts.count > 2 ? parts[2] : ""]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " — ")
+            )
         }
     }
 
