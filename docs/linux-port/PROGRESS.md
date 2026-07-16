@@ -592,13 +592,17 @@ host's); `wakeup()` pumps `core_app.tick` via coalesced idle sources
 initialized GTK — its assertion trips otherwise, found by the first smoke
 run).
 
+Human-verified: typing, command execution, and rendering all work in the
+smoke harness (`echo` round-trip on screen). Also observed: the embedded
+shell inherits the host process's cwd — per-surface working-directory
+plumbing is required for cmux integration.
+
 Known issues for increment 2: a non-fatal GLib CRITICAL
 (`g_application_get_dbus_connection` on the unregistered Application —
 find and gate the call site); `startup()` never runs so its CSS-provider
 attach is missing (overlay styling may look off); per-surface
 working-directory/command plumbing (likely via a cloned per-surface
-`config` GObject property); interactive typing not yet verified (needs a
-human or the cmux integration).
+`config` GObject property).
 
 **Blocked on repo topology**: hiasihaho has no push access to
 manaflow-ai/ghostty, so `linux-gtk-embed` is local-only and the parent
@@ -607,6 +611,46 @@ unreachable from any remote branch — a pre-existing orphan risk from the
 macOS side; pushing our branch anywhere rescues it.) Options: a
 hiasihaho/ghostty fork + .gitmodules URL switch on the linux-port branch,
 or manaflow grants access / pulls the branch.
+
+## 2026-07-17 — Ghostty shim increment 2: surfaces live inside cmux-adw
+
+Ghostty terminals now run inside cmux-adw behind a double opt-in:
+build with `CMUX_GHOSTTY=1 swift build` (links the shim; the
+`CGhosttyEmbed` module only exists then, so `#if canImport` keeps
+default builds VTE-only) and launch with `CMUX_TERM=ghostty`.
+
+- Shim v2 (`ghostty` branch `linux-gtk-embed`, `1131dbb`): per-surface
+  working directory + env vars via a cloned per-surface config —
+  smoke-verified (`title changed: hias@fedora:/tmp`), and the human
+  verified typing/rendering in the increment-1 harness.
+- cmux side: `GhosttySurfaceFactory` mirrors the VTE factory (same
+  CMUX_* identity env, cwd, scrolled-window container, registry entry);
+  titles arrive via `notify::title`, bell via `notify::bell-ringing`
+  rising edge, focus via an EventControllerFocus. `SurfaceRegistry` grew
+  a third surface kind; title/cwd queries dispatch to GObject
+  properties (`title`, `pwd`) for ghostty surfaces.
+- Verified on the dev instance: OSC titles flow into the tab model
+  (visible and background→selected workspaces, incl. cwd `/tmp`
+  round-trip), session restore, splits (two ghostty panes), no crashes.
+
+Known limitations (increment 3 backlog):
+- `surface.send_text/send_key/read_text` are VTE-typed — ghostty panes
+  need shim exports (`core_surface.textCallback`/`dumpTextLocked`; the
+  embedded apprt shows the pattern). Until then the closed loop
+  (agents driving panes) only works in VTE mode.
+- Shells in never-shown background workspaces don't spawn until the
+  workspace is first selected (unmapped GLArea → no core surface); VTE
+  pre-sizes 80×24 and spawns immediately. Needs a realize-offscreen
+  strategy or eager PTY sizing.
+- `no resources dir set, shell integration disabled` — ghostty's shell
+  integration scripts aren't found; consider exporting
+  GHOSTTY_RESOURCES_DIR from the zig-out share dir.
+- One unexplained one-off: in the first dev run, a background-created
+  workspace's title never propagated (shell spawned fine); did not
+  reproduce after rebuild. Watch during dogfood.
+- The GLib CRITICAL (`g_application_get_dbus_connection` on the
+  unregistered app) appears at surface spawn (systemd scope
+  transition, gtk_post_fork) — harmless but should be gated.
 
 ## Known gotchas (for future sessions)
 

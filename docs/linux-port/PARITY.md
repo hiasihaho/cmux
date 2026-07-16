@@ -99,7 +99,7 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | Split panes (GtkPaned tree) | ✅ | fresh splits balance 50/50 at first allocation (phase 5b fix) |
 | Divider position persistence across restart | ❌ | session schema v3 candidate; positions survive in-session rebuilds only |
 | Session persistence (layout, cwds, URLs, selection) | ✅ | XDG JSON, schema v2 |
-| Terminal surfaces | 🟡 | VTE stands in; Ghostty fidelity via Zig C-shim is the plan (keys, OSC 9/777, scrollback API) |
+| Terminal surfaces | 🟡 | VTE default; embedded Ghostty surfaces work behind CMUX_GHOSTTY=1 build + CMUX_TERM=ghostty runtime (titles/pwd/bell/focus wired; send/read verbs + background spawn still VTE-only — see GHOSTTY-SHIM.md) |
 | Browser panes (WebKitGTK) | ✅ | |
 | Terminal find overlay | ❌ | VTE has search API; UI missing |
 | Command palette | ❌ | |

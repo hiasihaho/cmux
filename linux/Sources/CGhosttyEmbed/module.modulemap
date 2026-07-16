@@ -1,0 +1,4 @@
+module CGhosttyEmbed [system] {
+    header "shim.h"
+    link "ghostty-gtk"
+}

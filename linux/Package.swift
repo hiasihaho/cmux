@@ -9,6 +9,17 @@ import Foundation
 // revision. Select with: CMUX_GNOME=50 swift build
 let gnome50 = ProcessInfo.processInfo.environment["CMUX_GNOME"] == "50"
 
+// Opt-in Ghostty terminal surfaces (experimental): CMUX_GHOSTTY=1 links the
+// embedding shim built from the ghostty submodule (branch linux-gtk-embed):
+//   cd ../ghostty && zig build lib-gtk -Dapp-runtime=gtk -Dversion-string=1.3.0-dev
+// Runtime still requires CMUX_TERM=ghostty to swap the VTE factory.
+let ghosttyEmbed = ProcessInfo.processInfo.environment["CMUX_GHOSTTY"] == "1"
+let repoRoot = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent()  // Package.swift
+    .deletingLastPathComponent()  // linux/
+    .path
+let ghosttyOut = "\(repoRoot)/ghostty/zig-out"
+
 let adwaitaSwift: Package.Dependency = gnome50
     ? .package(url: "https://git.aparoksha.dev/aparoksha/adwaita-swift", branch: "main")
     : .package(
@@ -40,9 +51,18 @@ let package = Package(
                 "CVte",
                 "CWebKit",
                 .product(name: "Adwaita", package: "adwaita-swift")
-            ],
+            ] + (ghosttyEmbed ? ["CGhosttyEmbed"] : []),
             path: "Sources/CmuxAdw",
             swiftSettings: [.swiftLanguageMode(.v5)]
+                + (ghosttyEmbed
+                    ? [.unsafeFlags(["-Xcc", "-I\(ghosttyOut)/include"])]
+                    : []),
+            linkerSettings: ghosttyEmbed
+                ? [.unsafeFlags([
+                    "-L\(ghosttyOut)/lib",
+                    "-Xlinker", "-rpath", "-Xlinker", "\(ghosttyOut)/lib",
+                ])]
+                : []
         ),
         // Symlink to ../CLI — the CLI is shared, unmodified source with the
         // macOS app (Linux differences live behind #if inside CLI/cmux.swift).
@@ -51,5 +71,13 @@ let package = Package(
             path: "Sources/CmuxCLI",
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
-    ]
+    ] + (ghosttyEmbed
+        // Declared only when opted in so `#if canImport(CGhosttyEmbed)`
+        // is cleanly false in default (VTE-only) builds.
+        ? [.systemLibrary(
+            name: "CGhosttyEmbed",
+            path: "Sources/CGhosttyEmbed",
+            pkgConfig: "gtk4"
+        )]
+        : [])
 )

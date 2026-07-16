@@ -13,6 +13,9 @@ final class SurfaceRegistry {
 
     private(set) var terminals: [UUID: UnsafeMutablePointer<VteTerminal>] = [:]
     private(set) var browsers: [UUID: OpaquePointer] = [:]
+    /// Embedded Ghostty surface widgets (experimental CMUX_TERM=ghostty
+    /// mode) — GhosttySurface GtkWidgets held opaquely like browsers.
+    private(set) var ghosttys: [UUID: OpaquePointer] = [:]
     private(set) var containers: [UUID: OpaquePointer] = [:]
     private var spawnTimes: [UUID: Date] = [:]
     private var lastBellTimes: [UUID: Date] = [:]
@@ -25,6 +28,20 @@ final class SurfaceRegistry {
         terminals[surfaceId] = terminal
         containers[surfaceId] = container
         spawnTimes[surfaceId] = Date()
+    }
+
+    func registerGhostty(
+        _ widget: OpaquePointer,
+        container: OpaquePointer,
+        for surfaceId: UUID
+    ) {
+        ghosttys[surfaceId] = widget
+        containers[surfaceId] = container
+        spawnTimes[surfaceId] = Date()
+    }
+
+    func ghostty(for surfaceId: UUID) -> OpaquePointer? {
+        ghosttys[surfaceId]
     }
 
     /// Bell policy — shell startup banners (fastfetch & friends) often emit
@@ -62,6 +79,7 @@ final class SurfaceRegistry {
     func unregister(_ surfaceId: UUID) {
         terminals.removeValue(forKey: surfaceId)
         browsers.removeValue(forKey: surfaceId)
+        ghosttys.removeValue(forKey: surfaceId)
         containers.removeValue(forKey: surfaceId)
         spawnTimes.removeValue(forKey: surfaceId)
         lastBellTimes.removeValue(forKey: surfaceId)
@@ -79,6 +97,11 @@ final class SurfaceRegistry {
 
     /// Live window title of a terminal surface (OSC 0/2).
     func currentTerminalTitle(for surfaceId: UUID) -> String? {
+        #if canImport(CGhosttyEmbed)
+        if ghosttys[surfaceId] != nil {
+            return currentGhosttyTitle(for: surfaceId)
+        }
+        #endif
         guard let terminal = terminals[surfaceId],
               let title = vte_terminal_get_window_title(terminal) else { return nil }
         let string = String(cString: title)
@@ -87,6 +110,11 @@ final class SurfaceRegistry {
 
     /// Shell working directory reported via OSC 7 (vte.sh), if any.
     func currentDirectory(for surfaceId: UUID) -> String? {
+        #if canImport(CGhosttyEmbed)
+        if ghosttys[surfaceId] != nil {
+            return currentGhosttyDirectory(for: surfaceId)
+        }
+        #endif
         guard let terminal = terminals[surfaceId],
               let uri = vte_terminal_get_current_directory_uri(terminal),
               let path = g_filename_from_uri(uri, nil, nil) else { return nil }
@@ -136,7 +164,22 @@ struct TerminalStackWidget: AdwaitaWidget {
             for leaf in tab.surfaces where SurfaceRegistry.shared.containers[leaf.surfaceId] == nil {
                 switch leaf.kind {
                 case .terminal:
+                    #if canImport(CGhosttyEmbed)
+                    if GhosttyRuntime.available() {
+                        GhosttySurfaceFactory.create(
+                            for: leaf,
+                            in: tab,
+                            storage: storage,
+                            onTitleChanged: onTitleChanged,
+                            onBell: onBell,
+                            onSurfaceFocused: onSurfaceFocused
+                        )
+                    } else {
+                        createTerminal(for: leaf, in: tab, storage: storage)
+                    }
+                    #else
                     createTerminal(for: leaf, in: tab, storage: storage)
+                    #endif
                 case .browser:
                     BrowserSurfaceFactory.create(
                         for: leaf,
@@ -211,6 +254,8 @@ struct TerminalStackWidget: AdwaitaWidget {
             if let focused = tab.focusedSurface {
                 if let terminal = SurfaceRegistry.shared.terminal(for: focused.surfaceId) {
                     gtk_widget_grab_focus(asWidget(terminal))
+                } else if let ghostty = SurfaceRegistry.shared.ghostty(for: focused.surfaceId) {
+                    gtk_widget_grab_focus(UnsafeMutablePointer<GtkWidget>(ghostty))
                 } else if let container = SurfaceRegistry.shared.containers[focused.surfaceId] {
                     gtk_widget_grab_focus(UnsafeMutablePointer<GtkWidget>(container))
                 }

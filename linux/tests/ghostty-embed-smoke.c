@@ -36,7 +36,11 @@ static void activate(GtkApplication *app, gpointer user_data) {
     }
     g_print("smoke: ghostty_embed_init ok\n");
 
-    GtkWidget *surface = ghostty_embed_surface_new();
+    // Exercise per-surface overrides: cwd lands in the shell prompt/title
+    // (verifiable from the notify::title print), env var checkable by hand.
+    const char *env_keys[] = {"SMOKE_TEST_VAR"};
+    const char *env_values[] = {"it-works"};
+    GtkWidget *surface = ghostty_embed_surface_new("/tmp", env_keys, env_values, 1);
     if (surface == NULL) {
         g_printerr("smoke: ghostty_embed_surface_new failed\n");
         gtk_window_present(GTK_WINDOW(window));
