@@ -121,6 +121,19 @@ Sources/CmuxAdw/
 Sources/CVte/              — VTE-GTK4 C bindings (system library)
 ```
 
+## Closed-loop dogfooding
+
+`scripts/dogfood.sh "focus instructions" [timeout-min]` spawns a headless
+Claude Code QA agent **inside** the running app (new workspace tab), lets it
+exercise the port from within via the `cmux` CLI (tools restricted to
+Bash/Read/Grep/Glob, guardrails against touching the human's panes), and
+blocks until its markdown report lands in
+`~/.local/share/cmux/dogfood/report-<stamp>.md`. Run it in the background
+from an outer agent session and the report wakes the outer agent — a full
+build → test-from-inside → report → fix loop. Note: the tester runs
+unsupervised with pre-approved Bash; start it yourself (or give the outer
+agent explicit permission) — it consumes Claude usage.
+
 ## Development workflow
 
 - Work happens on the **`linux-port`** branch of the fork
