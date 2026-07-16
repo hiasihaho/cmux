@@ -567,6 +567,47 @@ surviving restart + fresh OSC titles, both notification aliases over the
 raw wire). INSIDE-CMUX.md's milestone line updated — the automation
 surface is done; next up is the Ghostty Zig C-shim, then Flatpak.
 
+## 2026-07-16 — Ghostty embedding shim: scouting + increment 1 (live surface)
+
+Started the Ghostty-fidelity milestone. Full design in
+[GHOSTTY-SHIM.md](GHOSTTY-SHIM.md) (written from three deep source sweeps
+over the fork at `80d3fa0`); the shim itself lives on ghostty branch
+**`linux-gtk-embed`** (local commit `eb3fac7`, unpushed — see below).
+
+Increment 1 works end-to-end: `zig build lib-gtk -Dapp-runtime=gtk
+-Dversion-string=1.3.0-dev` produces `libghostty-gtk.so` +
+`ghostty_gtk_embed.h`, and the C harness
+(`linux/tests/ghostty-embed-smoke.c`) hosts a **live Ghostty terminal
+surface inside a plain foreign GtkApplication**: shell spawns, GL
+renders, and the OSC title flows core → performAction → GObject `title`
+property → host `notify::title` handler (`smoke: title changed:
+hias@fedora:~`). No crash over the test window's lifetime.
+
+What the fork changes are (all embed-gated, standalone Ghostty
+unchanged): `.lib` artifact + `-Dapp-runtime=gtk` now selects the GTK
+apprt; lib builds get the GTK/glad/gresource deps; `Application.default()`
+resolves through an embed global (the process-default GApplication is the
+host's); `wakeup()` pumps `core_app.tick` via coalesced idle sources
+(`run()` never executes in embed mode); `setGtkEnv` skipped (host already
+initialized GTK — its assertion trips otherwise, found by the first smoke
+run).
+
+Known issues for increment 2: a non-fatal GLib CRITICAL
+(`g_application_get_dbus_connection` on the unregistered Application —
+find and gate the call site); `startup()` never runs so its CSS-provider
+attach is missing (overlay styling may look off); per-surface
+working-directory/command plumbing (likely via a cloned per-surface
+`config` GObject property); interactive typing not yet verified (needs a
+human or the cmux integration).
+
+**Blocked on repo topology**: hiasihaho has no push access to
+manaflow-ai/ghostty, so `linux-gtk-embed` is local-only and the parent
+submodule pointer stays at `80d3fa0` for now. (That base commit is itself
+unreachable from any remote branch — a pre-existing orphan risk from the
+macOS side; pushing our branch anywhere rescues it.) Options: a
+hiasihaho/ghostty fork + .gitmodules URL switch on the linux-port branch,
+or manaflow grants access / pulls the branch.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge
