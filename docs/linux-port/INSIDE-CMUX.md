@@ -93,10 +93,14 @@ you. Triage pattern: root-cause before trusting findings (cycle 2's
   persistence, browser panes, the full browser automation surface —
   eval/snapshot/actions/screenshot/find/frame/dialog/cookies/storage/
   console — plus workspace rename/next/previous/last and notification v2
-  aliases) plus five dogfood cycles.
-- **Next milestones**: Ghostty fidelity via a Zig C-shim around the
-  fork's GTK apprt (libghostty builds on Linux — zig 0.15.2 at
-  `~/.local/zig/`; its C API is Apple-only today), Flatpak packaging.
+  aliases) plus five dogfood cycles; **Ghostty shim increments 1–2**
+  (embedded Ghostty surfaces run inside cmux-adw behind `CMUX_GHOSTTY=1`
+  build + `CMUX_TERM=ghostty` runtime — GHOSTTY-SHIM.md; shim on ghostty
+  branch `linux-gtk-embed`, fork hiasihaho/ghostty).
+- **Next milestones**: Ghostty shim increment 3 (send/read verbs for
+  ghostty panes so agents can drive them, eager background-workspace
+  spawn, shell-integration resources dir, then a ghostty-mode dogfood
+  cycle and the default flip), Flatpak packaging.
 - **Environment**: Fedora 43 host (GNOME 49 → adwaita-swift pinned;
   `CMUX_GNOME=50` or `linux/scripts/build-gnome50.sh` for the Fedora 44
   container build). System Swift 6.2. Build from `linux/`, never the repo

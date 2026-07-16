@@ -20,8 +20,11 @@ full analysis and phased plan.
       per tab (kept alive across switches), OSC titles → tab titles, bell →
       attention dots, `cmux send`/`read-screen` work; shells get
       `CMUX_WORKSPACE_ID`/`CMUX_SURFACE_ID`/`CMUX_SOCKET_PATH`
-- [ ] Phase 2 (part 2) — Ghostty fidelity behind the same surface slot
-      (libghostty builds on Linux — see `../docs/linux-port/PROGRESS.md`)
+- [~] Phase 2 (part 2) — Ghostty fidelity: embedded Ghostty surfaces work
+      behind `CMUX_GHOSTTY=1` build + `CMUX_TERM=ghostty` runtime (titles,
+      pwd, bell, focus, splits, session restore); `send`/`read-screen`
+      verbs and eager background spawn still VTE-only — plan and status in
+      [`../docs/linux-port/GHOSTTY-SHIM.md`](../docs/linux-port/GHOSTTY-SHIM.md)
 - [x] Phase 3 (part 1) — XDG desktop notifications for background tabs
       (GNotification; run `scripts/install-desktop-entry.sh` once so GNOME
       displays them) and `send-key` (enter/ctrl-c/arrows/…)
@@ -39,8 +42,14 @@ full analysis and phased plan.
       <url>` splits a live web view into the workspace; navigate/back/
       forward/reload/url/title over the socket; page titles drive tab
       titles; URLs persist across restarts
-- [ ] Phase 5 (part 2) — browser automation verbs (eval/snapshot/click…),
-      address-bar UI
+- [x] Phase 5 (parts 2–3) — the full browser automation surface over the
+      socket: eval/snapshot/wait, click/fill/type/select and friends,
+      screenshot, ten find locators, iframe scoping, dialogs, cookies,
+      local/session storage, console/errors capture, download wait — plus
+      workspace rename/next/previous/last and notification v2 aliases
+      (per-verb status: [`../docs/linux-port/PARITY.md`](../docs/linux-port/PARITY.md))
+- [ ] Address-bar / browser chrome UI
+- [ ] Flatpak packaging
 
 ## Daily use
 
@@ -51,7 +60,11 @@ ln -sf "$PWD/.build/debug/cmux-adw" ~/.local/bin/cmux-adw # the app
 ./scripts/install-desktop-entry.sh                        # launcher + notifications
 ```
 
-Launch the app from the GNOME app grid ("cmux") or with `cmux-adw &`. The
+Launch the app from the GNOME app grid ("cmux"), with `cmux-adw &`, or via
+the launcher script — `scripts/start.sh` (daily instance, refuses to
+double-launch), `scripts/start.sh dev [--ghostty]` (isolated second
+instance for testing: own socket/session/app-id), `scripts/start.sh
+stop-dev` / `status`. The
 symlinks survive rebuilds (`swift build` replaces the binaries in place).
 Shells inside cmux get `CMUX_WORKSPACE_ID`/`CMUX_SURFACE_ID`/
 `CMUX_SOCKET_PATH`, so `cmux <command>` inside a pane targets that pane by
@@ -83,6 +96,23 @@ cd linux
 swift build          # or: swift run cmux-adw
 ```
 
+### Optional: embedded Ghostty terminals (experimental)
+
+Terminal panes default to VTE. Real Ghostty surfaces are available behind a
+double opt-in — build the embedding shim from the ghostty submodule (branch
+`linux-gtk-embed`, fork hiasihaho/ghostty), then link it:
+
+```sh
+cd ../ghostty && ~/.local/zig/zig-x86_64-linux-0.15.2/zig build lib-gtk \
+    -Dapp-runtime=gtk -Dversion-string=1.3.0-dev
+cd ../linux && CMUX_GHOSTTY=1 swift build     # links libghostty-gtk.so
+./scripts/start.sh dev --ghostty              # try it in an isolated instance
+```
+
+Without `CMUX_TERM=ghostty` at runtime the same binary behaves exactly like
+the VTE build. Design, current C API, and remaining work:
+[`../docs/linux-port/GHOSTTY-SHIM.md`](../docs/linux-port/GHOSTTY-SHIM.md).
+
 ### Dual-target builds: GNOME 49 and GNOME 50
 
 The package builds against both SDK generations; only the adwaita-swift
@@ -112,13 +142,19 @@ Sources/CmuxAdw/
   CmuxApp.swift            — app entry, window scene, shortcuts, callbacks
   Views.swift              — sidebar (vertical tabs + attention dots), empty state
   Model.swift              — workspace/pane-tree/notification model (pure)
-  TerminalSurfaces.swift   — GtkStack + GtkPaned skeletons hosting VTE terminals
+  TerminalSurfaces.swift   — GtkStack + GtkPaned skeletons, VTE factory,
+                             SurfaceRegistry (strong-ref'd widget map)
+  GhosttySurfaces.swift    — embedded Ghostty surface factory (CMUX_GHOSTTY builds)
+  BrowserSurfaces.swift    — WebKitGTK browser factory + navigation verbs
+  BrowserAutomation.swift  — async browser automation verbs (eval/find/dialog/…)
   ControlProtocol.swift    — v1/v2 socket protocol handlers
   ControlSocketServer.swift— AF_UNIX server (thread-per-connection → GTK main loop)
   SessionStore.swift       — session snapshot/restore (XDG)
   DesktopNotifier.swift    — GNotification delivery
   RefRegistry.swift        — workspace:/pane:/surface: handle refs
 Sources/CVte/              — VTE-GTK4 C bindings (system library)
+Sources/CWebKit/           — WebKitGTK 6.0 C bindings (system library)
+Sources/CGhosttyEmbed/     — Ghostty embedding shim bindings (CMUX_GHOSTTY=1 only)
 ```
 
 ## Closed-loop dogfooding
@@ -145,3 +181,7 @@ agent explicit permission) — it consumes Claude usage.
 - Conversation exports (`2026-*.txt`) are gitignored — never commit them.
 - Changes to shared sources (`CLI/cmux.swift`) must keep building on macOS:
   Linux differences live behind `#if canImport(Darwin)` / `#if os(Linux)`.
+- The `ghostty/` submodule points at the **hiasihaho/ghostty** fork on this
+  branch (`.gitmodules` switched; no push access to manaflow-ai/ghostty).
+  Shim work lives on its `linux-gtk-embed` branch — always push the
+  submodule commit there **before** committing a parent pointer to it.

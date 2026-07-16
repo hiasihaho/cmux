@@ -120,16 +120,46 @@ resolve at the first submodule push (may need a hiasihaho fork +
 
 ## Increments
 
-1. **Skeleton + smoke test** — build gates, `Application.default()`
-   embed global, idle tick pump, `ghostty_embed_init` +
-   `ghostty_embed_surface_new`, C test harness showing a live shell in a
-   plain GtkApplication window. Exit criterion: typing works, output
-   renders, no crash on window close.
-2. **cmux integration** — Swift module, `GhosttySurfaceFactory`, wire
-   `notify::title`/`notify::pwd`/bell into the tab model, child-exited →
-   close pane, `read_text`/`send_text` verbs switch backends, CSS setup.
-   Dev-instance dogfood cycle with `CMUX_TERM=ghostty`.
-3. **Parity + default flip** — send-key translation, font-size verbs,
-   selection/clipboard verbs, scrollback read_text `--scrollback`,
-   session-restore interplay, kill VTE path or keep as fallback;
-   PARITY.md rows for terminal fidelity.
+1. ✅ **Skeleton + smoke test** (shipped 2026-07-16, ghostty `eb3fac7`) —
+   build gates, `Application.default()` embed global, idle tick pump,
+   `ghostty_embed_init` + `ghostty_embed_surface_new`, C harness
+   (`linux/tests/ghostty-embed-smoke.c`). Human-verified: typing,
+   execution, rendering, OSC title flow.
+2. ✅ **cmux integration** (shipped 2026-07-17, ghostty `1131dbb` + cmux
+   `7c02f2de9`) — per-surface working-directory/env via a cloned config
+   (shim v2 signature below), `CGhosttyEmbed` Swift module gated on
+   `CMUX_GHOSTTY=1`, `GhosttySurfaceFactory` with the CMUX_* identity
+   env, `notify::title`/`notify::bell-ringing`/focus wired into the tab
+   model, registry third surface kind with property-backed title/pwd.
+   Verified: titles (visible + background→selected + cwd round-trip),
+   session restore, splits. Launch via `linux/scripts/start.sh dev
+   --ghostty`.
+3. **Verb parity + default flip** (next) — in rough order:
+   - `surface.send_text` / `send_key` / `read_text` for ghostty panes:
+     shim exports over `core_surface` (`textCallback`, key events,
+     `dumpTextLocked`; the embedded apprt's CAPI shows the pattern).
+     This gates any ghostty-mode dogfood cycle — agents can't drive
+     panes without them.
+   - Eager background spawn: shells in never-shown workspaces don't
+     start until the GLArea first maps (VTE pre-sizes 80×24 and spawns
+     immediately). Needs offscreen realization or eager PTY sizing.
+   - `GHOSTTY_RESOURCES_DIR` (zig-out share dir) so shell integration
+     activates; CSS-provider attach from shim init (skipped `startup()`);
+     gate the harmless `g_application_get_dbus_connection` CRITICAL at
+     surface spawn (gtk_post_fork systemd scope path).
+   - Watch for the one unreproduced title-flake from the first dev run
+     (PROGRESS 2026-07-17); then ghostty-mode dogfood cycle, PARITY rows,
+     default flip (keep VTE as fallback initially).
+
+Current shim C API (`include/ghostty_gtk_embed.h`, branch
+`linux-gtk-embed`):
+
+    int   ghostty_embed_init(void);
+    void* ghostty_embed_surface_new(const char* working_directory,
+                                    const char** env_keys,
+                                    const char** env_values,
+                                    size_t env_len);   // -> GtkWidget* (floating)
+
+Build: `zig build lib-gtk -Dapp-runtime=gtk -Dversion-string=1.3.0-dev`
+→ `zig-out/lib/libghostty-gtk.so` + header; consumed by
+`CMUX_GHOSTTY=1 swift build` in `linux/`.
