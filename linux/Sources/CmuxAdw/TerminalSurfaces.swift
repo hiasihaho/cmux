@@ -20,11 +20,30 @@ final class SurfaceRegistry {
     private var spawnTimes: [UUID: Date] = [:]
     private var lastBellTimes: [UUID: Date] = [:]
 
+    /// The registry holds STRONG GObject refs on every stored widget:
+    /// entries are queried from timers (15s session autosave → OSC 7 cwd)
+    /// that can otherwise race widget destruction — a dangling VteTerminal
+    /// pointer segfaulted the app inside `vte_terminal_get_current_directory_uri`
+    /// (coredump 2026-07-17 00:06). A ref'd widget may be destroyed
+    /// (disposed) but its memory stays valid until we unref in
+    /// `unregister`, so getters degrade to nil instead of crashing.
+    private func retain(_ pointer: OpaquePointer) {
+        g_object_ref(UnsafeMutableRawPointer(pointer))
+    }
+
+    private func release(_ pointer: OpaquePointer?) {
+        if let pointer {
+            g_object_unref(UnsafeMutableRawPointer(pointer))
+        }
+    }
+
     func registerTerminal(
         _ terminal: UnsafeMutablePointer<VteTerminal>,
         container: OpaquePointer,
         for surfaceId: UUID
     ) {
+        retain(OpaquePointer(terminal))
+        retain(container)
         terminals[surfaceId] = terminal
         containers[surfaceId] = container
         spawnTimes[surfaceId] = Date()
@@ -35,6 +54,8 @@ final class SurfaceRegistry {
         container: OpaquePointer,
         for surfaceId: UUID
     ) {
+        retain(widget)
+        retain(container)
         ghosttys[surfaceId] = widget
         containers[surfaceId] = container
         spawnTimes[surfaceId] = Date()
@@ -72,15 +93,19 @@ final class SurfaceRegistry {
         container: OpaquePointer,
         for surfaceId: UUID
     ) {
+        retain(webView)
+        retain(container)
         browsers[surfaceId] = webView
         containers[surfaceId] = container
     }
 
     func unregister(_ surfaceId: UUID) {
-        terminals.removeValue(forKey: surfaceId)
-        browsers.removeValue(forKey: surfaceId)
-        ghosttys.removeValue(forKey: surfaceId)
-        containers.removeValue(forKey: surfaceId)
+        if let terminal = terminals.removeValue(forKey: surfaceId) {
+            release(OpaquePointer(terminal))
+        }
+        release(browsers.removeValue(forKey: surfaceId))
+        release(ghosttys.removeValue(forKey: surfaceId))
+        release(containers.removeValue(forKey: surfaceId))
         spawnTimes.removeValue(forKey: surfaceId)
         lastBellTimes.removeValue(forKey: surfaceId)
         BrowserElementRefs.shared.clear(for: surfaceId)

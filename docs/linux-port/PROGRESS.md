@@ -652,6 +652,26 @@ Known limitations (increment 3 backlog):
   unregistered app) appears at surface spawn (systemd scope
   transition, gtk_post_fork) — harmless but should be gated.
 
+## 2026-07-17 — SurfaceRegistry strong refs (daily-instance SIGSEGV)
+
+The user's daily instance segfaulted at 00:06 inside
+`vte_terminal_get_current_directory_uri` ← `g_type_check_instance_is_a`
+(coredump pid 1207432): the 15-second session-autosave timer queried the
+OSC 7 cwd through `SurfaceRegistry`, which held RAW widget pointers — a
+destroyed VteTerminal left a dangling pointer and the type check faulted.
+Forensics gotchas from the triage: the frame symbols in `coredumpctl
+info` were garbage because the on-disk binary had been rebuilt since the
+process started (only shared-lib frames were trustworthy), and grepping
+the core for env vars matches *terminal scrollback* text too — anchor
+exact `KEY=value` strings to tell the env block from displayed text.
+
+Fix: the registry now takes a GObject strong ref on every registered
+widget/container (terminal, browser, ghostty) and releases it in
+`unregister`. A disposed-but-referenced widget degrades getters to nil
+instead of crashing; refs on floating widgets don't sink them, so
+container ownership is unchanged. Verified with workspace churn spanning
+multiple autosave ticks in both VTE and ghostty modes.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge
