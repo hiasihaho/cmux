@@ -134,7 +134,13 @@ resolve at the first submodule push (may need a hiasihaho fork +
    Verified: titles (visible + background→selected + cwd round-trip),
    session restore, splits. Launch via `linux/scripts/start.sh dev
    --ghostty`.
-3. **Verb parity + default flip** (next) — in rough order:
+3. ✅ **Verb parity** (shipped 2026-07-17, ghostty `29abd52`/`df6a4f4` +
+   cmux `e45317e6e`..`5d09f1bad`) — send/read verbs (dogfood cycle 6
+   passed), shell-integration resources, dbus CRITICAL gate, window
+   autoresize via the SurfaceScrolledWindow container export,
+   close-request → pane auto-close.
+4. **Default flip** (next) — remaining before ghostty becomes the
+   default terminal:
    - `surface.send_text` / `send_key` / `read_text` for ghostty panes:
      shim exports over `core_surface` (`textCallback`, key events,
      `dumpTextLocked`; the embedded apprt's CAPI shows the pattern).

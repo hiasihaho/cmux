@@ -712,6 +712,35 @@ the split-in-nonselected-workspace case), child-exited → auto-close pane
 easy Swift-side trigger), the unreproduced title flake, then the default
 flip to ghostty.
 
+## 2026-07-17 — Ghostty increment 4 (part 1): window autoresize + auto-close
+
+Two user-facing fixes, verified on dev2:
+
+- **Panes now track the host window size.** The factory hosted surfaces
+  in a plain `GtkScrolledWindow` (automatic policies) — a GtkScrollable
+  child keeps its natural size there, so ghostty panes never resized
+  with the window (split reallocation worked; window growth/shrink
+  didn't). Fix: new shim export `ghostty_embed_surface_container_new`
+  wraps the surface in Ghostty's own `SurfaceScrolledWindow`
+  (hscrollbar never, vscrollbar bound to the user's `scrollbar` config).
+- **Clean shell exits close the pane** via the Surface's `close-request`
+  signal (designed exactly for embedding containers): same code path as
+  the close-pane shortcut, last pane closes its workspace. Abnormal
+  exits keep ghostty's overlay and don't auto-close. VTE panes keep
+  their lingering behavior (no clean/abnormal distinction available
+  without C varargs marshalling).
+
+**Eager background spawn — assessed, deliberately deferred.** The two
+viable designs are (a) fork-side: decouple `initSurface`/CoreSurface
+creation from GLArea realization so the PTY spawns at 80×24 pre-map like
+VTE — renderer-init surgery (OpenGL prepareContext runs off the realized
+context); or (b) host-side: replace the workspace GtkStack with an
+always-mapped container (GtkOverlay + opacity/can-target) so GLAreas
+realize immediately — GPU/occlusion cost for every hidden workspace.
+Both are half-day+ with real risk; the agent-facing gap is already
+covered (clear `unavailable` error, select-once recovery, dogfood.sh
+auto-select). Revisit before the default flip.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge
