@@ -1,0 +1,22 @@
+{
+  "app_bundle_path" : "/Users/lawrence/Library/Developer/Xcode/DerivedData/cmux-trajdf/Build/Products/Debug/cmux DEV trajdf.app",
+  "app_cli_path" : "/Users/lawrence/Library/Developer/Xcode/DerivedData/cmux-trajdf/Build/Products/Debug/cmux DEV trajdf.app/Contents/Resources/bin/cmux",
+  "app_executable_path" : "/Users/lawrence/Library/Developer/Xcode/DerivedData/cmux-trajdf/Build/Products/Debug/cmux DEV trajdf.app/Contents/MacOS/cmux DEV",
+  "bundle_identifier" : "com.cmuxterm.app.debug.trajdf",
+  "caller" : null,
+  "focused" : {
+    "is_browser_surface" : false,
+    "pane_id" : "23DAF18D-536B-4F36-87DC-D2AE9B66AA6C",
+    "pane_ref" : "pane:41",
+    "surface_id" : "C0722271-D8F1-492A-BB85-2799769968B1",
+    "surface_ref" : "surface:41",
+    "surface_type" : "terminal",
+    "tab_id" : "C0722271-D8F1-492A-BB85-2799769968B1",
+    "tab_ref" : "tab:41",
+    "window_id" : "8849FE4E-DCFA-496F-896E-46A6C3E1BB0D",
+    "window_ref" : "window:1",
+    "workspace_id" : "773698EA-20CC-417E-B725-F854A89294CF",
+    "workspace_ref" : "workspace:41"
+  },
+  "socket_path" : "/tmp/cmux-debug-trajdf.sock"
+}
