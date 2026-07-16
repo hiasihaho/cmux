@@ -1,6 +1,8 @@
 <h1 align="center">cmux</h1>
 <p align="center">A Ghostty-based macOS terminal with vertical tabs and notifications for AI coding agents</p>
 
+<p align="center"><b>This fork carries a work-in-progress Linux port</b> (GTK4/libadwaita, Swift) — see <a href="linux/README.md">linux/</a> and <a href="docs/linux-port/PORTING.md">the porting plan</a>.</p>
+
 <p align="center">
   <a href="https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg">
     <img src="./docs/assets/macos-badge.png" alt="Download cmux for macOS" width="180" />

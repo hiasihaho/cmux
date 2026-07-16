@@ -86,7 +86,26 @@ sudo dnf install swift-lang gtk4-devel libadwaita-devel   # passwordless inside 
 
 ```
 Sources/CmuxAdw/
-  CmuxApp.swift   — app entry, window scene, tab actions
-  Views.swift     — sidebar (vertical tabs + attention dots), content area
-  Model.swift     — portable tab/workspace model
+  CmuxApp.swift            — app entry, window scene, shortcuts, callbacks
+  Views.swift              — sidebar (vertical tabs + attention dots), empty state
+  Model.swift              — workspace/pane-tree/notification model (pure)
+  TerminalSurfaces.swift   — GtkStack + GtkPaned skeletons hosting VTE terminals
+  ControlProtocol.swift    — v1/v2 socket protocol handlers
+  ControlSocketServer.swift— AF_UNIX server (thread-per-connection → GTK main loop)
+  SessionStore.swift       — session snapshot/restore (XDG)
+  DesktopNotifier.swift    — GNotification delivery
+  RefRegistry.swift        — workspace:/pane:/surface: handle refs
+Sources/CVte/              — VTE-GTK4 C bindings (system library)
 ```
+
+## Development workflow
+
+- Work happens on the **`linux-port`** branch of the fork
+  (`origin` = hiasihaho/cmux, `upstream` = manaflow-ai/cmux); local `main`
+  stays a pristine pointer at upstream.
+- One commit per phase/feature, **docs updated in the same commit**:
+  `../docs/linux-port/PROGRESS.md` (what + verification evidence) and this
+  README's status list; `PORTING.md` when the plan itself shifts.
+- Conversation exports (`2026-*.txt`) are gitignored — never commit them.
+- Changes to shared sources (`CLI/cmux.swift`) must keep building on macOS:
+  Linux differences live behind `#if canImport(Darwin)` / `#if os(Linux)`.

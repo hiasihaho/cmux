@@ -81,11 +81,15 @@ submodule `vendor/bonsplit`), WebKit (browser panels).
   working terminal, then swap in Ghostty via a Zig C-shim around the fork's
   GTK apprt (or upstream's embedder API when it lands). Wire `SET_TITLE`,
   `PWD`, bell/`DESKTOP_NOTIFICATION` events into the tab model either way.
-- **Phase 3 — attention pipeline**: `TerminalNotificationStore` port,
-  `GNotification` delivery, sidebar dots + `GtkOverlay` rings, unread counts.
-- **Phase 4 — splits & session**: Bonsplit-API reimplementation over
-  `AdwTabView` + `GtkPaned` (evaluate libpanel first); session
-  snapshot/restore incl. scrollback replay env vars.
+- **Phase 3 — attention pipeline** (part 1 ✅): notification store, sidebar
+  dots, `GNotification` desktop delivery (needs the installed .desktop
+  entry), `send-key`. Remaining: notifications page UI, `GtkOverlay` rings,
+  unread badge polish.
+- **Phase 4 — splits & session** ✅: pane tree over nested `GtkPaned`
+  (terminals reparented across layout changes), focus-follows-click, divider
+  preservation, keyboard shortcuts; session snapshot/restore with live OSC-7
+  cwds under `$XDG_DATA_HOME/cmux/`. Remaining for Bonsplit parity: per-pane
+  tab strips, zoom/equalize, directional navigation, scrollback replay.
 - **Phase 5 — browser panels**: WebKitGTK panel + the `browser.*` automation
   verbs subset.
 - **Phase 6 — polish/packaging**: keyboard shortcuts UI, settings dialog
