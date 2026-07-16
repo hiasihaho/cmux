@@ -331,11 +331,21 @@ extension ControlCommandHandler {
                 })()
                 """ }
         case "browser.dblclick":
+            // Deviation from macOS (which only fires dblclick): a real double
+            // click fires click, click, dblclick — dogfood cycle 4 caught
+            // onclick handlers never running.
             scriptBuilder = { sel in """
                 (() => {
                   const el = document.querySelector(\(sel));
                   if (!el) return { ok: false, error: 'not_found' };
                   el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                  if (typeof el.click === 'function') {
+                    el.click();
+                    el.click();
+                  } else {
+                    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, detail: 1 }));
+                    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, detail: 2 }));
+                  }
                   el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window, detail: 2 }));
                   return { ok: true };
                 })()
@@ -421,12 +431,20 @@ extension ControlCommandHandler {
                 return respond(baError(id: id, code: "invalid_params", message: "Missing value"))
             }
             let valueLiteral = BrowserJS.jsonLiteral(value)
+            // Deviation from macOS: validate the option exists first —
+            // assigning a non-matching value to a <select> silently clears
+            // the selection while still reporting OK (dogfood cycle 4).
             scriptBuilder = { sel in """
                 (() => {
                   const el = document.querySelector(\(sel));
                   if (!el) return { ok: false, error: 'not_found' };
                   if (!('value' in el)) return { ok: false, error: 'not_select' };
-                  el.value = String(\(valueLiteral));
+                  const value = String(\(valueLiteral));
+                  if (el.options) {
+                    const match = Array.from(el.options).some((o) => o.value === value);
+                    if (!match) return { ok: false, error: 'option_not_found' };
+                  }
+                  el.value = value;
                   el.dispatchEvent(new Event('input', { bubbles: true }));
                   el.dispatchEvent(new Event('change', { bubbles: true }));
                   return { ok: true };
@@ -564,21 +582,47 @@ extension ControlCommandHandler {
             return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
         }
         let keyLiteral = BrowserJS.jsonLiteral(key)
+        // Deviation from macOS for `press`: synthetic KeyboardEvents are
+        // untrusted, so the browser never runs the default text-insertion
+        // action — `press 'x'` on a focused input was a silent no-op
+        // (dogfood cycle 4). Emulate insertion for single printable chars.
+        let insertion = method == "browser.press" ? """
+            if (k.length === 1) {
+                try {
+                  if (('value' in target) && !target.disabled && !target.readOnly) {
+                    if (target.selectionStart != null && typeof target.setRangeText === 'function') {
+                      target.setRangeText(k, target.selectionStart, target.selectionEnd, 'end');
+                    } else {
+                      target.value = String(target.value || '') + k;
+                    }
+                    target.dispatchEvent(new Event('input', { bubbles: true }));
+                  } else if (target.isContentEditable) {
+                    target.textContent = String(target.textContent || '') + k;
+                    target.dispatchEvent(new Event('input', { bubbles: true }));
+                  }
+                } catch (_) {}
+              }
+            """ : ""
         let events: [String]
         switch method {
         case "browser.keydown": events = ["keydown"]
         case "browser.keyup": events = ["keyup"]
-        default: events = ["keydown", "keypress", "keyup"]
+        default: events = ["keydown", "keypress"]
         }
         let dispatches = events
             .map { "target.dispatchEvent(new KeyboardEvent('\($0)', { key: k, bubbles: true, cancelable: true }));" }
             .joined(separator: "\n              ")
+        let keyupDispatch = method == "browser.press"
+            ? "target.dispatchEvent(new KeyboardEvent('keyup', { key: k, bubbles: true, cancelable: true }));"
+            : ""
         let script = """
             (() => {
               const target = document.activeElement || document.body || document.documentElement;
               if (!target) return { ok: false, error: 'not_found' };
               const k = String(\(keyLiteral));
               \(dispatches)
+              \(insertion)
+              \(keyupDispatch)
               return { ok: true };
             })()
             """
@@ -737,6 +781,14 @@ extension ControlCommandHandler {
                             id: id, actionName: actionName, selector: selector,
                             attempts: retryAttempts, target: target, respond: respond
                         )
+                        return
+                    }
+                    if errorText == "option_not_found" {
+                        respond(self.baError(
+                            id: id, code: "invalid_params",
+                            message: "No <option> matches the given value",
+                            data: ["action": actionName, "selector": selector]
+                        ))
                         return
                     }
                     respond(self.baError(
@@ -937,6 +989,20 @@ extension ControlCommandHandler {
             if (labelledBy) {
               const text = labelledBy.split(/\\s+/).map((id) => document.getElementById(id)).filter(Boolean).map((n) => __normalize(n.textContent || '')).join(' ').trim();
               if (text) return text;
+            }
+            if (el.id) {
+              const label = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+              if (label) {
+                const text = __normalize(label.textContent || '');
+                if (text) return text;
+              }
+            }
+            if (el.closest) {
+              const wrapping = el.closest('label');
+              if (wrapping) {
+                const text = __normalize(wrapping.textContent || '');
+                if (text) return text;
+              }
             }
             if (el.tagName && String(el.tagName).toLowerCase() === 'input') {
               const placeholder = __normalize(el.getAttribute('placeholder') || '');

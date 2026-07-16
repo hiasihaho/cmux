@@ -2389,11 +2389,20 @@ struct CMUXCLI {
             if let string = value as? String {
                 return string
             }
+            if let number = value as? NSNumber {
+                // Render via a JSON round-trip: it keeps booleans and numbers
+                // apart. A `as? Bool` cast cannot — on Linux (corelibs
+                // Foundation) it succeeds for the NSNumbers 0/1, which turned
+                // `eval '0'` into "false".
+                if let data = try? JSONSerialization.data(withJSONObject: [number], options: []),
+                   let text = String(data: data, encoding: .utf8),
+                   text.count >= 2 {
+                    return String(text.dropFirst().dropLast())
+                }
+                return number.stringValue
+            }
             if let bool = value as? Bool {
                 return bool ? "true" : "false"
-            }
-            if let number = value as? NSNumber {
-                return number.stringValue
             }
             if JSONSerialization.isValidJSONObject(value),
                let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted]),
@@ -2436,7 +2445,22 @@ struct CMUXCLI {
 
         if subcommand == "identify" {
             let surface = try normalizeSurfaceHandle(surfaceRaw, client: client, allowFocused: true)
-            var payload = try client.sendV2(method: "system.identify")
+            // Pass caller context like top-level `cmux identify` — without it
+            // the server falls back to the *selected* workspace, so the
+            // top-level refs described someone else's pane.
+            var identifyParams: [String: Any] = [:]
+            var caller: [String: Any] = [:]
+            if let workspaceId = ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"] {
+                caller["workspace_id"] = workspaceId
+            }
+            if let surfaceId = ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"] {
+                caller["surface_id"] = surfaceId
+            }
+            if !caller.isEmpty {
+                identifyParams["caller"] = caller
+            }
+            var payload = try client.sendV2(method: "system.identify", params: identifyParams)
+            var fallbackLines: [String] = []
             if let surface {
                 let urlPayload = try client.sendV2(method: "browser.url.get", params: ["surface_id": surface])
                 let titlePayload = try client.sendV2(method: "browser.get.title", params: ["surface_id": surface])
@@ -2445,8 +2469,15 @@ struct CMUXCLI {
                 browser["url"] = urlPayload["url"] ?? ""
                 browser["title"] = titlePayload["title"] ?? ""
                 payload["browser"] = browser
+                fallbackLines.append("surface: \(surface)")
+                if let url = urlPayload["url"] as? String, !url.isEmpty {
+                    fallbackLines.append("url: \(url)")
+                }
+                if let title = titlePayload["title"] as? String, !title.isEmpty {
+                    fallbackLines.append("title: \(title)")
+                }
             }
-            output(payload, fallback: "OK")
+            output(payload, fallback: fallbackLines.isEmpty ? "OK" : fallbackLines.joined(separator: "\n"))
             return
         }
 

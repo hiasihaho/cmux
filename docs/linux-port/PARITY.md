@@ -112,6 +112,21 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | CLI (shared `CLI/cmux.swift`) | ✅ | builds unmodified on Linux; global flags before subcommand |
 | Claude hooks (Stop/Notification → cmux claude-hook) | ✅ | |
 
+## Deliberate deviations from macOS (upstream candidates)
+
+Dogfood cycle 4 found these behaviors broken in the inherited macOS
+scripts; the Linux port fixes them and macOS should adopt the same:
+
+- `browser.select` validates that an `<option>` matches before assigning
+  (macOS silently clears the selection and reports OK).
+- `browser.dblclick` fires `click, click, dblclick` (macOS fires only the
+  dblclick event, so onclick handlers never run).
+- `browser.press` emulates text insertion for single printable keys on
+  editable targets (synthetic key events are untrusted; on macOS press is
+  a dispatch-only no-op for text entry).
+- `browser.snapshot` accessible-name computation honors `label[for]` and
+  wrapping `<label>` elements (macOS names checkboxes "on").
+
 ## Known wire-level deviations
 
 - `browser.wait` with `timeout_ms` > ~14s is cut off by the socket
@@ -121,3 +136,7 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
   behavior, identical on macOS; upstream ergonomics, not a port gap.
 - Timeout replies for v2 requests return `"id": null` (the transport
   doesn't parse the request id).
+- Browser panes in never-selected background workspaces run at a 0×0
+  viewport (GtkStack doesn't allocate unmapped children). Event-driven
+  verbs work; layout-dependent reads (snapshot visibility filtering,
+  `get.box`) see degenerate geometry until the workspace is first shown.

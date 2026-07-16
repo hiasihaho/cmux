@@ -405,6 +405,44 @@ diagnostics, and main-loop responsiveness under a slow eval. A focused
 dogfood cycle ran against the dev instance socket (CMUX_SOCKET_PATH is
 honored by dogfood.sh).
 
+### Dogfood cycle 4 (browser automation) → fixes
+
+A focused cycle against the dev instance (`CMUX_SOCKET_PATH` is honored by
+dogfood.sh) validated the whole automation surface and returned six real
+findings. Raw-wire probes root-caused two of them to the shared CLI, not
+the app — the wire had `"value":0` and the correct workspace all along:
+
+- **CLI `displayBrowserValue` corrupted `eval` results 0/1 into
+  false/true**: the bool-first `as? Bool` cast succeeds for the NSNumbers
+  0/1 on Linux corelibs Foundation. Numbers now render via a JSON
+  fragment round-trip, which keeps booleans and numbers apart on both
+  platforms.
+- **CLI `browser identify`** sent `system.identify` without caller
+  context (top-level refs described the *selected* workspace — the same
+  class of bug as cycle 2's identify saga) and printed a bare `OK` in
+  plain mode. It now passes `$CMUX_WORKSPACE_ID`/`$CMUX_SURFACE_ID` as
+  caller and renders surface/url/title lines.
+- **`select` with a non-matching value silently cleared the selection and
+  reported OK** — now validated against `el.options` first;
+  `invalid_params: No <option> matches the given value`, selection
+  untouched. (macOS inherits this bug; deviation noted in PARITY.md.)
+- **`dblclick` never fired `click` events** so onclick handlers didn't
+  run — now click, click, dblclick per spec. (Deviation; macOS only
+  dispatches dblclick.)
+- **`press` with a printable key was a silent no-op on inputs** —
+  synthetic KeyboardEvents are untrusted so the default text-insertion
+  action never runs; single printable chars now insert at the selection
+  (setRangeText) + input event. (Deviation; macOS dispatches events only.)
+- **Snapshot accessible names ignored `<label for=…>`** — checkboxes were
+  all named "on". `__nameFor` now checks label[for] and wrapping labels
+  after aria-*. (Deviation; macOS misses labels too.)
+
+Known limitation (documented, not fixed): browser panes in never-selected
+background workspaces run at a 0×0 viewport — GtkStack doesn't allocate
+unmapped children. Event-driven verbs (click/fill/eval) work fine;
+layout-dependent reads (snapshot visibility, get.box) see degenerate
+geometry until the workspace is first shown.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge
