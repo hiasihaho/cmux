@@ -5748,16 +5748,27 @@ struct ContentView: View {
                     expectedSnapshotFingerprint: fallbackFingerprint,
                     isRemoteTerminal: isRemoteTerminal
                 )
-                if probeResultMatches {
+                let cachedResultHadFallback = commandPaletteForkableAgentResultHadFallbackByPanelKey[panelKey] == true
+                let shouldClearBeforeProbe = Self.commandPaletteShouldClearForkableAgentProbeResultBeforeProbe(
+                    panelKey: panelKey,
+                    supportedPanelKeys: commandPaletteForkableAgentSupportedPanelKeys,
+                    supportedRemoteContextsByPanelKey: commandPaletteForkableAgentRemoteContextsByPanelKey,
+                    snapshotFingerprintsByPanelKey: commandPaletteForkableAgentSnapshotFingerprintsByPanelKey,
+                    expectedSnapshotFingerprint: fallbackFingerprint,
+                    isRemoteTerminal: isRemoteTerminal,
+                    cachedResultHadFallback: cachedResultHadFallback,
+                    panelChanged: panelChanged
+                )
+                if probeResultMatches && !shouldClearBeforeProbe {
                     commandPaletteForkableAgentResultHadFallbackByPanelKey[panelKey] =
                         Self.commandPaletteForkMatchedFallbackProbeResultHadFallback(
                             cachedResultHadFallback: commandPaletteForkableAgentResultHadFallbackByPanelKey[panelKey]
                         )
                 }
-                if probeResultMatches && !panelChanged {
+                if probeResultMatches && !shouldClearBeforeProbe {
                     return
                 }
-                if !probeResultMatches {
+                if shouldClearBeforeProbe {
                     commandPaletteForkableAgentSupportedPanelKeys.remove(panelKey)
                     commandPaletteForkableAgentSnapshotsByPanelKey.removeValue(forKey: panelKey)
                     commandPaletteForkableAgentSnapshotFingerprintsByPanelKey.removeValue(forKey: panelKey)
