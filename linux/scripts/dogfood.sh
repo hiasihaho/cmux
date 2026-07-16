@@ -14,7 +14,7 @@
 set -euo pipefail
 
 FOCUS="${1:?usage: dogfood.sh \"focus instructions\" [timeout-minutes]}"
-TIMEOUT_MIN="${2:-8}"
+TIMEOUT_MIN="${2:-20}"
 
 DIR="${CMUX_DOGFOOD_DIR:-$HOME/.local/share/cmux/dogfood}"
 mkdir -p "$DIR"
@@ -77,7 +77,9 @@ echo "tester workspace: $WS · report: $REPORT" >&2
 sleep 2
 
 BANNER="=== cmux dogfood: headless QA agent working (quiet until the report prints) ==="
-CMD="clear; echo \"$BANNER\"; claude -p \"\$(cat $PROMPT)\" --allowedTools Bash Read Grep Glob | tee $REPORT; touch $REPORT.done; cmux notify --title 'Dogfood report ready' --body '$STAMP'"
+# After reporting, the tester workspace closes itself (10s grace to read the
+# tail of the report in the pane) so runs don't accumulate zombie tabs.
+CMD="clear; echo \"$BANNER\"; claude -p \"\$(cat $PROMPT)\" --allowedTools Bash Read Grep Glob | tee $REPORT; touch $REPORT.done; cmux notify --title 'Dogfood report ready' --body '$STAMP'; sleep 10; cmux close-workspace --workspace $WS"
 cmux send --workspace "$WS" "$CMD\\n" >/dev/null
 
 DEADLINE=$(( $(date +%s) + TIMEOUT_MIN * 60 ))
