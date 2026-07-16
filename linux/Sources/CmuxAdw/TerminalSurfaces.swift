@@ -113,6 +113,11 @@ struct TerminalStackWidget: AdwaitaWidget {
                     detachFromParent(container)
                 }
             }
+            // Preserve dragged divider positions across the rebuild (keyed
+            // by tree path; paths in unchanged subtrees keep their spot).
+            var dividers: [String: Int32] = [:]
+            captureDividerPositions(existing, path: "", into: &dividers)
+
             // A single-leaf tab's stack child IS the container — the detach
             // above already removed it from the stack in that case.
             if let existing,
@@ -122,6 +127,7 @@ struct TerminalStackWidget: AdwaitaWidget {
             }
             if let root = buildNode(tab.layout) {
                 gtk_stack_add_named(stack, root, tab.id.uuidString)
+                restoreDividerPositions(root, path: "", from: dividers)
             }
             for leaf in tab.surfaces {
                 if let container = SurfaceRegistry.shared.containers[leaf.surfaceId] {
@@ -139,6 +145,32 @@ struct TerminalStackWidget: AdwaitaWidget {
                 gtk_widget_grab_focus(asWidget(terminal))
             }
         }
+    }
+
+    private func captureDividerPositions(
+        _ widget: UnsafeMutablePointer<GtkWidget>?,
+        path: String,
+        into positions: inout [String: Int32]
+    ) {
+        guard let widget, isA(widget, gtk_paned_get_type()) else { return }
+        let paned = OpaquePointer(widget)
+        positions[path] = gtk_paned_get_position(paned)
+        captureDividerPositions(gtk_paned_get_start_child(paned), path: path + "0", into: &positions)
+        captureDividerPositions(gtk_paned_get_end_child(paned), path: path + "1", into: &positions)
+    }
+
+    private func restoreDividerPositions(
+        _ widget: UnsafeMutablePointer<GtkWidget>?,
+        path: String,
+        from positions: [String: Int32]
+    ) {
+        guard let widget, isA(widget, gtk_paned_get_type()) else { return }
+        let paned = OpaquePointer(widget)
+        if let position = positions[path], position > 0 {
+            gtk_paned_set_position(paned, position)
+        }
+        restoreDividerPositions(gtk_paned_get_start_child(paned), path: path + "0", from: positions)
+        restoreDividerPositions(gtk_paned_get_end_child(paned), path: path + "1", from: positions)
     }
 
     private func detachFromParent(_ widget: UnsafeMutablePointer<GtkWidget>) {

@@ -489,28 +489,30 @@ struct ControlCommandHandler {
         guard let target = v2TargetSurface(params) else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")
         }
-        guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == target.tab.id }) else {
-            return v2Error(id: id, code: "not_found", message: "Workspace not found")
-        }
-        if let remaining = tabs.wrappedValue[index].layout.removing(surfaceId: target.surfaceId) {
+        closeSurface(tabId: target.tab.id, surfaceId: target.surfaceId)
+        return v2Ok(id: id, result: [
+            "workspace_id": target.tab.id.uuidString,
+            "surface_id": target.surfaceId.uuidString
+        ])
+    }
+
+    /// Removes a surface's pane; closing the last pane closes the workspace.
+    func closeSurface(tabId: UUID, surfaceId: UUID) {
+        guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }) else { return }
+        if let remaining = tabs.wrappedValue[index].layout.removing(surfaceId: surfaceId) {
             tabs.wrappedValue[index].layout = remaining
-            if tabs.wrappedValue[index].focusedSurfaceId == target.surfaceId,
+            if tabs.wrappedValue[index].focusedSurfaceId == surfaceId,
                let first = remaining.leaves.first {
                 tabs.wrappedValue[index].focusedSurfaceId = first.surfaceId
             }
         } else {
-            // Last surface in the workspace — close the workspace.
             tabs.wrappedValue.remove(at: index)
-            if selection.wrappedValue == target.tab.id,
+            if selection.wrappedValue == tabId,
                let next = tabs.wrappedValue[safe: min(index, tabs.wrappedValue.count - 1)]
                    ?? tabs.wrappedValue.first {
                 select(next.id)
             }
         }
-        return v2Ok(id: id, result: [
-            "workspace_id": target.tab.id.uuidString,
-            "surface_id": target.surfaceId.uuidString
-        ])
     }
 
     /// Splits the pane holding `surfaceId`; the new shell inherits the

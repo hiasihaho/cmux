@@ -15,6 +15,12 @@ struct CmuxApp: App {
     @State private var tabCounter = 1
 
     init() {
+        if let restored = SessionStore.restore() {
+            _tabs.rawValue = restored.tabs
+            _selection.rawValue = restored.selection
+            _tabCounter.rawValue = restored.tabCounter
+        }
+
         let handler = ControlCommandHandler(
             tabs: $tabs,
             selection: $selection,
@@ -23,9 +29,20 @@ struct CmuxApp: App {
         )
         ControlSocketServer.shared.dispatcher = { line in handler.handle(line: line) }
         ControlSocketServer.shared.start()
+
+        // Structural changes save immediately (scene body); this periodic
+        // pass additionally picks up shell cwd drift (OSC 7) for restores.
+        let saveState = { [self] in
+            SessionStore.saveIfChanged(tabs: tabs, selection: selection, tabCounter: tabCounter)
+        }
+        Idle(delay: .seconds(15)) {
+            saveState()
+            return true
+        }
     }
 
     var scene: Scene {
+        let _ = SessionStore.saveIfChanged(tabs: tabs, selection: selection, tabCounter: tabCounter)
         Window(id: "main") { _ in
             OverlaySplitView(visible: $sidebarVisible) {
                 SidebarView(tabs: tabs, selection: selectionBinding)
@@ -34,7 +51,8 @@ struct CmuxApp: App {
                             Button(icon: .custom(name: "tab-new-symbolic")) {
                                 newTab()
                             }
-                            .tooltip("New tab")
+                            .keyboardShortcut("t".ctrl().shift())
+                            .tooltip("New tab (Ctrl+Shift+T)")
                         }
                         .headerBarTitle {
                             WindowTitle(subtitle: "", title: "cmux")
@@ -65,20 +83,23 @@ struct CmuxApp: App {
                         Button(icon: .custom(name: "pan-end-symbolic")) {
                             splitFocused(direction: "right")
                         }
-                        .tooltip("Split right")
+                        .keyboardShortcut("d".ctrl().shift())
+                        .tooltip("Split right (Ctrl+Shift+D)")
                         Button(icon: .custom(name: "pan-down-symbolic")) {
                             splitFocused(direction: "down")
                         }
-                        .tooltip("Split down")
+                        .keyboardShortcut("s".ctrl().shift())
+                        .tooltip("Split down (Ctrl+Shift+S)")
                     } end: {
                         Button(icon: .custom(name: "software-update-urgent-symbolic")) {
                             simulateAttention()
                         }
                         .tooltip("Simulate agent attention")
                         Button(icon: .custom(name: "window-close-symbolic")) {
-                            closeSelectedTab()
+                            closeFocusedPane()
                         }
-                        .tooltip("Close tab")
+                        .keyboardShortcut("w".ctrl().shift())
+                        .tooltip("Close pane (Ctrl+Shift+W)")
                     }
                 }
             }
@@ -115,12 +136,11 @@ struct CmuxApp: App {
         selection = tab.id
     }
 
-    private func closeSelectedTab() {
-        guard let index = tabs.firstIndex(where: { $0.id == selection }) else { return }
-        tabs.remove(at: index)
-        if let next = tabs[safe: min(index, tabs.count - 1)] ?? tabs.first {
-            selection = next.id
-        }
+    /// Closes the focused pane; closing the last pane closes the workspace.
+    private func closeFocusedPane() {
+        guard let tab = tabs.first(where: { $0.id == selection }),
+              let focused = tab.focusedSurface else { return }
+        controlHandler.closeSurface(tabId: tab.id, surfaceId: focused.surfaceId)
     }
 
     /// Stands in for real detection (libghostty desktop-notification actions)

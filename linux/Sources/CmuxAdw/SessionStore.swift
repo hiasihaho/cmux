@@ -1,0 +1,135 @@
+import Foundation
+
+/// Session persistence — the Linux counterpart of the macOS
+/// `SessionPersistence.swift`: workspaces and their pane trees as versioned
+/// JSON, stored under the XDG data home instead of Application Support.
+/// Shell working directories are captured live (OSC 7) at save time so a
+/// restored session reopens shells where they were.
+enum SessionStore {
+
+    static let schemaVersion = 1
+
+    struct Snapshot: Codable, Equatable {
+        var version: Int
+        var selectedIndex: Int
+        var tabCounter: Int
+        var workspaces: [WorkspaceSnapshot]
+    }
+
+    struct WorkspaceSnapshot: Codable, Equatable {
+        var title: String
+        var workingDirectory: String
+        var layout: LayoutSnapshot
+        var focusedLeafIndex: Int
+    }
+
+    indirect enum LayoutSnapshot: Codable, Equatable {
+        case leaf(workingDirectory: String)
+        case split(orientation: String, first: LayoutSnapshot, second: LayoutSnapshot)
+    }
+
+    static var fileURL: URL {
+        let environment = ProcessInfo.processInfo.environment
+        let base: URL
+        if let dataHome = environment["XDG_DATA_HOME"], !dataHome.isEmpty {
+            base = URL(fileURLWithPath: dataHome)
+        } else {
+            base = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".local/share")
+        }
+        return base.appendingPathComponent("cmux/session-linux.json")
+    }
+
+    private static var lastSaved: Data?
+
+    // MARK: save
+
+    static func saveIfChanged(tabs: [TerminalTab], selection: UUID, tabCounter: Int) {
+        guard !tabs.isEmpty else { return }
+        let snapshot = snapshot(tabs: tabs, selection: selection, tabCounter: tabCounter)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
+        guard let data = try? encoder.encode(snapshot), data != lastSaved else { return }
+        let url = fileURL
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        do {
+            try data.write(to: url, options: .atomic)
+            lastSaved = data
+        } catch {
+            FileHandle.standardError.write(Data("cmux: failed to save session: \(error)\n".utf8))
+        }
+    }
+
+    private static func snapshot(tabs: [TerminalTab], selection: UUID, tabCounter: Int) -> Snapshot {
+        Snapshot(
+            version: schemaVersion,
+            selectedIndex: tabs.firstIndex { $0.id == selection } ?? 0,
+            tabCounter: tabCounter,
+            workspaces: tabs.map { tab in
+                WorkspaceSnapshot(
+                    title: tab.title,
+                    workingDirectory: tab.workingDirectory,
+                    layout: layoutSnapshot(tab.layout),
+                    focusedLeafIndex: tab.surfaces.firstIndex {
+                        $0.surfaceId == tab.focusedSurfaceId
+                    } ?? 0
+                )
+            }
+        )
+    }
+
+    private static func layoutSnapshot(_ node: PaneNode) -> LayoutSnapshot {
+        switch node {
+        case .leaf(let leaf):
+            // Live cwd via OSC 7 beats the spawn-time directory.
+            let cwd = SurfaceRegistry.shared.currentDirectory(for: leaf.surfaceId)
+                ?? leaf.workingDirectory
+            return .leaf(workingDirectory: cwd)
+        case .split(let orientation, let first, let second):
+            return .split(
+                orientation: orientation.rawValue,
+                first: layoutSnapshot(first),
+                second: layoutSnapshot(second)
+            )
+        }
+    }
+
+    // MARK: restore
+
+    static func restore() -> (tabs: [TerminalTab], selection: UUID, tabCounter: Int)? {
+        guard let data = try? Data(contentsOf: fileURL),
+              let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data),
+              snapshot.version == schemaVersion,
+              !snapshot.workspaces.isEmpty else { return nil }
+
+        let tabs: [TerminalTab] = snapshot.workspaces.map { workspace in
+            var tab = TerminalTab(
+                title: workspace.title,
+                workingDirectory: workspace.workingDirectory
+            )
+            tab.layout = layoutNode(workspace.layout)
+            let leaves = tab.surfaces
+            tab.focusedSurfaceId = (leaves[safe: workspace.focusedLeafIndex] ?? leaves.first
+                ?? PaneLeaf()).surfaceId
+            return tab
+        }
+        let selected = tabs[safe: snapshot.selectedIndex] ?? tabs[0]
+        return (tabs, selected.id, max(snapshot.tabCounter, tabs.count))
+    }
+
+    private static func layoutNode(_ snapshot: LayoutSnapshot) -> PaneNode {
+        switch snapshot {
+        case .leaf(let workingDirectory):
+            return .leaf(PaneLeaf(workingDirectory: workingDirectory))
+        case .split(let orientation, let first, let second):
+            return .split(
+                orientation: PaneNode.SplitOrientation(rawValue: orientation) ?? .horizontal,
+                first: layoutNode(first),
+                second: layoutNode(second)
+            )
+        }
+    }
+}

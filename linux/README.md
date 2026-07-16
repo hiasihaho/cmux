@@ -30,7 +30,9 @@ full analysis and phased plan.
       shell per pane (reparented across layout changes, never respawned),
       focus-follows-click, cwd inheritance; `new-split`/`list-panes`/
       `focus-pane`/`close-surface` + header-bar split buttons
-- [ ] Phase 4b — session persistence (serialize the pane tree, XDG paths)
+- [x] Phase 4b — session persistence: workspaces/pane trees/live cwds to
+      `$XDG_DATA_HOME/cmux/session-linux.json`, restored on launch; divider
+      positions survive layout changes; Ctrl+Shift+T/D/S/W shortcuts
 - [ ] Phase 5 — browser panel via WebKitGTK (`webkitgtk-6.0`)
 
 ## Trying the control plane

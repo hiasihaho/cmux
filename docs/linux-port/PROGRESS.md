@@ -218,6 +218,31 @@ feedback into the model.
 2. A single-leaf tab's stack child IS the terminal container — after
    detaching, there is no separate skeleton left to remove.
 
+### Phase 4a polish + Phase 4b — session persistence ✅
+
+Split polish:
+- Divider positions survive skeleton rebuilds (captured/restored keyed by
+  tree path).
+- Header close button now closes the **focused pane** (last pane closes the
+  workspace) — shared logic with v2 `surface.close`.
+- Keyboard shortcuts: Ctrl+Shift+T (new tab), Ctrl+Shift+D (split right),
+  Ctrl+Shift+S (split down), Ctrl+Shift+W (close pane). Note:
+  `.keyboardShortcut()` is Button-specific — apply it *before* AnyView
+  modifiers like `.tooltip()`.
+- Deferred: pane zoom/equalize, directional focus navigation, resize-pane,
+  visible focus ring, per-pane tab strips (full Bonsplit parity).
+
+Session persistence (`SessionStore.swift`):
+- Versioned JSON at `$XDG_DATA_HOME/cmux/session-linux.json` (atomic,
+  deduped writes): workspaces, pane trees, focused leaf, selection,
+  tab counter. Leaf cwds are captured **live** via OSC 7 at save time.
+- Saves on every structural change (scene body) + every 15 s (GLib timeout)
+  to pick up shell cwd drift; restore happens in `CmuxApp.init` by writing
+  `State.rawValue` (no premature view updates).
+- Verified: 2 workspaces with a 3-pane split, `cd /tmp` in the focused
+  pane → kill → relaunch → layout, selection, focus and the `/tmp` cwd all
+  restored.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge
