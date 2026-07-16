@@ -318,6 +318,31 @@ bug + gaps; fixed same-day:
   (global-flag parsing, same on macOS); headless `claude -p` is silent by
   design — hence the banner.
 
+### Dogfood cycle 2 → fixes
+
+Cycle 2 confirmed all cycle-1 fixes and exposed a root-cause chain: my
+`system.identify` ignored the CLI's nested `params["caller"]` and returned
+the *selected* workspace — the tester mis-identified itself all run, which
+manufactured two phantom bugs (browser split "in the wrong workspace",
+"inconsistent UUIDs"). Real fixes:
+
+- `system.identify` resolves `params["caller"]` (falls back to selected)
+  and echoes a `caller` block.
+- **Background terminals work**: default 80×24 PTY size before mapping
+  (spawned-in-background shells stalled on a ~0×0 pty), and
+  `surface.read_text` reads the screenful **ending at the cursor**
+  (`vte_terminal_get_text_range_format`) instead of the viewport — an
+  unmapped terminal never scrolls its viewport, so reads returned a stale
+  first screenful forever.
+- Selection history (`SelectionHistory`): closing the selected workspace
+  returns to the previously-selected one, not an arbitrary neighbor.
+- CLI `new-workspace --background` → `focus:false` (agents don't steal the
+  human's view); dogfood prompt now teaches flag ordering and env-identity
+  so testers don't chase phantoms.
+- Deferred (documented): `--id-format`/global flags must precede the
+  subcommand (upstream CLI ergonomics), help doesn't mark Linux-unimplemented
+  verbs, merging repeat bell entries per surface.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

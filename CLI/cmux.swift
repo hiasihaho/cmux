@@ -920,14 +920,20 @@ struct CMUXCLI {
 
         case "new-workspace":
             let (commandOpt, rem0) = parseOption(commandArgs, name: "--command")
-            let (cwdOpt, remaining) = parseOption(rem0, name: "--cwd")
+            let (cwdOpt, rem1) = parseOption(rem0, name: "--cwd")
+            let background = rem1.contains("--background")
+            let remaining = rem1.filter { $0 != "--background" }
             if let unknown = remaining.first(where: { $0.hasPrefix("--") }) {
-                throw CLIError(message: "new-workspace: unknown flag '\(unknown)'. Known flags: --command <text>, --cwd <path>")
+                throw CLIError(message: "new-workspace: unknown flag '\(unknown)'. Known flags: --command <text>, --cwd <path>, --background")
             }
             var params: [String: Any] = [:]
             if let cwdOpt {
                 let resolved = resolvePath(cwdOpt)
                 params["cwd"] = resolved
+            }
+            if background {
+                // Create without selecting — automation must not steal focus.
+                params["focus"] = false
             }
             let response = try client.sendV2(method: "workspace.create", params: params)
             let wsId = (response["workspace_ref"] as? String) ?? (response["workspace_id"] as? String) ?? ""

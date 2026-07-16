@@ -2,6 +2,25 @@ import Adwaita
 import CVte
 import Foundation
 
+/// Most-recently-selected workspace order (macOS `TabManager` keeps a
+/// workspace history too) — closing the selected workspace returns to the
+/// previously selected one instead of an arbitrary neighbor.
+final class SelectionHistory {
+    static let shared = SelectionHistory()
+    private var stack: [UUID] = []
+
+    func note(_ id: UUID) {
+        stack.removeAll { $0 == id }
+        stack.append(id)
+    }
+
+    func lastAlive(in tabs: [TerminalTab], excluding: UUID) -> UUID? {
+        stack.reversed().first { candidate in
+            candidate != excluding && tabs.contains { $0.id == candidate }
+        }
+    }
+}
+
 /// Implements the cmux control-socket wire protocol (the verb subset that
 /// maps onto the Phase-0/1 tab model). Formats follow the macOS
 /// `TerminalController` handlers byte-for-byte so the shared CLI works
@@ -111,10 +130,9 @@ struct ControlCommandHandler {
         }
         tabs.wrappedValue.remove(at: index)
         if selection.wrappedValue == tab.id,
-           let next = tabs.wrappedValue.indices.contains(index)
-               ? tabs.wrappedValue[index]
-               : tabs.wrappedValue.last {
-            select(next.id)
+           let next = SelectionHistory.shared.lastAlive(in: tabs.wrappedValue, excluding: tab.id)
+               ?? (tabs.wrappedValue[safe: index] ?? tabs.wrappedValue.last)?.id {
+            select(next)
         }
         return "OK"
     }
@@ -322,24 +340,32 @@ struct ControlCommandHandler {
         }
     }
 
-    /// Minimal caller identification: resolves the given (or current)
-    /// workspace/surface to ids+refs — enough for agents to feature-detect
-    /// and locate themselves.
+    /// Caller identification. The CLI nests the caller's workspace/surface
+    /// under `params["caller"]` — resolve that first; only fall back to the
+    /// selected workspace when no caller info was sent.
     private func v2SystemIdentify(id: Any?, params: [String: Any]) -> String {
-        guard let target = v2TargetSurface(params) else {
-            return v2Error(id: id, code: "not_found", message: "No workspace selected")
-        }
         let registry = RefRegistry.shared
-        return v2Ok(id: id, result: [
+        var result: [String: Any] = [
             "platform": "linux",
             "port": "phase-5",
             "window_id": Self.windowId.uuidString,
-            "window_ref": registry.ref(kind: "window", uuid: Self.windowId),
-            "workspace_id": target.tab.id.uuidString,
-            "workspace_ref": registry.ref(kind: "workspace", uuid: target.tab.id),
-            "surface_id": target.surfaceId.uuidString,
-            "surface_ref": registry.ref(kind: "surface", uuid: target.surfaceId)
-        ])
+            "window_ref": registry.ref(kind: "window", uuid: Self.windowId)
+        ]
+        let caller = params["caller"] as? [String: Any] ?? [:]
+        let target = (caller.isEmpty ? nil : v2TargetSurface(caller)) ?? v2TargetSurface([:])
+        if let target {
+            let block: [String: Any] = [
+                "workspace_id": target.tab.id.uuidString,
+                "workspace_ref": registry.ref(kind: "workspace", uuid: target.tab.id),
+                "surface_id": target.surfaceId.uuidString,
+                "surface_ref": registry.ref(kind: "surface", uuid: target.surfaceId)
+            ]
+            result.merge(block) { current, _ in current }
+            if !caller.isEmpty {
+                result["caller"] = block
+            }
+        }
+        return v2Ok(id: id, result: result)
     }
 
     /// Like the macOS `v2RefreshKnownRefs`: make sure every live entity has
@@ -423,9 +449,10 @@ struct ControlCommandHandler {
         }
         tabs.wrappedValue.remove(at: index)
         if selection.wrappedValue == wsId,
-           let next = tabs.wrappedValue[safe: min(index, tabs.wrappedValue.count - 1)]
-               ?? tabs.wrappedValue.first {
-            select(next.id)
+           let next = SelectionHistory.shared.lastAlive(in: tabs.wrappedValue, excluding: wsId)
+               ?? (tabs.wrappedValue[safe: min(index, tabs.wrappedValue.count - 1)]
+                   ?? tabs.wrappedValue.first)?.id {
+            select(next)
         }
         return v2Ok(id: id, result: workspaceRefResult(wsId))
     }
@@ -592,9 +619,10 @@ struct ControlCommandHandler {
         } else {
             tabs.wrappedValue.remove(at: index)
             if selection.wrappedValue == tabId,
-               let next = tabs.wrappedValue[safe: min(index, tabs.wrappedValue.count - 1)]
-                   ?? tabs.wrappedValue.first {
-                select(next.id)
+               let next = SelectionHistory.shared.lastAlive(in: tabs.wrappedValue, excluding: tabId)
+                   ?? (tabs.wrappedValue[safe: min(index, tabs.wrappedValue.count - 1)]
+                       ?? tabs.wrappedValue.first)?.id {
+                select(next)
             }
         }
     }
@@ -708,8 +736,18 @@ struct ControlCommandHandler {
               let terminal = SurfaceRegistry.shared.terminal(for: target.surfaceId) else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")
         }
+        // Read the screenful ending at the cursor, not the viewport: an
+        // unmapped terminal (background workspace) never scrolls its
+        // viewport, which would return a stale first screenful forever.
+        var cursorCol: glong = 0
+        var cursorRow: glong = 0
+        vte_terminal_get_cursor_position(terminal, &cursorCol, &cursorRow)
+        let visibleRows = glong(vte_terminal_get_row_count(terminal))
+        let startRow = max(0, cursorRow - visibleRows + 1)
         var text = ""
-        if let raw = vte_terminal_get_text_format(terminal, VTE_FORMAT_TEXT) {
+        if let raw = vte_terminal_get_text_range_format(
+            terminal, VTE_FORMAT_TEXT, startRow, 0, cursorRow, -1, nil
+        ) {
             text = String(cString: raw)
             g_free(raw)
         }
@@ -820,6 +858,7 @@ struct ControlCommandHandler {
     /// notifications read (macOS marks-read-on-focus behavior).
     func select(_ tabId: UUID) {
         selection.wrappedValue = tabId
+        SelectionHistory.shared.note(tabId)
         if let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }) {
             tabs.wrappedValue[index].needsAttention = false
         }

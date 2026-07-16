@@ -41,6 +41,14 @@ Method: exercise the focus areas below through the cmux CLI from inside.
 Verify actual behavior (read-screen the results), don't assume. Note exact
 commands for anything broken.
 
+Know-how (avoid false positives):
+- Global flags like --id-format must come BEFORE the subcommand
+  (`cmux --id-format uuids list-panes`).
+- YOUR workspace/surface identity is $CMUX_WORKSPACE_ID/$CMUX_SURFACE_ID —
+  trust the environment over any query result.
+- `cmux new-workspace --background` creates without changing the human's
+  selected workspace; prefer it for scratch workspaces.
+
 Your final message must be exactly the report, in markdown:
 # Dogfood report
 ## Summary   (2-3 sentences)

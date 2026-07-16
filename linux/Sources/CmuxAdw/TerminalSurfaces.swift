@@ -287,6 +287,10 @@ struct TerminalStackWidget: AdwaitaWidget {
         gtk_widget_set_hexpand(widget, 1)
         gtk_widget_set_vexpand(widget, 1)
         vte_terminal_set_scrollback_lines(terminal, 10_000)
+        // Sane PTY geometry before the widget is ever mapped — terminals
+        // spawned into unselected workspaces otherwise start with a ~0-size
+        // viewport and their shells stall on a 0x0 pty.
+        vte_terminal_set_size(terminal, 80, 24)
 
         guard let scrolled = gtk_scrolled_window_new() else { return }
         gtk_scrolled_window_set_child(OpaquePointer(scrolled), widget)
