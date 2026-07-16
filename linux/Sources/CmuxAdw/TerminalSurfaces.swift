@@ -193,6 +193,7 @@ struct TerminalStackWidget: AdwaitaWidget {
             if let root = buildNode(tab.layout) {
                 gtk_stack_add_named(stack, root, tab.id.uuidString)
                 restoreDividerPositions(root, path: "", from: dividers)
+                balanceFreshDividers(root, path: "", restored: dividers)
             }
             for leaf in tab.surfaces {
                 if let container = SurfaceRegistry.shared.containers[leaf.surfaceId] {
@@ -239,6 +240,37 @@ struct TerminalStackWidget: AdwaitaWidget {
         }
         restoreDividerPositions(gtk_paned_get_start_child(paned), path: path + "0", from: positions)
         restoreDividerPositions(gtk_paned_get_end_child(paned), path: path + "1", from: positions)
+    }
+
+    /// Fresh splits (no preserved divider) start balanced 50/50. Without
+    /// this, GtkPaned derives the initial position from the children's
+    /// natural sizes — a WebKitWebView requests ~0, so browser panes
+    /// collapsed to a sliver until dragged. The position can only be set
+    /// once the paned has a real allocation, hence the one-shot tick
+    /// callback (it fires on the first drawn frame after mapping).
+    private func balanceFreshDividers(
+        _ widget: UnsafeMutablePointer<GtkWidget>?,
+        path: String,
+        restored positions: [String: Int32]
+    ) {
+        guard let widget, isA(widget, gtk_paned_get_type()) else { return }
+        let paned = OpaquePointer(widget)
+        if (positions[path] ?? 0) <= 0 {
+            _ = gtk_widget_add_tick_callback(widget, { widget, _, _ in
+                guard let widget else { return gboolean(0) }
+                let paned = OpaquePointer(widget)
+                let horizontal = gtk_orientable_get_orientation(OpaquePointer(widget))
+                    == GTK_ORIENTATION_HORIZONTAL
+                let total = horizontal
+                    ? gtk_widget_get_width(widget)
+                    : gtk_widget_get_height(widget)
+                if total <= 1 { return gboolean(1) } // not allocated yet
+                gtk_paned_set_position(paned, total / 2)
+                return gboolean(0)
+            }, nil, nil)
+        }
+        balanceFreshDividers(gtk_paned_get_start_child(paned), path: path + "0", restored: positions)
+        balanceFreshDividers(gtk_paned_get_end_child(paned), path: path + "1", restored: positions)
     }
 
     private func detachFromParent(_ widget: UnsafeMutablePointer<GtkWidget>) {

@@ -43,9 +43,19 @@ struct ControlCommandHandler {
 
     // MARK: dispatch
 
-    func handle(line: String) -> String {
-        if line.hasPrefix("{") { return handleV2(line) }
+    /// Entry point for the socket server. v1 verbs and most v2 methods
+    /// answer synchronously; browser-automation verbs complete through
+    /// `respond` from WebKit's async JS callbacks (never blocking the main
+    /// loop). `respond` must be called exactly once on every path.
+    func handle(line: String, respond: @escaping (String) -> Void) {
+        if line.hasPrefix("{") {
+            handleV2(line, respond: respond)
+        } else {
+            respond(handleV1(line))
+        }
+    }
 
+    private func handleV1(_ line: String) -> String {
         let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
         let verb = parts[0]
         let args = parts.count > 1 ? parts[1] : ""
@@ -250,11 +260,12 @@ struct ControlCommandHandler {
     /// with a later phase).
     static let windowId = UUID()
 
-    private func handleV2(_ jsonLine: String) -> String {
+    private func handleV2(_ jsonLine: String, respond: @escaping (String) -> Void) {
         guard let data = jsonLine.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data),
               let dict = object as? [String: Any] else {
-            return v2Encode(["ok": false, "error": ["code": "parse_error", "message": "Invalid JSON"]])
+            respond(v2Encode(["ok": false, "error": ["code": "parse_error", "message": "Invalid JSON"]]))
+            return
         }
         let id = dict["id"]
         let method = (dict["method"] as? String) ?? ""
@@ -262,6 +273,35 @@ struct ControlCommandHandler {
 
         refreshKnownRefs()
 
+        // Async-completing verbs first: these reply from WebKit JS callbacks.
+        switch method {
+        case "browser.eval":
+            return v2BrowserEval(id: id, params: params, respond: respond)
+        case "browser.snapshot":
+            return v2BrowserSnapshot(id: id, params: params, respond: respond)
+        case "browser.wait":
+            return v2BrowserWait(id: id, params: params, respond: respond)
+        case "browser.click", "browser.dblclick", "browser.hover", "browser.focus",
+             "browser.fill", "browser.type", "browser.check", "browser.uncheck",
+             "browser.select", "browser.scroll_into_view",
+             "browser.get.text", "browser.get.html", "browser.get.value",
+             "browser.get.attr", "browser.get.box", "browser.get.styles",
+             "browser.is.visible", "browser.is.enabled", "browser.is.checked":
+            return v2BrowserSelectorVerb(method: method, id: id, params: params, respond: respond)
+        case "browser.press", "browser.keydown", "browser.keyup":
+            return v2BrowserKeyVerb(method: method, id: id, params: params, respond: respond)
+        case "browser.scroll":
+            return v2BrowserScroll(id: id, params: params, respond: respond)
+        case "browser.get.count":
+            return v2BrowserGetCount(id: id, params: params, respond: respond)
+        default:
+            break
+        }
+
+        respond(handleV2Sync(id: id, method: method, params: params))
+    }
+
+    private func handleV2Sync(id: Any?, method: String, params: [String: Any]) -> String {
         switch method {
         case "system.ping":
             return v2Ok(id: id, result: ["pong": true])
@@ -269,11 +309,29 @@ struct ControlCommandHandler {
             return v2Ok(id: id, result: [
                 "protocol": 2,
                 "platform": "linux",
-                "port": "phase-1",
+                "port": "phase-5b",
                 "methods": [
-                    "system.ping", "system.capabilities", "window.list",
+                    "system.ping", "system.capabilities", "system.identify",
+                    "window.list",
                     "workspace.list", "workspace.create", "workspace.select",
-                    "workspace.current", "workspace.close", "surface.list",
+                    "workspace.current", "workspace.close",
+                    "surface.list", "surface.create", "surface.send_text",
+                    "surface.send_key", "surface.read_text", "surface.split",
+                    "surface.close",
+                    "pane.create", "pane.list", "pane.focus", "pane.surfaces",
+                    "browser.open_split", "browser.navigate", "browser.url.get",
+                    "browser.back", "browser.forward", "browser.reload",
+                    "browser.identify",
+                    "browser.eval", "browser.snapshot", "browser.wait",
+                    "browser.click", "browser.dblclick", "browser.hover",
+                    "browser.focus", "browser.fill", "browser.type",
+                    "browser.check", "browser.uncheck", "browser.select",
+                    "browser.press", "browser.keydown", "browser.keyup",
+                    "browser.scroll", "browser.scroll_into_view",
+                    "browser.get.text", "browser.get.html", "browser.get.value",
+                    "browser.get.attr", "browser.get.title", "browser.get.count",
+                    "browser.get.box", "browser.get.styles",
+                    "browser.is.visible", "browser.is.enabled", "browser.is.checked",
                     "notification.create", "notification.list", "notification.clear"
                 ]
             ])

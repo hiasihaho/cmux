@@ -8,12 +8,18 @@ import Glibc
 ///
 /// Command handling is marshalled onto the GTK main loop via `Idle` (GLib
 /// idle sources), because Meta/Adwaita state may only be mutated there.
+/// Handlers reply through a completion instead of a return value, so verbs
+/// backed by async GLib/WebKit callbacks (browser JS evaluation) can finish
+/// later without ever blocking the main loop — only the per-connection
+/// socket thread waits.
 final class ControlSocketServer {
 
     static let shared = ControlSocketServer()
 
-    /// Runs on the GTK main thread; full request line in, response line out.
-    var dispatcher: ((String) -> String)?
+    /// Runs on the GTK main thread; full request line in, one response line
+    /// out through the completion — which may be called synchronously or
+    /// from a later main-loop callback, but exactly once either way.
+    var dispatcher: ((String, @escaping (String) -> Void) -> Void)?
 
     private var listenFD: Int32 = -1
     private var started = false
@@ -147,13 +153,45 @@ final class ControlSocketServer {
 
     private func dispatchOnMainLoop(_ line: String) -> String {
         guard let dispatcher else { return "ERROR: App not ready" }
-        let semaphore = DispatchSemaphore(value: 0)
-        var result = "ERROR: Command timed out"
+        let response = OneShotResponse()
         Idle {
-            result = dispatcher(line)
-            semaphore.signal()
+            dispatcher(line) { response.fulfill($0) }
         }
-        _ = semaphore.wait(timeout: .now() + 15)
-        return result
+        if let value = response.wait(seconds: 15) { return value }
+        // v2 clients need a JSON envelope even for transport-level timeouts.
+        if line.hasPrefix("{") {
+            return #"{"id":null,"ok":false,"error":{"code":"timeout","message":"Command timed out"}}"#
+        }
+        return "ERROR: Command timed out"
+    }
+}
+
+/// Thread-safe, take-once handoff between the main loop (fulfilling, maybe
+/// from an async WebKit callback) and the socket client thread (waiting).
+/// After a timeout the slot is poisoned so a late fulfillment is dropped
+/// instead of racing the next request on the connection.
+private final class OneShotResponse {
+    private let semaphore = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var value: String?
+    private var closed = false
+
+    func fulfill(_ response: String) {
+        lock.lock()
+        let accepted = !closed
+        if accepted {
+            value = response
+            closed = true
+        }
+        lock.unlock()
+        if accepted { semaphore.signal() }
+    }
+
+    func wait(seconds: Double) -> String? {
+        _ = semaphore.wait(timeout: .now() + seconds)
+        lock.lock()
+        defer { lock.unlock() }
+        closed = true
+        return value
     }
 }

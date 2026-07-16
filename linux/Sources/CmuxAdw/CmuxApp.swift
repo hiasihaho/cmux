@@ -32,10 +32,13 @@ struct CmuxApp: App {
             notifications: $notifications,
             tabCounter: $tabCounter
         )
-        ControlSocketServer.shared.dispatcher = { line in
+        ControlSocketServer.shared.dispatcher = { line, respond in
+            // The guard covers the synchronous dispatch window (where tab/
+            // selection mutations happen); async continuations only touch
+            // WebKit state, never the sidebar model.
             SocketDispatchGuard.active = true
             defer { SocketDispatchGuard.active = false }
-            return handler.handle(line: line)
+            handler.handle(line: line, respond: respond)
         }
         ControlSocketServer.shared.start()
 

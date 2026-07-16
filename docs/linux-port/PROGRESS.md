@@ -364,6 +364,47 @@ confirmed the cycle-2 fixes and left three real items, all fixed:
   the "swallowed bell" was the 2s post-spawn grace on a young scratch
   workspace.
 
+## 2026-07-16 — Phase 5b: browser automation verbs + async socket dispatch
+
+The socket dispatcher went completion-based so verbs can reply from async
+GLib callbacks: `ControlSocketServer.dispatcher` is now
+`(String, @escaping (String) -> Void) -> Void`, the per-connection socket
+thread parks on a poisoned-after-timeout `OneShotResponse`, and the GTK
+main loop is never blocked (macOS pumps a nested RunLoop instead — we
+verified pings answer in ~110ms while a 3s `browser.eval` promise runs).
+v2 transport timeouts now return a JSON error envelope instead of a bare
+`ERROR:` line.
+
+On top of that, `BrowserAutomation.swift` ports the macOS automation
+surface over `webkit_web_view_call_async_javascript_function` (the GTK
+analog of `callAsyncJavaScript`: implicit async function, promises
+awaited) + `jsc_value_to_json`: eval, snapshot (role/name tree with `@eN`
+refs), wait (50ms GLib-timeout polling), click/dblclick/hover/focus,
+fill/type/press/keydown/keyup, check/uncheck/select, scroll/
+scroll_into_view, get.text/html/value/attr/count/box/styles,
+is.visible/enabled/checked — with the macOS retry loop (3×80ms),
+element-not-found diagnostics script, and `snapshot_after` merging.
+`system.capabilities` finally reports the real method list. Feature
+tracking moved to [PARITY.md](PARITY.md).
+
+Dev-instance verification found (and the human independently reported)
+that **fresh splits collapsed browser panes to ~1px**: GtkPaned derives
+its initial position from the children's natural widths and WebKitWebView
+requests ~0. Fixed in `TerminalStackWidget`: panes whose tree path has no
+preserved divider position get a one-shot tick callback that sets the
+divider to 50% at first allocation; dragged/rebuilt positions are
+untouched. Side effect: session-restored layouts open balanced (divider
+positions aren't persisted yet — schema v3 candidate).
+
+Verified end-to-end on the isolated dev instance via the shared CLI
+against a local fixture page: eval value types (number/string/object/
+promise/undefined sentinel/JS exception→js_error), snapshot refs,
+click-by-ref mutating the DOM, fill/check/select reflected in page state,
+wait resolving in ~1.5s for a delayed element, wait timeout, not-found
+diagnostics, and main-loop responsiveness under a slow eval. A focused
+dogfood cycle ran against the dev instance socket (CMUX_SOCKET_PATH is
+honored by dogfood.sh).
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge
@@ -376,3 +417,15 @@ confirmed the cycle-2 fixes and left three real items, all fixed:
 - The root `Package.swift` (SwiftTerm stub) is the legacy macOS manifest; the
   real macOS build is `GhosttyTabs.xcodeproj`. Don't try to `swift build` the
   repo root.
+- Swift closures passed as C function pointers (GAsyncReadyCallback,
+  GSourceFunc, GtkTickCallback) may not capture ANYTHING — including local
+  types and unqualified static members of the enclosing type. Put the box
+  classes and the completion logic in file-scope declarations and pass state
+  through `user_data` via `Unmanaged`.
+- `browser.eval window.innerWidth` right after creating a pane can race the
+  first frame tick (the 50/50 divider balancing runs at first allocation) —
+  a 1px reading milliseconds after `new-pane` is not the collapse bug.
+- When talking to ANOTHER instance's socket (e.g. the dev instance), unset
+  `CMUX_WORKSPACE_ID`/`CMUX_SURFACE_ID` or pass explicit `--workspace`:
+  the CLI injects your caller identity as the default target and those
+  UUIDs don't exist over there ("Workspace not found").
