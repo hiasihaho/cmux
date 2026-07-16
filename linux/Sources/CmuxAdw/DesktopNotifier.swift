@@ -18,4 +18,11 @@ enum DesktopNotifier {
         g_application_send_notification(app, id, notification)
         g_object_unref(UnsafeMutableRawPointer(notification))
     }
+
+    /// Removes a previously sent desktop notification (e.g. when its
+    /// workspace closes — a popup for a dead workspace helps nobody).
+    static func withdraw(id: String) {
+        guard let app = g_application_get_default() else { return }
+        g_application_withdraw_notification(app, id)
+    }
 }

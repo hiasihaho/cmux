@@ -146,6 +146,7 @@ struct ControlCommandHandler {
     private func removeWorkspace(at index: Int) {
         let tabId = tabs.wrappedValue[index].id
         notifications.wrappedValue.removeAll { $0.tabId == tabId }
+        DesktopNotifier.withdraw(id: "cmux-\(tabId.uuidString)")
         tabs.wrappedValue.remove(at: index)
         if selection.wrappedValue == tabId,
            let next = SelectionHistory.shared.lastAlive(in: tabs.wrappedValue, excluding: tabId)
