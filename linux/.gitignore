@@ -1,0 +1,7 @@
+.build/
+.build-gnome50/
+# Flips between the GNOME 49 pin and GNOME 50 `main` depending on CMUX_GNOME —
+# not meaningful to track.
+Package.resolved
+# Claude Code conversation exports — local notes, not for publishing.
+/2026-*.txt

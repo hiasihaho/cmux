@@ -1,8 +1,46 @@
 import Foundation
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+
+// Linux shim: the file qualifies a handful of raw syscalls with `Darwin.` for
+// clarity on macOS; route them to Glibc without touching every call site.
+// Glibc exposes SOCK_STREAM as `__socket_type`, not Int32.
+let SOCK_STREAM = Int32(Glibc.SOCK_STREAM.rawValue)
+
+enum Darwin {
+    static func close(_ fd: Int32) -> Int32 { Glibc.close(fd) }
+    static func connect(_ fd: Int32, _ addr: UnsafePointer<sockaddr>?, _ len: socklen_t) -> Int32 {
+        Glibc.connect(fd, addr, len)
+    }
+    static func read(_ fd: Int32, _ buf: UnsafeMutableRawPointer?, _ count: Int) -> Int {
+        Glibc.read(fd, buf, count)
+    }
+    static func write(_ fd: Int32, _ buf: UnsafeRawPointer?, _ count: Int) -> Int {
+        Glibc.write(fd, buf, count)
+    }
+}
+#endif
 #if canImport(Sentry)
 import Sentry
 #endif
+
+/// Default control-socket path. macOS uses fixed `/tmp/cmux*.sock` names;
+/// Linux prefers the per-user `$XDG_RUNTIME_DIR`.
+func cmuxDefaultSocketPath(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+    if let override = environment["CMUX_SOCKET_PATH"], !override.isEmpty {
+        return override
+    }
+    #if os(Linux)
+    if let runtimeDir = environment["XDG_RUNTIME_DIR"], !runtimeDir.isEmpty {
+        return runtimeDir + "/cmux.sock"
+    }
+    return "/tmp/cmux-\(getuid()).sock"
+    #else
+    return "/tmp/cmux.sock"
+    #endif
+}
 
 struct CLIError: Error, CustomStringConvertible {
     let message: String
@@ -614,7 +652,7 @@ struct CMUXCLI {
     let args: [String]
 
     func run() throws {
-        var socketPath = ProcessInfo.processInfo.environment["CMUX_SOCKET_PATH"] ?? "/tmp/cmux.sock"
+        var socketPath = cmuxDefaultSocketPath()
         var jsonOutput = false
         var idFormatArg: String? = nil
         var windowId: String? = nil
@@ -6304,6 +6342,7 @@ struct CMUXCLI {
     }
 
     private func currentExecutablePath() -> String? {
+        #if canImport(Darwin)
         var size: UInt32 = 0
         _ = _NSGetExecutablePath(nil, &size)
         if size > 0 {
@@ -6315,6 +6354,12 @@ struct CMUXCLI {
                 }
             }
         }
+        #else
+        if let path = try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/exe"),
+           !path.isEmpty {
+            return path
+        }
+        #endif
         return Bundle.main.executableURL?.path ?? args.first
     }
 
