@@ -158,6 +158,29 @@ enum GhosttySurfaceFactory {
 }
 
 extension SurfaceRegistry {
+    /// Raw PTY write (send_text/send_key semantics). False while the
+    /// surface's shell isn't running yet (unrealized background pane).
+    func ghosttySendText(_ text: String, to surfaceId: UUID) -> Bool {
+        guard let pointer = ghostty(for: surfaceId) else { return false }
+        let widget = UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: GtkWidget.self)
+        let bytes = Array(text.utf8)
+        return bytes.withUnsafeBufferPointer { buffer in
+            ghostty_embed_surface_send_text(widget, buffer.baseAddress, bytes.count)
+        }
+    }
+
+    /// Terminal text: active screenful, or the whole buffer with
+    /// `includeScrollback`. Nil while the shell isn't running yet.
+    func ghosttyReadText(for surfaceId: UUID, includeScrollback: Bool) -> String? {
+        guard let pointer = ghostty(for: surfaceId) else { return nil }
+        let widget = UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: GtkWidget.self)
+        guard let raw = ghostty_embed_surface_read_text(widget, includeScrollback) else {
+            return nil
+        }
+        defer { ghostty_embed_text_free(raw) }
+        return String(cString: raw)
+    }
+
     /// Live OSC title of a Ghostty surface (property-backed).
     func currentGhosttyTitle(for surfaceId: UUID) -> String? {
         guard let pointer = ghostty(for: surfaceId) else { return nil }

@@ -855,29 +855,49 @@ struct ControlCommandHandler {
         guard let text = params["text"] as? String else {
             return v2Error(id: id, code: "invalid_params", message: "Missing text")
         }
-        guard let target = v2TargetSurface(params),
-              let terminal = SurfaceRegistry.shared.terminal(for: target.surfaceId) else {
+        guard let target = v2TargetSurface(params) else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")
         }
-        feed(terminal, text)
+        if let error = sendBytes(text, to: target.surfaceId) {
+            return v2Error(id: id, code: error.code, message: error.message)
+        }
         return v2Ok(id: id, result: [
             "workspace_id": target.tab.id.uuidString,
             "surface_id": target.surfaceId.uuidString
         ])
     }
 
+    /// Raw PTY write dispatched by surface kind (VTE feed / ghostty shim).
+    /// Returns nil on success.
+    private func sendBytes(_ text: String, to surfaceId: UUID) -> (code: String, message: String)? {
+        #if canImport(CGhosttyEmbed)
+        if SurfaceRegistry.shared.ghostty(for: surfaceId) != nil {
+            guard SurfaceRegistry.shared.ghosttySendText(text, to: surfaceId) else {
+                return ("unavailable", "Surface shell not running yet (select its workspace once)")
+            }
+            return nil
+        }
+        #endif
+        guard let terminal = SurfaceRegistry.shared.terminal(for: surfaceId) else {
+            return ("not_found", "Surface not found")
+        }
+        feed(terminal, text)
+        return nil
+    }
+
     private func v2SurfaceSendKey(id: Any?, params: [String: Any]) -> String {
         guard let key = params["key"] as? String, !key.isEmpty else {
             return v2Error(id: id, code: "invalid_params", message: "Missing key")
         }
-        guard let target = v2TargetSurface(params),
-              let terminal = SurfaceRegistry.shared.terminal(for: target.surfaceId) else {
+        guard let target = v2TargetSurface(params) else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")
         }
         guard let bytes = Self.namedKeyBytes(key) else {
             return v2Error(id: id, code: "invalid_params", message: "Unknown key: \(key)")
         }
-        feed(terminal, bytes)
+        if let error = sendBytes(bytes, to: target.surfaceId) {
+            return v2Error(id: id, code: error.code, message: error.message)
+        }
         return v2Ok(id: id, result: [
             "workspace_id": target.tab.id.uuidString,
             "surface_id": target.surfaceId.uuidString,
@@ -932,8 +952,31 @@ struct ControlCommandHandler {
     }
 
     private func v2SurfaceReadText(id: Any?, params: [String: Any]) -> String {
-        guard let target = v2TargetSurface(params),
-              let terminal = SurfaceRegistry.shared.terminal(for: target.surfaceId) else {
+        guard let target = v2TargetSurface(params) else {
+            return v2Error(id: id, code: "not_found", message: "Surface not found")
+        }
+        #if canImport(CGhosttyEmbed)
+        if SurfaceRegistry.shared.ghostty(for: target.surfaceId) != nil {
+            let scrollback = (params["scrollback"] as? Bool)
+                ?? (params["scrollback"] as? NSNumber)?.boolValue
+                ?? false
+            guard var text = SurfaceRegistry.shared.ghosttyReadText(
+                for: target.surfaceId, includeScrollback: scrollback
+            ) else {
+                return v2Error(id: id, code: "unavailable", message: "Surface shell not running yet (select its workspace once)")
+            }
+            if let lines = params["lines"] as? Int, lines > 0 {
+                let all = text.split(separator: "\n", omittingEmptySubsequences: false)
+                text = all.suffix(lines).joined(separator: "\n")
+            }
+            return v2Ok(id: id, result: [
+                "workspace_id": target.tab.id.uuidString,
+                "surface_id": target.surfaceId.uuidString,
+                "text": text
+            ])
+        }
+        #endif
+        guard let terminal = SurfaceRegistry.shared.terminal(for: target.surfaceId) else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")
         }
         // Read the screenful ending at the cursor, not the viewport: an
