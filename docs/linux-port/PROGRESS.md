@@ -187,6 +187,37 @@ feedback into the model.
   same names as macOS `sendNamedKey`). Verified: `send 'sleep 60\n'` +
   `send-key sigint` → `^C` on screen, sleep interrupted.
 
+### Phase 4a — split panes ✅
+
+- Model: `PaneNode` (leaf = `PaneLeaf` with paneId/surfaceId/cwd, split =
+  orientation + two subtrees) with pure `splitting`/`removing` operations —
+  the Linux counterpart of Bonsplit's tree (MVP: one surface per pane, no
+  per-pane tab strips yet).
+- Widget: each tab's GtkStack child is now a nested-`GtkPaned` skeleton with
+  the live VTE containers as leaves. On layout change the skeleton is
+  rebuilt; terminals are **reparented, never recreated** (shells survive).
+  Split-off shells inherit the source shell's OSC-7 cwd.
+- Focus: a `GtkEventControllerFocus` per terminal feeds clicks back into the
+  model (`focusedSurfaceId`); the focused surface drives the tab title and is
+  the default target for send/read/notify.
+- Protocol: v2 `surface.split`, `surface.close`, `pane.list`, `pane.focus`
+  (+ v1 `new_split`); `v2RefreshKnownRefs` equivalent so handle refs resolve
+  before their first listing (matches macOS). Header-bar split buttons.
+- Verified: 3-way split with all shells alive and individually addressable
+  (`send --surface surface:N` / `read-screen --surface surface:N`),
+  cross-workspace splits, `close-surface` collapsing the tree, 12-round
+  focus/send stress — zero Gtk/VTE criticals.
+
+**Reparenting lessons (cost a segfault):**
+1. `GtkPaned` silently refuses a child that still has a parent
+   (Gtk-CRITICAL) — the child then dies with the old skeleton and any
+   pointer map (SurfaceRegistry) dangles → use-after-free in later
+   `vte_terminal_*` calls. Always detach containers from their old parents
+   (paned: `set_start/end_child(NULL)`; stack: `gtk_stack_remove`) before
+   assembling the new tree, holding a `g_object_ref_sink` across the move.
+2. A single-leaf tab's stack child IS the terminal container — after
+   detaching, there is no separate skeleton left to remove.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

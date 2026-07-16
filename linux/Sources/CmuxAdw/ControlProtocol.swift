@@ -39,6 +39,8 @@ struct ControlCommandHandler {
             return closeWorkspace(args)
         case "send":
             return sendInput(args)
+        case "new_split":
+            return newSplitV1(args)
         case "notify":
             return notifyCurrent(args)
         case "notify_surface":
@@ -120,7 +122,8 @@ struct ControlCommandHandler {
     /// Same escape handling as the macOS `sendInput`: `\n` becomes Enter.
     private func sendInput(_ args: String) -> String {
         guard let tab = tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue }),
-              let terminal = SurfaceRegistry.shared.terminal(for: tab.surfaceId) else {
+              let focused = tab.focusedSurface,
+              let terminal = SurfaceRegistry.shared.terminal(for: focused.surfaceId) else {
             return "ERROR: No focused terminal"
         }
         let unescaped = args
@@ -129,6 +132,22 @@ struct ControlCommandHandler {
             .replacingOccurrences(of: "\\t", with: "\t")
         feed(terminal, unescaped)
         return "OK"
+    }
+
+    private func newSplitV1(_ args: String) -> String {
+        let parts = args.trimmingCharacters(in: .whitespaces)
+            .split(separator: " ").map(String.init)
+        guard let direction = parts.first else {
+            return "ERROR: Invalid direction. Use left, right, up, or down."
+        }
+        guard let tab = tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue }),
+              let focused = tab.focusedSurface else {
+            return "ERROR: No surface to split"
+        }
+        guard let leaf = split(tab: tab, surfaceId: focused.surfaceId, direction: direction) else {
+            return "ERROR: Invalid direction. Use left, right, up, or down."
+        }
+        return "OK \(leaf.surfaceId.uuidString)"
     }
 
     private func feed(_ terminal: UnsafeMutablePointer<VteTerminal>, _ text: String) {
@@ -204,6 +223,8 @@ struct ControlCommandHandler {
         let method = (dict["method"] as? String) ?? ""
         let params = dict["params"] as? [String: Any] ?? [:]
 
+        refreshKnownRefs()
+
         switch method {
         case "system.ping":
             return v2Ok(id: id, result: ["pong": true])
@@ -247,6 +268,14 @@ struct ControlCommandHandler {
             return v2SurfaceSendKey(id: id, params: params)
         case "surface.read_text":
             return v2SurfaceReadText(id: id, params: params)
+        case "surface.split":
+            return v2SurfaceSplit(id: id, params: params)
+        case "surface.close":
+            return v2SurfaceClose(id: id, params: params)
+        case "pane.list":
+            return v2PaneList(id: id, params: params)
+        case "pane.focus":
+            return v2PaneFocus(id: id, params: params)
         case "notification.create":
             return v2NotificationCreate(id: id, params: params)
         case "notification.list":
@@ -272,6 +301,21 @@ struct ControlCommandHandler {
                 code: "unknown_method",
                 message: "Method not implemented in the Linux port yet: \(method)"
             )
+        }
+    }
+
+    /// Like the macOS `v2RefreshKnownRefs`: make sure every live entity has
+    /// a handle ref before any params are resolved, so clients can use refs
+    /// they haven't seen in a listing yet.
+    private func refreshKnownRefs() {
+        let registry = RefRegistry.shared
+        _ = registry.ref(kind: "window", uuid: Self.windowId)
+        for tab in tabs.wrappedValue {
+            _ = registry.ref(kind: "workspace", uuid: tab.id)
+            for leaf in tab.surfaces {
+                _ = registry.ref(kind: "pane", uuid: leaf.paneId)
+                _ = registry.ref(kind: "surface", uuid: leaf.surfaceId)
+            }
         }
     }
 
@@ -350,32 +394,156 @@ struct ControlCommandHandler {
             return v2Error(id: id, code: "not_found", message: "Workspace not found")
         }
         let registry = RefRegistry.shared
+        let focusedId = tab.focusedSurface?.surfaceId
+        let surfaces: [[String: Any]] = tab.surfaces.enumerated().map { index, leaf in
+            [
+                "id": leaf.surfaceId.uuidString,
+                "ref": registry.ref(kind: "surface", uuid: leaf.surfaceId),
+                "index": index,
+                "focused": leaf.surfaceId == focusedId,
+                "type": "terminal",
+                "title": tab.title
+            ]
+        }
         return v2Ok(id: id, result: [
             "workspace_id": tab.id.uuidString,
             "workspace_ref": registry.ref(kind: "workspace", uuid: tab.id),
-            "surfaces": [[
-                "id": tab.surfaceId.uuidString,
-                "ref": registry.ref(kind: "surface", uuid: tab.surfaceId),
-                "index": 0,
-                "focused": true,
-                "type": "terminal",
-                "title": tab.title
-            ]]
+            "surfaces": surfaces
         ])
+    }
+
+    private func v2PaneList(id: Any?, params: [String: Any]) -> String {
+        let wsId = v2WorkspaceUUID(params) ?? selection.wrappedValue
+        guard let tab = tabs.wrappedValue.first(where: { $0.id == wsId }) else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not found")
+        }
+        let registry = RefRegistry.shared
+        let focusedId = tab.focusedSurface?.surfaceId
+        let panes: [[String: Any]] = tab.surfaces.enumerated().map { index, leaf in
+            [
+                "id": leaf.paneId.uuidString,
+                "ref": registry.ref(kind: "pane", uuid: leaf.paneId),
+                "index": index,
+                "focused": leaf.surfaceId == focusedId,
+                "surface_ids": [leaf.surfaceId.uuidString],
+                "surface_refs": [registry.ref(kind: "surface", uuid: leaf.surfaceId)],
+                "selected_surface_id": leaf.surfaceId.uuidString,
+                "selected_surface_ref": registry.ref(kind: "surface", uuid: leaf.surfaceId),
+                "surface_count": 1
+            ]
+        }
+        return v2Ok(id: id, result: [
+            "workspace_id": tab.id.uuidString,
+            "workspace_ref": registry.ref(kind: "workspace", uuid: tab.id),
+            "window_id": Self.windowId.uuidString,
+            "window_ref": registry.ref(kind: "window", uuid: Self.windowId),
+            "panes": panes
+        ])
+    }
+
+    private func v2PaneFocus(id: Any?, params: [String: Any]) -> String {
+        guard let raw = params["pane_id"] as? String,
+              let paneId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid pane_id")
+        }
+        for (index, tab) in tabs.wrappedValue.enumerated() {
+            if let leaf = tab.surfaces.first(where: { $0.paneId == paneId }) {
+                if selection.wrappedValue != tab.id {
+                    select(tab.id)
+                }
+                tabs.wrappedValue[index].focusedSurfaceId = leaf.surfaceId
+                return v2Ok(id: id, result: [
+                    "workspace_id": tab.id.uuidString,
+                    "pane_id": leaf.paneId.uuidString,
+                    "surface_id": leaf.surfaceId.uuidString
+                ])
+            }
+        }
+        return v2Error(id: id, code: "not_found", message: "Pane not found")
+    }
+
+    private func v2SurfaceSplit(id: Any?, params: [String: Any]) -> String {
+        guard let direction = params["direction"] as? String else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing direction")
+        }
+        guard let target = v2TargetSurface(params) else {
+            return v2Error(id: id, code: "not_found", message: "Surface not found")
+        }
+        guard let newLeaf = split(tab: target.tab, surfaceId: target.surfaceId, direction: direction) else {
+            return v2Error(id: id, code: "invalid_params", message: "Invalid direction. Use left, right, up, or down.")
+        }
+        let registry = RefRegistry.shared
+        return v2Ok(id: id, result: [
+            "window_id": Self.windowId.uuidString,
+            "window_ref": registry.ref(kind: "window", uuid: Self.windowId),
+            "workspace_id": target.tab.id.uuidString,
+            "workspace_ref": registry.ref(kind: "workspace", uuid: target.tab.id),
+            "surface_id": newLeaf.surfaceId.uuidString,
+            "surface_ref": registry.ref(kind: "surface", uuid: newLeaf.surfaceId),
+            "pane_id": newLeaf.paneId.uuidString,
+            "pane_ref": registry.ref(kind: "pane", uuid: newLeaf.paneId)
+        ])
+    }
+
+    private func v2SurfaceClose(id: Any?, params: [String: Any]) -> String {
+        guard let target = v2TargetSurface(params) else {
+            return v2Error(id: id, code: "not_found", message: "Surface not found")
+        }
+        guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == target.tab.id }) else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not found")
+        }
+        if let remaining = tabs.wrappedValue[index].layout.removing(surfaceId: target.surfaceId) {
+            tabs.wrappedValue[index].layout = remaining
+            if tabs.wrappedValue[index].focusedSurfaceId == target.surfaceId,
+               let first = remaining.leaves.first {
+                tabs.wrappedValue[index].focusedSurfaceId = first.surfaceId
+            }
+        } else {
+            // Last surface in the workspace — close the workspace.
+            tabs.wrappedValue.remove(at: index)
+            if selection.wrappedValue == target.tab.id,
+               let next = tabs.wrappedValue[safe: min(index, tabs.wrappedValue.count - 1)]
+                   ?? tabs.wrappedValue.first {
+                select(next.id)
+            }
+        }
+        return v2Ok(id: id, result: [
+            "workspace_id": target.tab.id.uuidString,
+            "surface_id": target.surfaceId.uuidString
+        ])
+    }
+
+    /// Splits the pane holding `surfaceId`; the new shell inherits the
+    /// split-off shell's current directory (OSC 7) when known. Returns the
+    /// new leaf, or nil for an invalid direction/surface.
+    @discardableResult
+    func split(tab: TerminalTab, surfaceId: UUID, direction: String) -> PaneLeaf? {
+        guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id }) else { return nil }
+        let cwd = SurfaceRegistry.shared.currentDirectory(for: surfaceId)
+            ?? tab.workingDirectory
+        let newLeaf = PaneLeaf(workingDirectory: cwd)
+        guard let layout = tabs.wrappedValue[index].layout.splitting(
+            surfaceId: surfaceId,
+            direction: direction,
+            newLeaf: newLeaf
+        ) else { return nil }
+        tabs.wrappedValue[index].layout = layout
+        tabs.wrappedValue[index].focusedSurfaceId = newLeaf.surfaceId
+        return newLeaf
     }
 
     private func v2SurfaceSendText(id: Any?, params: [String: Any]) -> String {
         guard let text = params["text"] as? String else {
             return v2Error(id: id, code: "invalid_params", message: "Missing text")
         }
-        guard let tab = v2TargetTab(params),
-              let terminal = SurfaceRegistry.shared.terminal(for: tab.surfaceId) else {
+        guard let target = v2TargetSurface(params),
+              let terminal = SurfaceRegistry.shared.terminal(for: target.surfaceId) else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")
         }
         feed(terminal, text)
         return v2Ok(id: id, result: [
-            "workspace_id": tab.id.uuidString,
-            "surface_id": tab.surfaceId.uuidString
+            "workspace_id": target.tab.id.uuidString,
+            "surface_id": target.surfaceId.uuidString
         ])
     }
 
@@ -383,8 +551,8 @@ struct ControlCommandHandler {
         guard let key = params["key"] as? String, !key.isEmpty else {
             return v2Error(id: id, code: "invalid_params", message: "Missing key")
         }
-        guard let tab = v2TargetTab(params),
-              let terminal = SurfaceRegistry.shared.terminal(for: tab.surfaceId) else {
+        guard let target = v2TargetSurface(params),
+              let terminal = SurfaceRegistry.shared.terminal(for: target.surfaceId) else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")
         }
         guard let bytes = Self.namedKeyBytes(key) else {
@@ -392,8 +560,8 @@ struct ControlCommandHandler {
         }
         feed(terminal, bytes)
         return v2Ok(id: id, result: [
-            "workspace_id": tab.id.uuidString,
-            "surface_id": tab.surfaceId.uuidString,
+            "workspace_id": target.tab.id.uuidString,
+            "surface_id": target.surfaceId.uuidString,
             "key": key
         ])
     }
@@ -445,8 +613,8 @@ struct ControlCommandHandler {
     }
 
     private func v2SurfaceReadText(id: Any?, params: [String: Any]) -> String {
-        guard let tab = v2TargetTab(params),
-              let terminal = SurfaceRegistry.shared.terminal(for: tab.surfaceId) else {
+        guard let target = v2TargetSurface(params),
+              let terminal = SurfaceRegistry.shared.terminal(for: target.surfaceId) else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")
         }
         var text = ""
@@ -455,23 +623,27 @@ struct ControlCommandHandler {
             g_free(raw)
         }
         return v2Ok(id: id, result: [
-            "workspace_id": tab.id.uuidString,
-            "surface_id": tab.surfaceId.uuidString,
+            "workspace_id": target.tab.id.uuidString,
+            "surface_id": target.surfaceId.uuidString,
             "text": text
         ])
     }
 
-    /// Resolves the target tab from `surface_id`/`workspace_id` params
-    /// (UUIDs or handle refs), defaulting to the selected tab.
-    private func v2TargetTab(_ params: [String: Any]) -> TerminalTab? {
+    /// Resolves the target surface from `surface_id`/`workspace_id` params
+    /// (UUIDs or handle refs), defaulting to the selected tab's focused
+    /// surface.
+    private func v2TargetSurface(_ params: [String: Any]) -> (tab: TerminalTab, surfaceId: UUID)? {
         if let raw = params["surface_id"] as? String, !raw.isEmpty {
-            let uuid = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw)
-            return tabs.wrappedValue.first { $0.surfaceId == uuid }
+            guard let uuid = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw),
+                  let tab = tabs.wrappedValue.first(where: { $0.contains(surfaceId: uuid) }) else {
+                return nil
+            }
+            return (tab, uuid)
         }
-        if let wsId = v2WorkspaceUUID(params) {
-            return tabs.wrappedValue.first { $0.id == wsId }
-        }
-        return tabs.wrappedValue.first { $0.id == selection.wrappedValue }
+        let wsId = v2WorkspaceUUID(params) ?? selection.wrappedValue
+        guard let tab = tabs.wrappedValue.first(where: { $0.id == wsId }),
+              let focused = tab.focusedSurface else { return nil }
+        return (tab, focused.surfaceId)
     }
 
     private func v2NotificationCreate(id: Any?, params: [String: Any]) -> String {
@@ -481,7 +653,7 @@ struct ControlCommandHandler {
         let title = (params["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "cmux"
         let notification = TerminalNotification(
             tabId: tab.id,
-            surfaceId: tab.surfaceId,
+            surfaceId: tab.focusedSurface?.surfaceId,
             title: title,
             subtitle: params["subtitle"] as? String ?? "",
             body: params["body"] as? String ?? ""

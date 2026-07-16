@@ -26,7 +26,11 @@ full analysis and phased plan.
       (GNotification; run `scripts/install-desktop-entry.sh` once so GNOME
       displays them) and `send-key` (enter/ctrl-c/arrows/…)
 - [ ] Phase 3 (part 2) — notifications page UI, unread badge polish
-- [ ] Phase 4 — splits (Bonsplit → GtkPaned tree), session persistence
+- [x] Phase 4a — split panes: nested GtkPaned tree per workspace, one live
+      shell per pane (reparented across layout changes, never respawned),
+      focus-follows-click, cwd inheritance; `new-split`/`list-panes`/
+      `focus-pane`/`close-surface` + header-bar split buttons
+- [ ] Phase 4b — session persistence (serialize the pane tree, XDG paths)
 - [ ] Phase 5 — browser panel via WebKitGTK (`webkitgtk-6.0`)
 
 ## Trying the control plane

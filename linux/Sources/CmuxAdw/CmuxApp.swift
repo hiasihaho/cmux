@@ -52,7 +52,8 @@ struct CmuxApp: App {
                         tabs: tabs,
                         selection: selection,
                         onTitleChanged: handleTitleChange,
-                        onBell: handleBell
+                        onBell: handleBell,
+                        onSurfaceFocused: handleSurfaceFocused
                     )
                 })
                 .topToolbar {
@@ -61,6 +62,14 @@ struct CmuxApp: App {
                             sidebarVisible.toggle()
                         }
                         .tooltip("Toggle sidebar")
+                        Button(icon: .custom(name: "pan-end-symbolic")) {
+                            splitFocused(direction: "right")
+                        }
+                        .tooltip("Split right")
+                        Button(icon: .custom(name: "pan-down-symbolic")) {
+                            splitFocused(direction: "down")
+                        }
+                        .tooltip("Split down")
                     } end: {
                         Button(icon: .custom(name: "software-update-urgent-symbolic")) {
                             simulateAttention()
@@ -121,22 +130,24 @@ struct CmuxApp: App {
         tabs[index].needsAttention.toggle()
     }
 
-    /// OSC title updates from the shell (VTE `window-title-changed`).
-    private func handleTitleChange(_ tabId: UUID, _ title: String) {
+    /// OSC title updates from the shell (VTE `window-title-changed`). Only
+    /// the focused surface drives the tab title.
+    private func handleTitleChange(_ tabId: UUID, _ surfaceId: UUID, _ title: String) {
         guard !title.isEmpty,
               let index = tabs.firstIndex(where: { $0.id == tabId }),
+              tabs[index].focusedSurface?.surfaceId == surfaceId,
               tabs[index].title != title else { return }
         tabs[index].title = title
     }
 
     /// Terminal bell — the first real attention signal (agents ring the bell
     /// or use `cmux notify`; libghostty adds OSC 9/777 later).
-    private func handleBell(_ tabId: UUID) {
+    private func handleBell(_ tabId: UUID, _ surfaceId: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == tabId }) else { return }
         tabs[index].needsAttention = true
         notifications.append(TerminalNotification(
             tabId: tabId,
-            surfaceId: tabs[index].surfaceId,
+            surfaceId: surfaceId,
             title: "Bell",
             body: "Terminal bell in \(tabs[index].title)"
         ))
@@ -147,6 +158,19 @@ struct CmuxApp: App {
                 body: "Terminal bell"
             )
         }
+    }
+
+    /// Clicking into a terminal makes it the workspace's focused surface.
+    private func handleSurfaceFocused(_ tabId: UUID, _ surfaceId: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabId }),
+              tabs[index].focusedSurfaceId != surfaceId else { return }
+        tabs[index].focusedSurfaceId = surfaceId
+    }
+
+    private func splitFocused(direction: String) {
+        guard let tab = tabs.first(where: { $0.id == selection }),
+              let focused = tab.focusedSurface else { return }
+        controlHandler.split(tab: tab, surfaceId: focused.surfaceId, direction: direction)
     }
 }
 

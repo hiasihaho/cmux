@@ -2,39 +2,54 @@ import Adwaita
 import CVte
 import Foundation
 
-/// Main-thread map of tab surface → live VTE terminal, used by the control
-/// protocol (`surface.send_text`, `surface.read_text`).
+/// Main-thread map of surface → live VTE terminal (+ its scrolled-window
+/// container), used by the control protocol and for pane-tree reparenting.
 final class SurfaceRegistry {
 
     static let shared = SurfaceRegistry()
 
     private(set) var terminals: [UUID: UnsafeMutablePointer<VteTerminal>] = [:]
+    private(set) var containers: [UUID: UnsafeMutablePointer<GtkWidget>] = [:]
 
-    func register(_ terminal: UnsafeMutablePointer<VteTerminal>, for surfaceId: UUID) {
+    func register(
+        terminal: UnsafeMutablePointer<VteTerminal>,
+        container: UnsafeMutablePointer<GtkWidget>,
+        for surfaceId: UUID
+    ) {
         terminals[surfaceId] = terminal
+        containers[surfaceId] = container
     }
 
     func unregister(_ surfaceId: UUID) {
         terminals.removeValue(forKey: surfaceId)
+        containers.removeValue(forKey: surfaceId)
     }
 
     func terminal(for surfaceId: UUID) -> UnsafeMutablePointer<VteTerminal>? {
         terminals[surfaceId]
     }
+
+    /// Shell working directory reported via OSC 7 (vte.sh), if any.
+    func currentDirectory(for surfaceId: UUID) -> String? {
+        guard let terminal = terminals[surfaceId],
+              let uri = vte_terminal_get_current_directory_uri(terminal),
+              let path = g_filename_from_uri(uri, nil, nil) else { return nil }
+        defer { g_free(path) }
+        return String(cString: path)
+    }
 }
 
-/// A GtkStack hosting one VTE terminal per tab. Children are managed
-/// imperatively and kept alive across tab switches — declarative diffing
-/// would destroy and respawn shells on every switch.
-///
-/// This is the Linux stand-in for the macOS `TerminalSurface`; the same
-/// widget slot later hosts libghostty surfaces behind the same registry.
+/// A GtkStack with one child per tab; each child is the tab's pane tree
+/// (nested GtkPaned) with a VTE terminal leaf per surface. All children are
+/// managed imperatively: terminals stay alive across tab switches and pane
+/// rearrangements (the paned skeleton is rebuilt, terminals are reparented).
 struct TerminalStackWidget: AdwaitaWidget {
 
     var tabs: [TerminalTab]
     var selection: UUID
-    var onTitleChanged: (UUID, String) -> Void
-    var onBell: (UUID) -> Void
+    var onTitleChanged: (UUID, UUID, String) -> Void
+    var onBell: (UUID, UUID) -> Void
+    var onSurfaceFocused: (UUID, UUID) -> Void
 
     func container<Data>(data: WidgetData, type: Data.Type) -> ViewStorage where Data: ViewRenderData {
         let stack = gtk_stack_new()
@@ -54,41 +69,118 @@ struct TerminalStackWidget: AdwaitaWidget {
         sync(storage)
     }
 
-    // MARK: child management
+    // MARK: tree management
 
     private func sync(_ storage: ViewStorage) {
         guard let stack = storage.opaquePointer else { return }
-        var known = storage.fields["known-surfaces"] as? Set<UUID> ?? []
+        var shapes = storage.fields["tab-shapes"] as? [UUID: String] ?? [:]
 
-        for tab in tabs where !known.contains(tab.surfaceId) {
-            addTerminal(for: tab, to: stack)
-            known.insert(tab.surfaceId)
+        // Terminals for every leaf (new tabs and fresh splits alike).
+        for tab in tabs {
+            for leaf in tab.surfaces where SurfaceRegistry.shared.terminal(for: leaf.surfaceId) == nil {
+                createTerminal(for: leaf, in: tab, storage: storage)
+            }
         }
 
-        let live = Set(tabs.map(\.surfaceId))
-        for surfaceId in known.subtracting(live) {
-            if let child = gtk_stack_get_child_by_name(stack, surfaceId.uuidString) {
+        // Drop registry entries for surfaces that no longer exist anywhere.
+        let liveSurfaces = Set(tabs.flatMap { $0.surfaces.map(\.surfaceId) })
+        for surfaceId in SurfaceRegistry.shared.terminals.keys where !liveSurfaces.contains(surfaceId) {
+            SurfaceRegistry.shared.unregister(surfaceId)
+        }
+
+        // Remove stack children of closed tabs.
+        let liveTabs = Set(tabs.map(\.id))
+        for tabId in shapes.keys where !liveTabs.contains(tabId) {
+            if let child = gtk_stack_get_child_by_name(stack, tabId.uuidString) {
                 gtk_stack_remove(stack, child)
             }
-            SurfaceRegistry.shared.unregister(surfaceId)
-            known.remove(surfaceId)
+            shapes.removeValue(forKey: tabId)
         }
-        storage.fields["known-surfaces"] = known
 
-        // Refresh signal handlers so their closures capture current bindings.
+        // (Re)build pane skeletons where the layout shape changed.
         for tab in tabs {
-            connectSignals(for: tab, storage: storage)
+            let signature = tab.layout.shapeSignature
+            let existing = gtk_stack_get_child_by_name(stack, tab.id.uuidString)
+            guard shapes[tab.id] != signature || existing == nil else { continue }
+
+            // Keep live terminal containers alive across the rebuild and
+            // detach them from their old parents — GtkPaned refuses children
+            // that are still parented elsewhere, and a silently rejected
+            // child dies with the old skeleton (dangling registry pointers).
+            for leaf in tab.surfaces {
+                if let container = SurfaceRegistry.shared.containers[leaf.surfaceId] {
+                    g_object_ref_sink(UnsafeMutableRawPointer(container))
+                    detachFromParent(container)
+                }
+            }
+            // A single-leaf tab's stack child IS the container — the detach
+            // above already removed it from the stack in that case.
+            if let existing,
+               let parent = gtk_widget_get_parent(existing),
+               OpaquePointer(parent) == stack {
+                gtk_stack_remove(stack, existing)
+            }
+            if let root = buildNode(tab.layout) {
+                gtk_stack_add_named(stack, root, tab.id.uuidString)
+            }
+            for leaf in tab.surfaces {
+                if let container = SurfaceRegistry.shared.containers[leaf.surfaceId] {
+                    g_object_unref(UnsafeMutableRawPointer(container))
+                }
+            }
+            shapes[tab.id] = signature
         }
+        storage.fields["tab-shapes"] = shapes
 
         if let tab = tabs.first(where: { $0.id == selection }) {
-            gtk_stack_set_visible_child_name(stack, tab.surfaceId.uuidString)
-            if let terminal = SurfaceRegistry.shared.terminal(for: tab.surfaceId) {
+            gtk_stack_set_visible_child_name(stack, tab.id.uuidString)
+            if let focused = tab.focusedSurface,
+               let terminal = SurfaceRegistry.shared.terminal(for: focused.surfaceId) {
                 gtk_widget_grab_focus(asWidget(terminal))
             }
         }
     }
 
-    private func addTerminal(for tab: TerminalTab, to stack: OpaquePointer) {
+    private func detachFromParent(_ widget: UnsafeMutablePointer<GtkWidget>) {
+        guard let parent = gtk_widget_get_parent(widget) else { return }
+        if isA(parent, gtk_stack_get_type()) {
+            gtk_stack_remove(OpaquePointer(parent), widget)
+        } else if isA(parent, gtk_paned_get_type()) {
+            let paned = OpaquePointer(parent)
+            if gtk_paned_get_start_child(paned) == widget {
+                gtk_paned_set_start_child(paned, nil)
+            } else if gtk_paned_get_end_child(paned) == widget {
+                gtk_paned_set_end_child(paned, nil)
+            }
+        }
+    }
+
+    private func isA(_ widget: UnsafeMutablePointer<GtkWidget>, _ type: GType) -> Bool {
+        g_type_check_instance_is_a(
+            UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GTypeInstance.self),
+            type
+        ) != 0
+    }
+
+    private func buildNode(_ node: PaneNode) -> UnsafeMutablePointer<GtkWidget>? {
+        switch node {
+        case .leaf(let leaf):
+            return SurfaceRegistry.shared.containers[leaf.surfaceId]
+        case .split(let orientation, let first, let second):
+            let paned = gtk_paned_new(
+                orientation == .horizontal ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL
+            )
+            let handle = OpaquePointer(paned)
+            gtk_paned_set_start_child(handle, buildNode(first))
+            gtk_paned_set_end_child(handle, buildNode(second))
+            gtk_paned_set_wide_handle(handle, 1)
+            gtk_widget_set_hexpand(paned, 1)
+            gtk_widget_set_vexpand(paned, 1)
+            return paned
+        }
+    }
+
+    private func createTerminal(for leaf: PaneLeaf, in tab: TerminalTab, storage: ViewStorage) {
         guard let widget = vte_terminal_new() else { return }
         let terminal = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: VteTerminal.self)
         gtk_widget_set_hexpand(widget, 1)
@@ -97,44 +189,67 @@ struct TerminalStackWidget: AdwaitaWidget {
 
         guard let scrolled = gtk_scrolled_window_new() else { return }
         gtk_scrolled_window_set_child(OpaquePointer(scrolled), widget)
-        gtk_stack_add_named(stack, scrolled, tab.surfaceId.uuidString)
+        gtk_widget_set_hexpand(scrolled, 1)
+        gtk_widget_set_vexpand(scrolled, 1)
 
-        spawnShell(in: terminal, tab: tab)
-        SurfaceRegistry.shared.register(terminal, for: tab.surfaceId)
+        spawnShell(in: terminal, leaf: leaf, tab: tab)
+        SurfaceRegistry.shared.register(terminal: terminal, container: scrolled, for: leaf.surfaceId)
+        connectSignals(for: leaf, in: tab, terminal: terminal, widget: widget, storage: storage)
     }
 
-    private func connectSignals(for tab: TerminalTab, storage: ViewStorage) {
-        guard let terminal = SurfaceRegistry.shared.terminal(for: tab.surfaceId) else { return }
-        let pointer = OpaquePointer(terminal)
+    private func connectSignals(
+        for leaf: PaneLeaf,
+        in tab: TerminalTab,
+        terminal: UnsafeMutablePointer<VteTerminal>,
+        widget: UnsafeMutablePointer<GtkWidget>,
+        storage: ViewStorage
+    ) {
         let tabId = tab.id
+        let surfaceId = leaf.surfaceId
         let onTitleChanged = onTitleChanged
         let onBell = onBell
+        let onSurfaceFocused = onSurfaceFocused
 
         storage.connectSignal(
             name: "window-title-changed",
-            id: "title-\(tab.surfaceId.uuidString)",
-            pointer: pointer
+            id: "title-\(surfaceId.uuidString)",
+            pointer: OpaquePointer(terminal)
         ) {
             if let title = vte_terminal_get_window_title(terminal) {
-                onTitleChanged(tabId, String(cString: title))
+                onTitleChanged(tabId, surfaceId, String(cString: title))
             }
         }
         storage.connectSignal(
             name: "bell",
-            id: "bell-\(tab.surfaceId.uuidString)",
-            pointer: pointer
+            id: "bell-\(surfaceId.uuidString)",
+            pointer: OpaquePointer(terminal)
         ) {
-            onBell(tabId)
+            onBell(tabId, surfaceId)
+        }
+
+        if let controller = gtk_event_controller_focus_new() {
+            gtk_widget_add_controller(widget, controller)
+            storage.connectSignal(
+                name: "enter",
+                id: "focus-\(surfaceId.uuidString)",
+                pointer: controller
+            ) {
+                onSurfaceFocused(tabId, surfaceId)
+            }
         }
     }
 
     /// Spawns the user's shell with the cmux environment (workspace/surface
     /// identity + socket path), mirroring the macOS terminal environment.
-    private func spawnShell(in terminal: UnsafeMutablePointer<VteTerminal>, tab: TerminalTab) {
+    private func spawnShell(
+        in terminal: UnsafeMutablePointer<VteTerminal>,
+        leaf: PaneLeaf,
+        tab: TerminalTab
+    ) {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/bash"
         var environment = ProcessInfo.processInfo.environment
         environment["CMUX_WORKSPACE_ID"] = tab.id.uuidString
-        environment["CMUX_SURFACE_ID"] = tab.surfaceId.uuidString
+        environment["CMUX_SURFACE_ID"] = leaf.surfaceId.uuidString
         environment["CMUX_SOCKET_PATH"] = ControlSocketServer.shared.path
 
         let argv = cStringArray([shell])
@@ -147,7 +262,7 @@ struct TerminalStackWidget: AdwaitaWidget {
         vte_terminal_spawn_async(
             terminal,
             VTE_PTY_DEFAULT,
-            tab.workingDirectory,
+            leaf.workingDirectory,
             argv,
             envv,
             G_SPAWN_DEFAULT,
