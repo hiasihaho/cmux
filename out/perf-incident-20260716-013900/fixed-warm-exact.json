@@ -1,0 +1,22 @@
+{
+  "activate": {
+    "duration_ms": 30.5,
+    "response": "OK"
+  },
+  "palette_command": {
+    "duration_ms": 20.2,
+    "response": "OK"
+  },
+  "palette_visible_ms": 158.2,
+  "enter_command": {
+    "duration_ms": 19.2,
+    "response": "OK"
+  },
+  "first_browser_ms": 357.2,
+  "surface_id": "001F5B79-DFFD-47BD-A6AC-9BEC93ACB4C9",
+  "final_render_ms": 1423.5,
+  "final_screenshot": {
+    "duration_ms": 31.8,
+    "response": "OK 2026-07-16T09-40-24Z_F2D8C6A9 /var/folders/rr/vmfx6xh12dz2tlvgtmyvjmf80000gn/T/cmux-screenshots/perf-fixed-warm-rendered-final_2026-07-16T09-40-24Z_F2D8C6A9.png"
+  }
+}

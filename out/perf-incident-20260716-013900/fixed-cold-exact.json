@@ -1,0 +1,24 @@
+{
+  "workspace": "workspace:41",
+  "palette_command": {
+    "duration_ms": 38.3,
+    "response": "OK"
+  },
+  "palette_visible_ms": 172.7,
+  "enter_command": {
+    "duration_ms": 165.3,
+    "response": "OK"
+  },
+  "first_browser_ms": 705.2,
+  "surface_id": "E976133D-8038-48EA-ADFB-4B177789C1D4",
+  "loading_screenshot": {
+    "duration_ms": 201.2,
+    "response": "OK 2026-07-16T09-40-01Z_89E36AAB /var/folders/rr/vmfx6xh12dz2tlvgtmyvjmf80000gn/T/cmux-screenshots/perf-fixed-cold-loading-final_2026-07-16T09-40-01Z_89E36AAB.png"
+  },
+  "final_render_ms": 2672.3,
+  "final_text": "\n\n\nFiles\n1\n\n",
+  "final_screenshot": {
+    "duration_ms": 30.5,
+    "response": "OK 2026-07-16T09-40-03Z_F94DD3C1 /var/folders/rr/vmfx6xh12dz2tlvgtmyvjmf80000gn/T/cmux-screenshots/perf-fixed-cold-rendered-final_2026-07-16T09-40-03Z_F94DD3C1.png"
+  }
+}
