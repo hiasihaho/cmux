@@ -240,6 +240,8 @@ struct ControlCommandHandler {
                     "notification.create", "notification.list", "notification.clear"
                 ]
             ])
+        case "system.identify":
+            return v2SystemIdentify(id: id, params: params)
         case "window.list":
             return v2Ok(id: id, result: ["windows": [[
                 "id": Self.windowId.uuidString,
@@ -320,6 +322,26 @@ struct ControlCommandHandler {
         }
     }
 
+    /// Minimal caller identification: resolves the given (or current)
+    /// workspace/surface to ids+refs — enough for agents to feature-detect
+    /// and locate themselves.
+    private func v2SystemIdentify(id: Any?, params: [String: Any]) -> String {
+        guard let target = v2TargetSurface(params) else {
+            return v2Error(id: id, code: "not_found", message: "No workspace selected")
+        }
+        let registry = RefRegistry.shared
+        return v2Ok(id: id, result: [
+            "platform": "linux",
+            "port": "phase-5",
+            "window_id": Self.windowId.uuidString,
+            "window_ref": registry.ref(kind: "window", uuid: Self.windowId),
+            "workspace_id": target.tab.id.uuidString,
+            "workspace_ref": registry.ref(kind: "workspace", uuid: target.tab.id),
+            "surface_id": target.surfaceId.uuidString,
+            "surface_ref": registry.ref(kind: "surface", uuid: target.surfaceId)
+        ])
+    }
+
     /// Like the macOS `v2RefreshKnownRefs`: make sure every live entity has
     /// a handle ref before any params are resolved, so clients can use refs
     /// they haven't seen in a listing yet.
@@ -377,7 +399,11 @@ struct ControlCommandHandler {
                 ?? FileManager.default.homeDirectoryForCurrentUser.path
         )
         tabs.wrappedValue.append(tab)
-        select(tab.id)
+        // `focus: false` creates in the background (agents/automation must
+        // not steal the human's view — macOS gates this on socket policy).
+        if (params["focus"] as? Bool) ?? true {
+            select(tab.id)
+        }
         return v2Ok(id: id, result: workspaceRefResult(tab.id))
     }
 
@@ -501,6 +527,7 @@ struct ControlCommandHandler {
                     select(tab.id)
                 }
                 tabs.wrappedValue[index].focusedSurfaceId = leaf.surfaceId
+                refreshTitle(tabId: tab.id)
                 return v2Ok(id: id, result: [
                     "workspace_id": tab.id.uuidString,
                     "pane_id": leaf.paneId.uuidString,
@@ -561,6 +588,7 @@ struct ControlCommandHandler {
                let first = remaining.leaves.first {
                 tabs.wrappedValue[index].focusedSurfaceId = first.surfaceId
             }
+            refreshTitle(tabId: tabId)
         } else {
             tabs.wrappedValue.remove(at: index)
             if selection.wrappedValue == tabId,
@@ -685,6 +713,12 @@ struct ControlCommandHandler {
             text = String(cString: raw)
             g_free(raw)
         }
+        // `lines` limits to the last N lines (macOS-compatible); scrollback
+        // beyond the visible screen is not captured yet on Linux.
+        if let lines = params["lines"] as? Int, lines > 0 {
+            let all = text.split(separator: "\n", omittingEmptySubsequences: false)
+            text = all.suffix(lines).joined(separator: "\n")
+        }
         return v2Ok(id: id, result: [
             "workspace_id": target.tab.id.uuidString,
             "surface_id": target.surfaceId.uuidString,
@@ -766,6 +800,20 @@ struct ControlCommandHandler {
             return tabs.wrappedValue[index]
         }
         return nil
+    }
+
+    /// The tab title follows the focused surface — refresh it from live
+    /// widget state (VTE window title / WebKit page title) so closing or
+    /// refocusing surfaces never leaves a dead surface's title behind.
+    func refreshTitle(tabId: UUID) {
+        guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }),
+              let focused = tabs.wrappedValue[index].focusedSurface else { return }
+        let registry = SurfaceRegistry.shared
+        guard let title = registry.currentTerminalTitle(for: focused.surfaceId)
+            ?? registry.currentBrowserTitle(for: focused.surfaceId) else { return }
+        if tabs.wrappedValue[index].title != title {
+            tabs.wrappedValue[index].title = title
+        }
     }
 
     /// Selecting a tab clears its attention state and marks its

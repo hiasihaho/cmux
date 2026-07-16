@@ -75,6 +75,14 @@ final class SurfaceRegistry {
         browsers[surfaceId]
     }
 
+    /// Live window title of a terminal surface (OSC 0/2).
+    func currentTerminalTitle(for surfaceId: UUID) -> String? {
+        guard let terminal = terminals[surfaceId],
+              let title = vte_terminal_get_window_title(terminal) else { return nil }
+        let string = String(cString: title)
+        return string.isEmpty ? nil : string
+    }
+
     /// Shell working directory reported via OSC 7 (vte.sh), if any.
     func currentDirectory(for surfaceId: UUID) -> String? {
         guard let terminal = terminals[surfaceId],

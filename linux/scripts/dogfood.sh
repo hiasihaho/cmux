@@ -52,13 +52,32 @@ Focus for this run:
 PROMPT_EOF
 printf '%s\n' "$FOCUS" >> "$PROMPT"
 
-WS_LINE=$(cmux new-workspace --cwd "$HOME/cmux")
-WS=$(printf '%s' "$WS_LINE" | sed -n 's/^OK \(workspace:[0-9]*\).*/\1/p')
-[ -n "$WS" ] || { echo "could not create workspace: $WS_LINE" >&2; exit 1; }
+# Create the tester workspace WITHOUT stealing the human's focus
+# (focus:false isn't exposed by the CLI yet, so speak v2 directly).
+WS=$(python3 - "$HOME/cmux" <<'PY'
+import json, os, socket, sys
+path = os.environ.get("CMUX_SOCKET_PATH") or os.path.join(
+    os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "cmux.sock")
+s = socket.socket(socket.AF_UNIX)
+s.connect(path)
+s.sendall((json.dumps({"id": 1, "method": "workspace.create",
+                       "params": {"cwd": sys.argv[1], "focus": False}}) + "\n").encode())
+buf = b""
+while not buf.endswith(b"\n"):
+    data = s.recv(65536)
+    if not data:
+        break
+    buf += data
+reply = json.loads(buf)
+print(reply["result"]["workspace_id"])
+PY
+)
+[ -n "$WS" ] || { echo "could not create workspace" >&2; exit 1; }
 echo "tester workspace: $WS · report: $REPORT" >&2
 sleep 2
 
-CMD="clear; claude -p \"\$(cat $PROMPT)\" --allowedTools Bash Read Grep Glob | tee $REPORT; touch $REPORT.done; cmux notify --title 'Dogfood report ready' --body '$STAMP'"
+BANNER="=== cmux dogfood: headless QA agent working (quiet until the report prints) ==="
+CMD="clear; echo \"$BANNER\"; claude -p \"\$(cat $PROMPT)\" --allowedTools Bash Read Grep Glob | tee $REPORT; touch $REPORT.done; cmux notify --title 'Dogfood report ready' --body '$STAMP'"
 cmux send --workspace "$WS" "$CMD\\n" >/dev/null
 
 DEADLINE=$(( $(date +%s) + TIMEOUT_MIN * 60 ))

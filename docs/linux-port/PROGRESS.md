@@ -299,6 +299,25 @@ Session persistence (`SessionStore.swift`):
   (clear errors for none/multiple). `cmux browser url` from a terminal pane
   next to one browser pane now just works.
 
+### Closed-loop dogfooding: cycle 1 → fixes
+
+First automated cycle (`scripts/dogfood.sh`, headless Claude QA agent inside
+the app — user-approved) verified all of the day's fixes and found one real
+bug + gaps; fixed same-day:
+
+- **Stale tab title after closing/refocusing surfaces**: the title now
+  refreshes from the newly-focused surface's live state (VTE window title /
+  WebKit page title) on `surface.close`, `pane.focus`, and focus clicks.
+- `surface.read_text` honors `lines` (last N; scrollback capture still todo).
+- Minimal `system.identify` (platform/port + caller ids/refs) so agents can
+  feature-detect and locate themselves.
+- `workspace.create` honors `focus: false`; the dogfood wrapper uses it (raw
+  v2 JSON via python) so spawning a tester never steals the human's view,
+  and shows a banner instead of a blank cleared pane.
+- Not-a-bug from the report: `--id-format` must precede the subcommand
+  (global-flag parsing, same on macOS); headless `claude -p` is silent by
+  design — hence the banner.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

@@ -11,6 +11,16 @@ extension SurfaceRegistry {
         }
         return String(cString: uri)
     }
+
+    /// Live page title of a browser surface.
+    func currentBrowserTitle(for surfaceId: UUID) -> String? {
+        guard let webView = browsers[surfaceId],
+              let title = webkit_web_view_get_title(UnsafeMutablePointer<WebKitWebView>(webView)) else {
+            return nil
+        }
+        let string = String(cString: title)
+        return string.isEmpty ? nil : string
+    }
 }
 
 /// Creates WebKitGTK browser surfaces for `.browser` pane leaves — the Linux

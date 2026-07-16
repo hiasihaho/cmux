@@ -246,11 +246,13 @@ struct CmuxApp: App {
         }
     }
 
-    /// Clicking into a terminal makes it the workspace's focused surface.
+    /// Clicking into a surface makes it the workspace's focused surface;
+    /// the tab title follows it.
     private func handleSurfaceFocused(_ tabId: UUID, _ surfaceId: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == tabId }),
               tabs[index].focusedSurfaceId != surfaceId else { return }
         tabs[index].focusedSurfaceId = surfaceId
+        controlHandler.refreshTitle(tabId: tabId)
     }
 
     private func splitFocused(direction: String) {
