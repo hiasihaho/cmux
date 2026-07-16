@@ -42,6 +42,22 @@ full analysis and phased plan.
 - [ ] Phase 5 (part 2) — browser automation verbs (eval/snapshot/click…),
       address-bar UI
 
+## Daily use
+
+```sh
+cd linux && swift build
+ln -sf "$PWD/.build/debug/cmux" ~/.local/bin/cmux         # the CLI
+ln -sf "$PWD/.build/debug/cmux-adw" ~/.local/bin/cmux-adw # the app
+./scripts/install-desktop-entry.sh                        # launcher + notifications
+```
+
+Launch the app from the GNOME app grid ("cmux") or with `cmux-adw &`. The
+symlinks survive rebuilds (`swift build` replaces the binaries in place).
+Shells inside cmux get `CMUX_WORKSPACE_ID`/`CMUX_SURFACE_ID`/
+`CMUX_SOCKET_PATH`, so `cmux <command>` inside a pane targets that pane by
+default; from outside, target explicitly (`--workspace workspace:2`,
+`--surface surface:3`, or indexes).
+
 ## Trying the control plane
 
 ```sh
