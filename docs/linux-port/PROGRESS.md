@@ -672,6 +672,46 @@ instead of crashing; refs on floating widgets don't sink them, so
 container ownership is unchanged. Verified with workspace churn spanning
 multiple autosave ticks in both VTE and ghostty modes.
 
+## 2026-07-17 — Ghostty shim increment 3 + dogfood cycle 6 (first in ghostty mode)
+
+Agents can drive ghostty panes: `surface.send_text/send_key/read_text`
+dispatch by surface kind. The shim exports raw PTY writes (via the
+now-pub `Surface.queueIo`, readonly guard intact — NOT paste semantics)
+and screen-text reads (`dumpTextLocked` over an untracked selection:
+active screenful, or the whole buffer for `--scrollback` — richer than
+the VTE path). send_key reuses the VTE escape-sequence table through the
+shared `sendBytes` path. Polish shipped alongside: `start.sh` dev2 slot
+(the dev slot hosts the live self-hosted session now) and
+GHOSTTY_RESOURCES_DIR export, resources installed by `zig build lib-gtk`
+→ shell integration auto-injects; post_fork checks `getIsRegistered`
+before asking for a dbus connection (the per-spawn GLib CRITICAL is
+gone). The CSS worry from the design doc was moot — the provider
+attaches in `Application.new`, not `startup()`.
+
+**Dogfood cycle 6** (first on embedded Ghostty, against dev2): all seven
+focus areas pass — verb round-trips, scrollback/lines variants,
+background-workspace error + select-once recovery, churn stability (no
+crash), OSC title tracking, bell → notification with correct refs, shell
+integration env. Findings, all fixed same-day:
+
+- `send` to an exited-shell pane silently returned OK → now errors
+  `unavailable: Surface shell has exited` (Swift reads the Surface's
+  `child-exited` GObject property; no shim change needed).
+- The `unavailable` hint said "select its workspace once", which misled
+  for splits added to a non-selected workspace (they need a RE-select) →
+  reworded to "select its workspace to start it". True eager spawn stays
+  on the increment-4 list.
+- Unknown v1 verbs returned bare `ERROR: Unknown command` while v2 had
+  the friendly not-implemented message → aligned.
+- `workspace.list` rows now carry `needs_attention` (Linux extension) so
+  agents can poll attention without a second call.
+
+Increment 4 backlog: eager background spawn (unmapped GLArea — includes
+the split-in-nonselected-workspace case), child-exited → auto-close pane
+(the `close_surface` action hook; `child-exited` property notify is the
+easy Swift-side trigger), the unreproduced title flake, then the default
+flip to ghostty.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

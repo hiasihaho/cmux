@@ -169,6 +169,14 @@ extension SurfaceRegistry {
         }
     }
 
+    /// True once the pane's shell has exited (the surface shows the
+    /// child-exited overlay; text writes would go nowhere).
+    func ghosttyChildExited(for surfaceId: UUID) -> Bool {
+        guard let pointer = ghostty(for: surfaceId) else { return false }
+        let widget = UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: GtkWidget.self)
+        return GhosttySurfaceFactory.boolProperty(widget, "child-exited")
+    }
+
     /// Terminal text: active screenful, or the whole buffer with
     /// `includeScrollback`. Nil while the shell isn't running yet.
     func ghosttyReadText(for surfaceId: UUID, includeScrollback: Bool) -> String? {

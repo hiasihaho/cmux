@@ -99,7 +99,10 @@ struct ControlCommandHandler {
             list_notifications, clear_notifications, help
             """
         default:
-            return "ERROR: Unknown command: \(verb)"
+            // Same friendly wording as the v2 unknown-method reply — many
+            // CLI commands still speak v1 and hit this path (dogfood
+            // cycle 6 flagged the bare "Unknown command" as confusing).
+            return "ERROR: Method not implemented in the Linux port yet: \(verb)"
         }
     }
 
@@ -528,7 +531,10 @@ struct ControlCommandHandler {
                 "index": index,
                 "title": tab.title,
                 "selected": tab.id == selection.wrappedValue,
-                "pinned": false
+                "pinned": false,
+                // Linux extension (not in the macOS payload): lets agents
+                // poll bell/notification attention without a second call.
+                "needs_attention": tab.needsAttention
             ]
         }
         return [
@@ -872,8 +878,11 @@ struct ControlCommandHandler {
     private func sendBytes(_ text: String, to surfaceId: UUID) -> (code: String, message: String)? {
         #if canImport(CGhosttyEmbed)
         if SurfaceRegistry.shared.ghostty(for: surfaceId) != nil {
+            if SurfaceRegistry.shared.ghosttyChildExited(for: surfaceId) {
+                return ("unavailable", "Surface shell has exited")
+            }
             guard SurfaceRegistry.shared.ghosttySendText(text, to: surfaceId) else {
-                return ("unavailable", "Surface shell not running yet (select its workspace once)")
+                return ("unavailable", "Surface shell not running yet (select its workspace to start it)")
             }
             return nil
         }
@@ -963,7 +972,7 @@ struct ControlCommandHandler {
             guard var text = SurfaceRegistry.shared.ghosttyReadText(
                 for: target.surfaceId, includeScrollback: scrollback
             ) else {
-                return v2Error(id: id, code: "unavailable", message: "Surface shell not running yet (select its workspace once)")
+                return v2Error(id: id, code: "unavailable", message: "Surface shell not running yet (select its workspace to start it)")
             }
             if let lines = params["lines"] as? Int, lines > 0 {
                 let all = text.split(separator: "\n", omittingEmptySubsequences: false)

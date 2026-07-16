@@ -27,7 +27,7 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | Method | Status | Notes |
 |---|---|---|
 | surface.list / create / close / split | ✅ | |
-| surface.send_text / send_key / read_text | ✅ | read_text: screenful ending at cursor; no scrollback capture yet |
+| surface.send_text / send_key / read_text | ✅ | dispatch by surface kind (VTE + ghostty). Ghostty panes: raw PTY writes, read_text with full scrollback (`--scrollback`) — richer than the VTE path (viewport-based, no scrollback); exited shells error `unavailable` |
 | surface.focus / current | ❌ | focus-intent verbs; need focus policy port |
 | surface.move / reorder / refresh / clear_history | ❌ | |
 | surface.health / action / drag_to_split / trigger_flash | ❌ | |
@@ -99,7 +99,7 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | Split panes (GtkPaned tree) | ✅ | fresh splits balance 50/50 at first allocation (phase 5b fix) |
 | Divider position persistence across restart | ❌ | session schema v3 candidate; positions survive in-session rebuilds only |
 | Session persistence (layout, cwds, URLs, selection) | ✅ | XDG JSON, schema v2 |
-| Terminal surfaces | 🟡 | VTE default; embedded Ghostty surfaces work behind CMUX_GHOSTTY=1 build + CMUX_TERM=ghostty runtime (titles/pwd/bell/focus wired; send/read verbs + background spawn still VTE-only — see GHOSTTY-SHIM.md) |
+| Terminal surfaces | 🟡 | VTE default; Ghostty surfaces behind CMUX_GHOSTTY=1 + CMUX_TERM=ghostty now cover titles/pwd/bell/focus AND send/read verbs + shell integration (dogfood cycle 6 passed). Remaining before default flip: eager background spawn, child-exited auto-close — GHOSTTY-SHIM.md |
 | Browser panes (WebKitGTK) | ✅ | |
 | Terminal find overlay | ❌ | VTE has search API; UI missing |
 | Command palette | ❌ | |

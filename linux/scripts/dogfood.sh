@@ -84,6 +84,15 @@ PY
 echo "tester workspace: $WS · report: $REPORT" >&2
 sleep 2
 
+# Ghostty surfaces spawn their shell on first map, so a background
+# workspace stays shell-less. When targeting a dev instance
+# (CMUX_SOCKET_PATH set — no human focus to steal there), select the
+# tester workspace once so the shell starts.
+if [ -n "${CMUX_SOCKET_PATH:-}" ]; then
+    cmux select-workspace --workspace "$WS" >/dev/null 2>&1 || true
+    sleep 2
+fi
+
 BANNER="=== cmux dogfood: headless QA agent working (quiet until the report prints) ==="
 # After reporting, the tester workspace closes itself (10s grace to read the
 # tail of the report in the pane) so runs don't accumulate zombie tabs.
