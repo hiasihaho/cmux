@@ -2,16 +2,17 @@
 # Launcher for the cmux Linux port (see docs/linux-port/INSIDE-CMUX.md).
 #
 #   start.sh [daily]            start the daily instance (default socket/session)
-#   start.sh daily --ghostty    daily with experimental Ghostty terminals
-#   start.sh dev [--ghostty]    start the isolated dev instance
-#   start.sh dev2 [--ghostty]   second isolated slot (when dev hosts a session)
+#   start.sh dev [--vte]        start the isolated dev instance
+#   start.sh dev2 [--vte]       second isolated slot (when dev hosts a session)
 #   start.sh stop-dev[2]        stop ONLY that dev instance (never the daily)
 #   start.sh status             show which instances are running
 #
-# Ghostty mode needs a shim-linked binary:
-#   cd linux && CMUX_GHOSTTY=1 swift build
-# (plus the shim lib: cd ghostty && zig build lib-gtk -Dapp-runtime=gtk \
-#  -Dversion-string=1.3.0-dev)
+# Terminal backend: shim-linked binaries (CMUX_GHOSTTY=1 swift build)
+# default to GHOSTTY terminals; pass --vte to force the VTE fallback.
+# VTE-only binaries always use VTE. --ghostty is accepted for
+# backward compatibility (explicit CMUX_TERM=ghostty).
+# Shim build: cd ghostty && zig build lib-gtk -Dapp-runtime=gtk \
+#   -Dversion-string=1.3.0-dev
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -23,16 +24,20 @@ mkdir -p "$LOG_DIR"
 cmd="${1:-daily}"
 shift || true
 ghostty=false
+vte=false
 for arg in "$@"; do
     [ "$arg" = "--ghostty" ] && ghostty=true
+    [ "$arg" = "--vte" ] && vte=true
 done
+
+linked_ghostty() { ldd "$BIN" 2>/dev/null | grep -q libghostty-gtk; }
 
 require_binary() {
     if [ ! -x "$BIN" ]; then
         echo "error: $BIN not built — run: cd $ROOT/linux && swift build" >&2
         exit 1
     fi
-    if $ghostty && ! ldd "$BIN" 2>/dev/null | grep -q libghostty-gtk; then
+    if $ghostty && ! linked_ghostty; then
         echo "error: binary lacks the Ghostty shim. Build it with:" >&2
         echo "  cd $ROOT/linux && CMUX_GHOSTTY=1 swift build" >&2
         exit 1
@@ -51,10 +56,14 @@ ping_dev() { # $1 = slot (dev|dev2)
         CMUX_SOCKET_PATH="/tmp/cmux-$1.sock" "$CLI" ping 2>/dev/null | grep -q PONG
 }
 
-# GHOSTTY_RESOURCES_DIR for --ghostty launches (shell integration, themes).
+# Terminal-backend env: ghostty is the default in shim-linked binaries.
 ghostty_env() {
-    if $ghostty; then
-        echo "CMUX_TERM=ghostty"
+    if $vte; then
+        echo "CMUX_TERM=vte"
+        return
+    fi
+    $ghostty && echo "CMUX_TERM=ghostty"
+    if linked_ghostty; then
         local res="$ROOT/ghostty/zig-out/share/ghostty"
         [ -d "$res" ] && echo "GHOSTTY_RESOURCES_DIR=$res"
     fi
@@ -127,7 +136,15 @@ status)
         found=true
         term=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null \
             | sed -n 's/^CMUX_TERM=//p')
-        echo "pid $pid  $app_id  terminals=${term:-vte}"
+        if [ -z "$term" ]; then
+            # No explicit override: shim-linked binaries default to ghostty.
+            if ldd "$(readlink /proc/$pid/exe)" 2>/dev/null | grep -q libghostty-gtk; then
+                term="ghostty(default)"
+            else
+                term=vte
+            fi
+        fi
+        echo "pid $pid  $app_id  terminals=$term"
     done < <(instances)
     $found || echo "no cmux-adw running"
     if ping_daily; then echo "daily socket: responding"; fi
@@ -135,7 +152,7 @@ status)
     if ping_dev dev2; then echo "dev2 socket:  responding (/tmp/cmux-dev2.sock)"; fi
     ;;
 *)
-    echo "usage: start.sh [daily|dev|dev2|stop-dev|stop-dev2|status] [--ghostty]" >&2
+    echo "usage: start.sh [daily|dev|dev2|stop-dev|stop-dev2|status] [--vte|--ghostty]" >&2
     exit 2
     ;;
 esac

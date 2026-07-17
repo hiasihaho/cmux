@@ -11,8 +11,14 @@ import Foundation
 
 /// One-shot shim initialization, decided by env + first use.
 enum GhosttyRuntime {
-    private static let wanted =
-        ProcessInfo.processInfo.environment["CMUX_TERM"]?.lowercased() == "ghostty"
+    /// Shim-linked builds default to Ghostty terminals; CMUX_TERM=vte is
+    /// the explicit fallback (VTE-only builds never compile this file).
+    private static let wanted: Bool = {
+        switch ProcessInfo.processInfo.environment["CMUX_TERM"]?.lowercased() {
+        case "vte": return false
+        default: return true
+        }
+    }()
     private static var initResult: Bool?
 
     /// True when Ghostty surfaces are both requested and initializable.

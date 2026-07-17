@@ -139,8 +139,10 @@ resolve at the first submodule push (may need a hiasihaho fork +
    passed), shell-integration resources, dbus CRITICAL gate, window
    autoresize via the SurfaceScrolledWindow container export,
    close-request → pane auto-close.
-4. **Default flip** (next) — remaining before ghostty becomes the
-   default terminal:
+4. ✅ **Default flip** (shipped 2026-07-17 after the resize-freeze fix,
+   ghostty `ae8ba5f0a`) — shim-linked builds default to Ghostty
+   terminals; `CMUX_TERM=vte` is the fallback; `start.sh` grew `--vte`
+   and reports `ghostty(default)` in status. Leftovers:
    - `surface.send_text` / `send_key` / `read_text` for ghostty panes:
      shim exports over `core_surface` (`textCallback`, key events,
      `dumpTextLocked`; the embedded apprt's CAPI shows the pattern).

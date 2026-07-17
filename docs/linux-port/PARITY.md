@@ -99,7 +99,7 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | Split panes (GtkPaned tree) | ✅ | fresh splits balance 50/50 at first allocation (phase 5b fix) |
 | Divider position persistence across restart | ❌ | session schema v3 candidate; positions survive in-session rebuilds only |
 | Session persistence (layout, cwds, URLs, selection) | ✅ | XDG JSON, schema v2 |
-| Terminal surfaces | 🟡 | VTE default; Ghostty surfaces behind CMUX_GHOSTTY=1 + CMUX_TERM=ghostty now cover titles/pwd/bell/focus AND send/read verbs + shell integration (dogfood cycle 6 passed). Remaining before default flip: eager background spawn, child-exited auto-close — GHOSTTY-SHIM.md |
+| Terminal surfaces | ✅ | **Ghostty is the default** in shim-linked builds (CMUX_GHOSTTY=1; CMUX_TERM=vte falls back to VTE): titles/pwd/bell/focus, send/read verbs incl. scrollback, shell integration, auto-close on exit, resize fixed (fork renderer patch Darwin-gated). Remaining gap: eager background spawn (panes in never-shown workspaces start on first selection) |
 | Browser panes (WebKitGTK) | ✅ | |
 | Terminal find overlay | ❌ | VTE has search API; UI missing |
 | Command palette | ❌ | |

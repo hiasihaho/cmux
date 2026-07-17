@@ -27,9 +27,9 @@ next relaunch (`linux/scripts/start.sh daily --ghostty` after closing).
 
 ## Next milestones
 
-1. Ghostty **default flip** (`CMUX_TERM` default → ghostty, VTE
-   fallback) — now unblocked; consider eager background spawn first
-   (designs assessed in PROGRESS 2026-07-17) since background panes
+1. ✅ Default flip DONE (2026-07-17): shim-linked builds default to
+   ghostty, `--vte`/`CMUX_TERM=vte` falls back. Next: eager background
+   spawn (designs assessed in PROGRESS 2026-07-17) — background panes
    still spawn on first selection only.
 2. Flatpak packaging.
 3. Parity long tail: PARITY.md ❌ rows (system.tree, surface.focus,

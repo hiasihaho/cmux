@@ -96,21 +96,22 @@ cd linux
 swift build          # or: swift run cmux-adw
 ```
 
-### Optional: embedded Ghostty terminals (experimental)
+### Embedded Ghostty terminals (default in shim builds)
 
-Terminal panes default to VTE. Real Ghostty surfaces are available behind a
-double opt-in — build the embedding shim from the ghostty submodule (branch
-`linux-gtk-embed`, fork hiasihaho/ghostty), then link it:
+Shim-linked builds use **Ghostty terminal surfaces by default**
+(`CMUX_TERM=vte` forces the VTE fallback; plain `swift build` produces a
+VTE-only binary). Build the embedding shim from the ghostty submodule
+(branch `linux-gtk-embed`, fork hiasihaho/ghostty), then link it:
 
 ```sh
 cd ../ghostty && ~/.local/zig/zig-x86_64-linux-0.15.2/zig build lib-gtk \
     -Dapp-runtime=gtk -Dversion-string=1.3.0-dev
 cd ../linux && CMUX_GHOSTTY=1 swift build     # links libghostty-gtk.so
-./scripts/start.sh dev --ghostty              # try it in an isolated instance
+./scripts/start.sh dev                        # ghostty terminals by default
+./scripts/start.sh dev --vte                  # VTE fallback
 ```
 
-Without `CMUX_TERM=ghostty` at runtime the same binary behaves exactly like
-the VTE build. Design, current C API, and remaining work:
+Design, current C API, and remaining work:
 [`../docs/linux-port/GHOSTTY-SHIM.md`](../docs/linux-port/GHOSTTY-SHIM.md).
 
 ### Dual-target builds: GNOME 49 and GNOME 50
