@@ -768,6 +768,18 @@ Forensics (all on the live wedged instance):
   `redrawSurface` in the fork, reproduce, and trace where the chain
   renderer→app-tick→queueRender→GLArea::render breaks after a resize.
 
+Further findings: the freeze survives a full unmap/remap cycle
+(workspace switch away and back does NOT recover the pane) — remap
+forces GLArea::render → drawFrame(true) synchronously, so a stale
+result there means the RENDERER THREAD's prepared frame state stopped
+updating, not just a missed queueRender. The renderer thread still
+drains its mailbox post-wedge (resize/focus/reset_cursor_blink logged)
+and there is no pause/resume mechanism in renderer/Thread.zig — next
+session: instrument updateFrame/render/drawFrame + glareaRender +
+redrawSurface and trace one reproduction. Also test standalone ghostty
+from the same fork build (zig-out/bin/ghostty) — if it freezes too,
+this is a driver/upstream issue (AMD + GTK 4.20), not embedding.
+
 Also shipped while investigating: `ghostty_embed_surface_grab_focus`
 export + cmux uses it in the sync focus path (the Surface bin is
 focusable:false; ghostty's own grabFocus targets the inner GLArea).
