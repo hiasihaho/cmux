@@ -77,6 +77,9 @@ you. Triage pattern: root-cause before trusting findings (cycle 2's
 
 ## Project state and pointers (read before big moves)
 
+- **Catch-up first**: `docs/linux-port/CATCHUP.md` — the living
+  "what now" briefing (open questions, current bug hunt, next
+  milestones). Update it at the end of every significant session.
 - **Plan**: `docs/linux-port/PORTING.md` — subsystem disposition, phases.
 - **Evidence log + gotchas**: `docs/linux-port/PROGRESS.md` — every phase,
   every dogfood cycle, every trap (GTK reparenting, Data/pkill/GtkListBox
