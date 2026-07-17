@@ -1,9 +1,9 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-17 ~02:40**, end of the increment-3/4 night
-session. Update this file at the end of every significant session; it is
-the fastest path from cold start to productive work. Deep history lives
-in [PROGRESS.md](PROGRESS.md); this is only "what now".
+Last updated: **2026-07-17 ~04:35** (resize-freeze fixed). Update this
+file at the end of every significant session; it is the fastest path
+from cold start to productive work. Deep history lives in
+[PROGRESS.md](PROGRESS.md); this is only "what now".
 
 ## Where we are, in one paragraph
 
@@ -17,33 +17,26 @@ the ghostty submodule branch **`linux-gtk-embed`** (fork
 hiasihaho/ghostty); design + increment log in
 [GHOSTTY-SHIM.md](GHOSTTY-SHIM.md).
 
-## THE open question (ask the human first!)
+## Current state
 
-A **post-resize freeze** blocks the ghostty default flip: after
-interactively resizing a window, ghostty panes stop presenting frames
-(input still reaches the PTY; the pane looks dead). **Standalone ghostty
-from the same fork build freezes identically — NOT an embedding bug.**
-Full forensic trail: PROGRESS.md "OPEN BUG: ghostty pane freezes".
+The **resize freeze is FIXED** (a manaflow fork patch in the shared
+generic renderer assumed macOS async draws; Darwin-gated in ghostty
+`ae8ba5f0a` — full story in PROGRESS 2026-07-17). Verified standalone
+AND embedded (dev2). The human's daily instance picks the fix up on its
+next relaunch (`linux/scripts/start.sh daily --ghostty` after closing).
 
-The human was handed a `GSK_RENDERER=gl` standalone ghostty window as
-the last experiment of the night — **ask for the result**:
-
-- gl renderer survives resize → workaround = export `GSK_RENDERER=gl`
-  in `start.sh --ghostty` launches; root cause = GTK 4.20 default GSK
-  renderer (ngl?) × GLArea × AMD Mesa 25.3.6 — check upstream
-  GTK/ghostty issues, report if new.
-- gl renderer freezes too → next leads, in order: upstream-ghostty-tip
-  build test (fixed? → rebase fork), `GSK_RENDERER=cairo`, distro
-  ghostty package comparison, Mesa/GTK debug toggles.
-
-## Next milestones (after the freeze)
+## Next milestones
 
 1. Ghostty **default flip** (`CMUX_TERM` default → ghostty, VTE
-   fallback), then eager background spawn (designs assessed in
-   PROGRESS 2026-07-17) if agent pain reappears.
+   fallback) — now unblocked; consider eager background spawn first
+   (designs assessed in PROGRESS 2026-07-17) since background panes
+   still spawn on first selection only.
 2. Flatpak packaging.
 3. Parity long tail: PARITY.md ❌ rows (system.tree, surface.focus,
    pane.resize, terminal find overlay, sidebar metadata pills…).
+4. Consider upstreaming conversations: the fork carries a now-Darwin-
+   gated renderer patch; manaflow may want the gate too (their macOS
+   behavior is unchanged by it).
 
 ## Instance topology & etiquette (short form)
 

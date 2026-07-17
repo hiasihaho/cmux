@@ -796,6 +796,42 @@ Resize itself was CONFIRMED WORKING at the core level (the earlier
 for the previous width). **The default flip to ghostty is blocked on
 this freeze.**
 
+## 2026-07-17 — Resize freeze ROOT-CAUSED AND FIXED (fork patch, Darwin-gated)
+
+The post-resize freeze was **a manaflow fork patch, not upstream and not
+our embedding**: an anti-flash change in the SHARED `renderer/generic.zig`
+re-presents the last completed frame on synchronous draws during size
+changes ("let the normal render loop catch up on the next tick"). On
+macOS async display-link draws eventually deliver the new frame; on GTK
+every draw is synchronous (`drawFrame(true)` from the GLArea render
+callback), so the early return latches after the first resize and the
+surface replays its stale, old-size frame forever — terminal looks
+frozen while input still reaches the PTY.
+
+How it was found (the bisect that never needed to run):
+- Build mode acquitted: fork ReleaseFast froze like Debug.
+- Upstream acquitted: upstream@fork-date (worktree build) was healthy on
+  the same machine — so the delta had to be fork patches.
+- The fork is a GRAFT (squashed import, history unrelated to upstream) —
+  `git merge-base` fails; compare CONTENT instead:
+  `git diff <upstream-commit> <fork-base> -- src/` was small and pointed
+  straight at `renderer/generic.zig` (+ the fork base commit's own title,
+  "keep top-left gravity for stale-frame replay").
+- An X11 screenshot-diff freeze detector was built
+  (`linux/tests/ghostty-resize-bisect.sh`) but is UNRELIABLE on this
+  stack: GTK ignores synthetic XSendEvent keys (use XTEST after
+  windowactivate) and `import` cannot capture GL-presented pixels of
+  XWayland windows (diff=0 even on healthy builds). xdotool windowsize
+  works fine. Kept for reference/CI-on-X11 ideas.
+
+Fix (ghostty `ae8ba5f0a`): both replay guards are now
+`comptime isDarwin()`-gated — macOS compiles the identical code as
+before; non-Darwin gets the pre-patch draw path. Verified: standalone
+fork build survives aggressive resizing (human), and the embedded
+cmux-adw dev2 instance resizes/splits/types cleanly with the rebuilt
+shim (human). **The ghostty default flip is unblocked**; eager
+background spawn remains the one open item before flipping.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge
