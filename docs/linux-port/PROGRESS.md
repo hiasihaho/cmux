@@ -774,11 +774,19 @@ forces GLArea::render → drawFrame(true) synchronously, so a stale
 result there means the RENDERER THREAD's prepared frame state stopped
 updating, not just a missed queueRender. The renderer thread still
 drains its mailbox post-wedge (resize/focus/reset_cursor_blink logged)
-and there is no pause/resume mechanism in renderer/Thread.zig — next
-session: instrument updateFrame/render/drawFrame + glareaRender +
-redrawSurface and trace one reproduction. Also test standalone ghostty
-from the same fork build (zig-out/bin/ghostty) — if it freezes too,
-this is a driver/upstream issue (AMD + GTK 4.20), not embedding.
+and there is no pause/resume mechanism in renderer/Thread.zig.
+
+**RESOLVED DIRECTION: standalone ghostty from the same fork build
+(zig-out/bin/ghostty) freezes identically after window resize — the
+embedding shim is NOT the cause.** The bug lives in ghostty-core /
+GTK-renderer / driver territory on this stack (fork base 80d3fa0,
+GTK 4.20, GNOME 49 Wayland, AMD Mesa 25.3.6). Next-session leads, in
+order: (1) GSK_RENDERER=gl / cairo comparison (first run handed to the
+user tonight — capture the result); (2) search upstream ghostty issues
+for post-resize freeze on AMD/GTK 4.20; (3) build upstream ghostty tip
+and test — if fixed, rebase the fork; (4) if all reproduce, it's a
+Mesa/GTK interaction — try GDK_DEBUG=gl-disable-* toggles and a distro
+ghostty package for comparison.
 
 Also shipped while investigating: `ghostty_embed_surface_grab_focus`
 export + cmux uses it in the sync focus path (the Surface bin is
