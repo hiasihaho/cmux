@@ -283,8 +283,12 @@ struct TerminalStackWidget: AdwaitaWidget {
             if let focused = tab.focusedSurface {
                 if let terminal = SurfaceRegistry.shared.terminal(for: focused.surfaceId) {
                     gtk_widget_grab_focus(asWidget(terminal))
-                } else if let ghostty = SurfaceRegistry.shared.ghostty(for: focused.surfaceId) {
-                    gtk_widget_grab_focus(UnsafeMutablePointer<GtkWidget>(ghostty))
+                } else if SurfaceRegistry.shared.ghostty(for: focused.surfaceId) != nil {
+                    #if canImport(CGhosttyEmbed)
+                    // The Surface bin is focusable:false — focus its input
+                    // widget (GLArea) through ghostty's own API.
+                    SurfaceRegistry.shared.ghosttyGrabFocus(for: focused.surfaceId)
+                    #endif
                 } else if let container = SurfaceRegistry.shared.containers[focused.surfaceId] {
                     gtk_widget_grab_focus(UnsafeMutablePointer<GtkWidget>(container))
                 }

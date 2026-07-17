@@ -741,6 +741,41 @@ Both are half-day+ with real risk; the agent-facing gap is already
 covered (clear `unavailable` error, select-once recovery, dogfood.sh
 auto-select). Revisit before the default flip.
 
+## 2026-07-17 — OPEN BUG: ghostty pane freezes after window resize
+
+Reproduced with the user driving resizes while a monitor watched (dev2,
+ghostty mode): after interactively resizing the window, the resized
+pane's GLArea stops presenting frames — it keeps compositing its last
+texture, so the pane LOOKS dead (typing shows nothing) and further
+resizes don't repaint it. Fresh panes work until their first resize.
+
+Forensics (all on the live wedged instance):
+- Core is fully healthy: socket `send` reaches the shell (a keystroke
+  typed at the GTK layer even reached the PTY — the pane is
+  display-frozen, not input-dead), `read_text` returns instantly (no
+  renderer-mutex deadlock), io thread processed 263 resize messages, the
+  grid/PTY size is CORRECT for the final window size, CPU idle, all
+  threads sleeping normally, no GL errors, no unrealize, no warnings.
+- The embed tick is NOT the cause: `App.Mailbox.push` calls
+  `rt_app.wakeup()` (App.zig:581) so redraw pushes do wake us; gdb on
+  the wedged process shows `embed_tick_pending=false` (nothing starved),
+  and post-wedge socket probes were fully processed (title changes in
+  the log) — ticks run.
+- Occlusion/visibility is not the mechanism (no `.visible` renderer
+  messages at all in the run); focus events flow normally.
+- Renderer `redraw_surface` pushes are unlogged (App.zig:243 filters
+  them) — next session: instrument `glareaRender`/`Surface.redraw`/
+  `redrawSurface` in the fork, reproduce, and trace where the chain
+  renderer→app-tick→queueRender→GLArea::render breaks after a resize.
+
+Also shipped while investigating: `ghostty_embed_surface_grab_focus`
+export + cmux uses it in the sync focus path (the Surface bin is
+focusable:false; ghostty's own grabFocus targets the inner GLArea).
+Resize itself was CONFIRMED WORKING at the core level (the earlier
+"doesn't scale" impression was stale probe reads + old content laid out
+for the previous width). **The default flip to ghostty is blocked on
+this freeze.**
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

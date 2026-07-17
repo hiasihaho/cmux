@@ -183,6 +183,14 @@ extension SurfaceRegistry {
         }
     }
 
+    /// Focus the surface's input widget (the inner GLArea — the Surface
+    /// bin itself is not focusable).
+    func ghosttyGrabFocus(for surfaceId: UUID) {
+        guard let pointer = ghostty(for: surfaceId) else { return }
+        let widget = UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: GtkWidget.self)
+        ghostty_embed_surface_grab_focus(widget)
+    }
+
     /// True once the pane's shell has exited (the surface shows the
     /// child-exited overlay; text writes would go nowhere).
     func ghosttyChildExited(for surfaceId: UUID) -> Bool {
