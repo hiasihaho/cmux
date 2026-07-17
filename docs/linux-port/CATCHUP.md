@@ -34,9 +34,11 @@ next relaunch (`linux/scripts/start.sh daily --ghostty` after closing).
 2. Flatpak packaging.
 3. Parity long tail: PARITY.md ❌ rows (system.tree, surface.focus,
    pane.resize, terminal find overlay, sidebar metadata pills…).
-4. Consider upstreaming conversations: the fork carries a now-Darwin-
-   gated renderer patch; manaflow may want the gate too (their macOS
-   behavior is unchanged by it).
+4. Upstreaming to manaflow: everything is PRE-PREPARED in
+   [UPSTREAM.md](UPSTREAM.md) — a clean single-commit PR branch
+   (`fix-stale-frame-replay-gtk` on hiasihaho/ghostty), a drafted PR
+   body, and the optional talking points (embed branch, submodule
+   hygiene). The human just runs the `gh pr create` command when ready.
 
 ## Instance topology & etiquette (short form)
 
