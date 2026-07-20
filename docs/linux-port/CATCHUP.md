@@ -77,6 +77,8 @@ linux/scripts/dogfood.sh "focus…" [min]      # QA agent cycle (CMUX_SOCKET_PAT
 
 ## Doc map
 
+- **FEATURES.md** — user-facing feature overview; marks parity vs the
+  small set of beyond-macOS additions (verify ★ claims vs Sources/).
 - **PROGRESS.md** — chronological evidence log + gotchas (append, same
   commit as the change).
 - **PARITY.md** — per-verb/feature status vs macOS (update, same commit).

@@ -4,8 +4,10 @@ Work-in-progress port of cmux from Swift + AppKit/SwiftUI to Swift +
 [Adwaita for Swift](https://git.aparoksha.dev/aparoksha/adwaita-swift)
 (libadwaita/GTK4). The Swift language stays; the Apple UI frameworks go.
 
-See [`../docs/linux-port/PORTING.md`](../docs/linux-port/PORTING.md) for the
-full analysis and phased plan.
+See [`../docs/linux-port/FEATURES.md`](../docs/linux-port/FEATURES.md) for a
+feature overview (and what's beyond macOS parity), and
+[`../docs/linux-port/PORTING.md`](../docs/linux-port/PORTING.md) for the full
+analysis and phased plan.
 
 ## Status
 
