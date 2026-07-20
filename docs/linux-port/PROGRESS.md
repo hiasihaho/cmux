@@ -832,6 +832,47 @@ cmux-adw dev2 instance resizes/splits/types cleanly with the rebuilt
 shim (human). **The ghostty default flip is unblocked**; eager
 background spawn remains the one open item before flipping.
 
+## 2026-07-20 — Scroll snappiness fixed; ReleaseSafe cleared; mid-init leak found
+
+Scroll felt sluggish embedded. Two causes, both fixed: the embed tick ran
+at idle priority (starved behind input/redraw during scroll storms → now
+G_PRIORITY_DEFAULT, ghostty `e9f17029e`) and the shim was a Debug build
+(unoptimized renderer → ReleaseSafe is now the documented standard). Human
+confirmed "supersmooth". Also: the desktop launcher is now the canonical
+daily starter — the binary self-locates GHOSTTY_RESOURCES_DIR by walking
+up from /proc/self/exe (cmux `571f85930`), and dogfood cycles now STREAM
+the QA agent's live tool calls into the pane (`19dca2da4`,
+dogfood-stream.py) instead of a silent banner.
+
+**Investigation: dogfood cycle 7's "P1/P2 ReleaseSafe regression" was a
+MISDIAGNOSIS — corrected.** The claim was that ReleaseSafe broke
+socket-driven surface spawning and --cwd. Findings:
+- The ReleaseSafe shim works perfectly in isolation (smoke harness with
+  cwd=/tmp sets the title to /tmp, spawns the shell).
+- A FRESH ReleaseSafe cmux instance passes P1 and P2 cleanly. My earlier
+  "Debug fixes it" A/B was confounded: the fix was the RESTART, not the
+  build mode (the dogfood ran on a dev2 churned through 122 cycles).
+- **ReleaseSafe is safe for the daily** — normal use and normal
+  dogfooding (QA cycles do real work per surface, so surfaces realize).
+- Real bug, narrow: a **close-during-init race**. Clean slow measurement
+  (each surface realized + shell-confirmed before close): fresh baseline
+  35 threads → 61 after the first surface (one-time Mesa GL driver
+  thread pool, NOT a leak) → stable at 61 across cycles 2-5 (realized
+  surfaces close with ZERO per-cycle leak). But FAST churn (create+close
+  within ~1-2s, before GLArea realize) leaks ~1.5 threads/close and does
+  not settle (44→74 stable) — GL context / renderer+io threads spawned
+  during async init aren't fully reclaimed when the widget is torn down
+  mid-init. Ghostty side: core surface deinit (thread join) runs in
+  finalize; GL release runs in glareaUnrealize → displayUnrealized, which
+  has a "OpenGL resources likely leaked" bail-out if makeCurrent fails.
+  The validation soak's artificial 122-cycles-in-115s hit this and
+  eventually exhausted resources → the "P1/P2" spawn failures.
+
+Status: the leak affects only sub-realize churn, which real workflows
+don't do. Filed as a scoped future task (guard close against in-flight
+init, or make dogfood soaks pace above realize). NOT blocking; the daily
+is snappy and correct.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

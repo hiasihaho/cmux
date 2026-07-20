@@ -61,7 +61,9 @@ cd linux && CMUX_GHOSTTY=1 swift build       # + ghostty shim linkage
 cd ghostty && PATH=~/.local/zig/zig-x86_64-linux-0.15.2:$PATH \
   zig build lib-gtk -Dapp-runtime=gtk -Doptimize=ReleaseSafe \
   -Dversion-string=1.3.0-dev
-# ReleaseSafe is the STANDARD shim mode (Debug scrolls sluggishly).
+# ReleaseSafe is the STANDARD shim mode (Debug scrolls sluggishly;
+# ReleaseSafe is snappy AND correct for normal use + dogfooding —
+# confirmed 2026-07-20, see PROGRESS).
 # KNOWN ISSUE: -Doptimize=ReleaseFast SEGVs inside ghostty_embed_init
 # at first surface creation (coredump 2026-07-20 16:45, pid 821401);
 # ReleaseSafe does not panic → not a checkable safety violation. Park.
