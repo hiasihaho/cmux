@@ -32,6 +32,14 @@ done
 
 linked_ghostty() { ldd "$BIN" 2>/dev/null | grep -q libghostty-gtk; }
 
+term_label() {
+    if $vte; then echo vte
+    elif $ghostty; then echo ghostty
+    elif linked_ghostty; then echo "ghostty(default)"
+    else echo vte
+    fi
+}
+
 require_binary() {
     if [ ! -x "$BIN" ]; then
         echo "error: $BIN not built — run: cd $ROOT/linux && swift build" >&2
@@ -93,7 +101,7 @@ daily)
         "${term_env[@]}" \
         setsid nohup "$BIN" >>"$log" 2>&1 &
     disown
-    echo "daily instance started (pid $!, terminals: $($ghostty && echo ghostty || echo vte))"
+    echo "daily instance started (pid $!, terminals: $(term_label))"
     echo "log: $log"
     ;;
 dev | dev2)
@@ -113,7 +121,7 @@ dev | dev2)
         "${term_env[@]}" \
         setsid nohup "$BIN" >>"$log" 2>&1 &
     disown
-    echo "$slot instance started (pid $!, terminals: $($ghostty && echo ghostty || echo vte))"
+    echo "$slot instance started (pid $!, terminals: $(term_label))"
     echo "log: $log"
     echo "talk to it: CMUX_SOCKET_PATH=/tmp/cmux-$slot.sock cmux ping"
     ;;

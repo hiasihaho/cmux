@@ -56,7 +56,12 @@ next relaunch (`linux/scripts/start.sh daily --ghostty` after closing).
 cd linux && swift build                      # VTE-only default
 cd linux && CMUX_GHOSTTY=1 swift build       # + ghostty shim linkage
 cd ghostty && PATH=~/.local/zig/zig-x86_64-linux-0.15.2:$PATH \
-  zig build lib-gtk -Dapp-runtime=gtk -Dversion-string=1.3.0-dev
+  zig build lib-gtk -Dapp-runtime=gtk -Doptimize=ReleaseSafe \
+  -Dversion-string=1.3.0-dev
+# ReleaseSafe is the STANDARD shim mode (Debug scrolls sluggishly).
+# KNOWN ISSUE: -Doptimize=ReleaseFast SEGVs inside ghostty_embed_init
+# at first surface creation (coredump 2026-07-20 16:45, pid 821401);
+# ReleaseSafe does not panic → not a checkable safety violation. Park.
 # ghostty header changes reach Swift only after the zig build reinstalls
 # zig-out/include/ghostty_gtk_embed.h.
 linux/scripts/dogfood.sh "focus…" [min]      # QA agent cycle (CMUX_SOCKET_PATH honored)
