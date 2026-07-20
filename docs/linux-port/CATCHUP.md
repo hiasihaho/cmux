@@ -1,6 +1,7 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-17 ~04:35** (resize-freeze fixed). Update this
+Last updated: **2026-07-20 ~17:05** (scroll snappiness fixed; desktop
+launcher is the canonical daily starter). Update this
 file at the end of every significant session; it is the fastest path
 from cold start to productive work. Deep history lives in
 [PROGRESS.md](PROGRESS.md); this is only "what now".
@@ -19,11 +20,13 @@ hiasihaho/ghostty); design + increment log in
 
 ## Current state
 
-The **resize freeze is FIXED** (a manaflow fork patch in the shared
-generic renderer assumed macOS async draws; Darwin-gated in ghostty
-`ae8ba5f0a` — full story in PROGRESS 2026-07-17). Verified standalone
-AND embedded (dev2). The human's daily instance picks the fix up on its
-next relaunch (`linux/scripts/start.sh daily --ghostty` after closing).
+Daily driver is FULLY LANDED: the human launches cmux from the GNOME
+desktop launcher; the binary self-locates GHOSTTY_RESOURCES_DIR,
+defaults to Ghostty terminals, resize works (fork renderer patch
+Darwin-gated, ghostty `ae8ba5f0a`), and scrolling is snappy (embed tick
+at G_PRIORITY_DEFAULT + ReleaseSafe shim — Debug shim scrolls
+sluggishly; ReleaseFast SEGVs, see build cheat sheet). Human-confirmed
+"supersmooth" 2026-07-20.
 
 ## Next milestones
 
