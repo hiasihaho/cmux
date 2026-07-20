@@ -21,10 +21,30 @@ enum GhosttyRuntime {
     }()
     private static var initResult: Bool?
 
+    /// Self-locate the shell-integration/theme resources for launches
+    /// that bypass start.sh (desktop launcher, bare binary): walk up
+    /// from the executable towards the repo root looking for the shim's
+    /// zig-out share dir. No-op when the env var is already set.
+    private static func ensureResourcesDir() {
+        guard ProcessInfo.processInfo.environment["GHOSTTY_RESOURCES_DIR"] == nil else { return }
+        var dir = URL(fileURLWithPath: "/proc/self/exe")
+            .resolvingSymlinksInPath()
+            .deletingLastPathComponent()
+        for _ in 0..<6 {
+            let candidate = dir.appendingPathComponent("ghostty/zig-out/share/ghostty")
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                setenv("GHOSTTY_RESOURCES_DIR", candidate.path, 1)
+                return
+            }
+            dir.deleteLastPathComponent()
+        }
+    }
+
     /// True when Ghostty surfaces are both requested and initializable.
     static func available() -> Bool {
         guard wanted else { return false }
         if let initResult { return initResult }
+        ensureResourcesDir()
         let ok = ghostty_embed_init() == 0
         if !ok {
             FileHandle.standardError.write(Data(
