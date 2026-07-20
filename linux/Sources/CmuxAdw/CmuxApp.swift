@@ -133,6 +133,11 @@ struct CmuxApp: App {
                         }
                         .keyboardShortcut("s".ctrl().shift())
                         .tooltip("Split down (Ctrl+Shift+S)")
+                        Button(icon: .custom(name: "edit-find-symbolic")) {
+                            findInFocusedPane()
+                        }
+                        .keyboardShortcut("f".ctrl().shift())
+                        .tooltip("Find in terminal (Ctrl+Shift+F)")
                     } end: {
                         Button(icon: .custom(name: "software-update-urgent-symbolic")) {
                             simulateAttention()
@@ -188,6 +193,16 @@ struct CmuxApp: App {
         guard let tab = tabs.first(where: { $0.id == selection }),
               let focused = tab.focusedSurface else { return }
         controlHandler.closeSurface(tabId: tab.id, surfaceId: focused.surfaceId)
+    }
+
+    /// Open Ghostty's built-in find-in-terminal overlay on the focused
+    /// pane (Ctrl+Shift+F). VTE panes have no overlay — no-op there.
+    private func findInFocusedPane() {
+        #if canImport(CGhosttyEmbed)
+        guard let tab = tabs.first(where: { $0.id == selection }),
+              let focused = tab.focusedSurface else { return }
+        SurfaceRegistry.shared.ghosttySetSearch(for: focused.surfaceId, active: true)
+        #endif
     }
 
     /// Stands in for real detection (libghostty desktop-notification actions)

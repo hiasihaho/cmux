@@ -873,6 +873,18 @@ don't do. Filed as a scoped future task (guard close against in-flight
 init, or make dogfood soaks pace above realize). NOT blocking; the daily
 is snappy and correct.
 
+## 2026-07-20 — Terminal find overlay (nearly free from ghostty)
+
+Find-in-terminal, a feature the VTE path never had. Ghostty's Surface
+already ships the entire search overlay (entry box, next/prev, match
+highlighting, Escape-to-close) — `Surface.setSearchActive(active, needle)`
+is public and does all of it. Total cost to expose it: a ~10-line shim
+export (`ghostty_embed_surface_set_search`, ghostty `aba33f97a`) plus a
+header-bar magnifier button bound to Ctrl+Shift+F
+(`findInFocusedPane` → `SurfaceRegistry.ghosttySetSearch`). Human-verified
+on dev2: Ctrl+Shift+F opens the bar, typing highlights matches, Enter
+cycles, Esc closes. Ghostty-only (VTE panes no-op).
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

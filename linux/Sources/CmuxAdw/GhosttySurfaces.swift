@@ -217,6 +217,13 @@ extension SurfaceRegistry {
         ghostty_embed_surface_grab_focus(widget)
     }
 
+    /// Show/hide the surface's built-in find-in-terminal overlay.
+    func ghosttySetSearch(for surfaceId: UUID, active: Bool) {
+        guard let pointer = ghostty(for: surfaceId) else { return }
+        let widget = UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: GtkWidget.self)
+        ghostty_embed_surface_set_search(widget, active)
+    }
+
     /// True once the pane's shell has exited (the surface shows the
     /// child-exited overlay; text writes would go nowhere).
     func ghosttyChildExited(for surfaceId: UUID) -> Bool {

@@ -101,7 +101,7 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | Session persistence (layout, cwds, URLs, selection) | ✅ | XDG JSON, schema v2 |
 | Terminal surfaces | ✅ | **Ghostty is the default** in shim-linked builds (CMUX_GHOSTTY=1; CMUX_TERM=vte falls back to VTE): titles/pwd/bell/focus, send/read verbs incl. scrollback, shell integration, auto-close on exit, resize fixed (fork renderer patch Darwin-gated). Remaining gap: eager background spawn (panes in never-shown workspaces start on first selection) |
 | Browser panes (WebKitGTK) | ✅ | |
-| Terminal find overlay | ❌ | VTE has search API; UI missing |
+| Terminal find overlay | ✅ | Ghostty panes: built-in search overlay via the shim (Ctrl+Shift+F / header magnifier) — needle entry, next/prev, highlight, Esc-to-close all native. VTE panes: no overlay (VTE search API unused) |
 | Command palette | ❌ | |
 | Tab drag-and-drop (reorder, tear-off, cross-window) | ❌ | |
 | Multi-window | ❌ | |
