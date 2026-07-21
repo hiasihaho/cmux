@@ -71,11 +71,31 @@ enum GhosttySurfaceFactory {
     ) {
         // Same identity environment as the VTE spawn path — bare `cmux`
         // commands in the shell must target this pane.
-        let env = [
+        var env = [
             ("CMUX_WORKSPACE_ID", tab.id.uuidString),
             ("CMUX_SURFACE_ID", leaf.surfaceId.uuidString),
             ("CMUX_SOCKET_PATH", ControlSocketServer.shared.path),
         ]
+        // Repair a stale inherited HOSTNAME.
+        //
+        // Ghostty's shell integration reports the working directory with
+        // `OSC 7 file://$HOSTNAME$PWD`, and Ghostty validates that host
+        // against gethostname() before trusting it — deliberately, since
+        // any remote shell can send OSC 7 (see stream_handler.zig: "OSC 7
+        // is a little sketchy… validate the hostname to be local").
+        //
+        // Bash sets HOSTNAME itself, but only when it is not already in the
+        // environment: an inherited value wins. A desktop session started
+        // before the machine was renamed therefore poisons every shell
+        // beneath it, OSC 7 is rejected for the whole session, and the pane
+        // never reports a working directory — so session restore reopens
+        // shells in their spawn directory instead of where they were.
+        //
+        // Passing the real hostname fixes the cause without touching
+        // Ghostty's security check.
+        if let real = ProcessInfo.processInfo.hostName as String?, !real.isEmpty {
+            env.append(("HOSTNAME", real))
+        }
         let keyDup = env.map { strdup($0.0) }
         let valueDup = env.map { strdup($0.1) }
         defer {

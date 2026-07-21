@@ -2013,3 +2013,49 @@ short because `lib.sh` now carries the setup; it also exercises the
 `screenshot` helper as a real assertion.
 
 Suites: 7 suites, 72 assertions, 0 failed.
+
+## 2026-07-21 — Ghostty panes track their working directory again
+
+Reported by the human: after the launcher fix, panes and browser state
+restore correctly but Ghostty panes reopen in the wrong directory.
+
+Not a session bug. Ghostty reports the cwd with
+`OSC 7 file://$HOSTNAME$PWD` and validates the host against
+`gethostname()` before trusting it — deliberately, since any remote shell
+can send OSC 7 (`stream_handler.zig`: *"OSC 7 is a little sketchy because
+anyone can send any value from any host (such an SSH session). The best
+practice terminals follow is to validate the hostname to be local."*).
+`isLocal` accepts only `"localhost"` or an exact `gethostname()` match.
+
+On this host:
+
+```
+gethostname()  fedora-13.fritz.box
+$HOSTNAME      fedora            ← stale, inherited
+```
+
+so every report was rejected — `warning(io_handler): OSC 7 host (fedora)
+must be local`, once per prompt — and the pane's `pwd` property never
+updated, so the session stored the spawn directory forever.
+
+Measured rather than assumed: **bash sets `HOSTNAME` itself, but only when
+it is not already in the environment.** `env -i bash -c 'echo $HOSTNAME'`
+gives the correct FQDN; `env HOSTNAME=stale bash -c …` gives `stale`. A
+desktop session started before the machine was renamed therefore poisons
+every shell beneath it, indefinitely.
+
+Fix: cmux passes the real hostname to the shells it spawns, alongside the
+`CMUX_*` identity vars it already sets. That repairs the cause and leaves
+Ghostty's security check alone — relaxing `isLocal` was the other obvious
+option and would have traded a real protection for a convenience.
+
+Verified against the exact failing condition: the app started with a
+deliberately stale `HOSTNAME=fedora`, then `cd /etc` in a pane →
+**zero** OSC 7 rejections and `/etc` recorded in the session. Two
+assertions added, including one on the rejection count so a future
+regression shows up as the warning it really is.
+
+(One bash trap on the way: `grep -c` prints `0` *and* exits non-zero when
+there are no matches, so a `|| echo 0` fallback yields `"0\n0"`.)
+
+Suites: 7 suites, 74 assertions, 0 failed.

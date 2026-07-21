@@ -249,4 +249,38 @@ sleep 2
 expect "v3 files without dividerPosition still restore" "3" \
     "$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')"
 
+# --------------------------------------------------- terminal cwd tracking
+# Ghostty reports the working directory with OSC 7 and validates the host
+# against gethostname() first. A stale inherited HOSTNAME (a desktop
+# session started before the machine was renamed) makes every report be
+# rejected, so panes restore in their spawn directory instead of where the
+# user left them. cmux passes the real hostname to the shells it spawns;
+# this asserts a `cd` is actually captured.
+info "terminal working directory is tracked"
+kill_instance
+rm -f "$SESSION"
+start_instance || exit 2
+WS4=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+cx select-workspace --workspace "$WS4" >/dev/null
+T4=$(first_surface_ref "$WS4")
+if [ -n "$T4" ] && wait_for_shell "$T4"; then
+    cx send --surface "$T4" 'cd /etc\n' >/dev/null 2>&1
+    sleep 2
+    cx new-workspace --cwd /tmp --background >/dev/null 2>&1   # force a save
+    sleep 2
+    tracked=$(python3 -c "
+import json
+d=json.load(open('$SESSION'))
+dirs=[s['workingDirectory'] for w in d['workspaces'] for s in w['surfaces'] if s['type']=='terminal']
+print('yes' if '/etc' in dirs else 'no:' + ','.join(dirs))" 2>/dev/null)
+    expect "a cd is captured into the session" "yes" "$tracked"
+    # grep -c prints 0 AND exits 1 when there are no matches, so a
+    # `|| echo 0` fallback appends a second zero ("0\n0").
+    rejects=$(grep -c "must be local" "$LOG" 2>/dev/null)
+    rejects=${rejects:-0}
+    expect "no OSC 7 host rejections" "0" "$rejects"
+else
+    skip "terminal cwd assertions" "the shell never started (unmapped window)"
+fi
+
 finish
