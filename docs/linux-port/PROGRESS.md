@@ -4,6 +4,11 @@ Companion to [`PORTING.md`](PORTING.md) (the plan). This file records what has
 actually been done, the decisions taken, and how each step was verified.
 Newest entries last. Started 2026-07-16.
 
+This log is chronological evidence — the right shape for "what happened
+on the 21st?". For "we're about to do X, what do we already know?", read
+[`LESSONS.md`](LESSONS.md), which distills the transferable lessons and
+points back here for the evidence.
+
 ## 2026-07-16 — Bootstrap, analysis, Phase 0, Phase 1
 
 ### Toolchain bootstrap (Fedora 43 host)

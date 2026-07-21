@@ -1,10 +1,11 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-20 ~17:05** (scroll snappiness fixed; desktop
-launcher is the canonical daily starter). Update this
+Last updated: **2026-07-21 ~04:45** (navigation barrier + quadratic CLI
+transfer fixed, both found by the SPA-extraction dogfood). Update this
 file at the end of every significant session; it is the fastest path
 from cold start to productive work. Deep history lives in
-[PROGRESS.md](PROGRESS.md); this is only "what now".
+[PROGRESS.md](PROGRESS.md), distilled transferable lessons in
+[LESSONS.md](LESSONS.md); this is only "what now".
 
 ## Where we are, in one paragraph
 
@@ -33,6 +34,17 @@ isolated-world fallback in `BrowserJS.run`, landed 2026-07-21 (see
 PROGRESS). The fix is in the debug binary on disk — the daily instance
 picks it up at its next (human-approved) restart.
 
+**Browser stack proven on a real SPA** (2026-07-21): a dogfood agent
+extracted 563/563 pocketyoga poses through browser verbs alone, scored
+against the site's own data file. It surfaced two defects, both now
+fixed and regression-tested — `goto` returning while the *previous*
+document was still live (silent wrong data; `0cf741644`) and a quadratic
+CLI response transfer (51× at 6 MB; `183bdd102`). Two suites guard this
+now: `linux/tests/browser-navigation-smoke.sh` (8) and
+`webdriver-smoke.sh` (9). Both fixes touch the **shared** `CLI/cmux.swift`
+or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
+(no macOS toolchain here).
+
 ## Next milestones
 
 1. ✅ Default flip DONE (2026-07-17): shim-linked builds default to
@@ -45,8 +57,11 @@ picks it up at its next (human-approved) restart.
 3. WebKit-native automation (decided 2026-07-21, no CDP/Chromium):
    roadmap/06-webkit-native-automation.md. Increments 1 (console capture
    v2 — CSP-proof, from page load) and 2 (W3C WebDriver opt-in via
-   CMUX_WEBDRIVER=1 — trusted input, verified isTrusted=true) are DONE.
-   Next: Web Inspector pane, then the long tail.
+   CMUX_WEBDRIVER=1 — trusted input, verified isTrusted=true) are DONE,
+   as is WebDriver split adoption (the driver drives a visible cmux pane)
+   and the navigation barrier. Next: **Web Inspector pane** — the human
+   gated it on "features and tests for webdriver and our split adaption
+   options are tested thoroughly", which the two suites now satisfy.
 4. Flatpak packaging.
 5. Parity long tail: PARITY.md ❌ rows (system.tree, surface.focus,
    pane.resize, terminal find overlay, sidebar metadata pills…).
