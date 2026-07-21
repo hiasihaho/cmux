@@ -1,9 +1,6 @@
-import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Providers } from "./providers";
-
-import { DevPanel } from "./components/spacing-control";
-import { SiteFooter } from "./components/site-footer";
+import { headers } from "next/headers";
+import { routing, type Locale } from "../i18n/routing";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,84 +13,32 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "cmux — The terminal built for multitasking",
-  description:
-    "Native macOS terminal built on Ghostty. Works with Claude Code, Codex, OpenCode, Gemini CLI, Kiro, Aider, and any CLI tool. Vertical tabs, notification rings, split panes, and a socket API.",
-  keywords: [
-    "terminal",
-    "macOS",
-    "coding agents",
-    "Claude Code",
-    "Codex",
-    "OpenCode",
-    "Gemini CLI",
-    "Kiro",
-    "Aider",
-    "Ghostty",
-    "AI",
-    "terminal for AI agents",
-  ],
-  openGraph: {
-    title: "cmux — The terminal built for multitasking",
-    description:
-      "Native macOS terminal for AI coding agents. Works with Claude Code, Codex, OpenCode, Gemini CLI, Kiro, Aider, and any CLI tool.",
-    url: "https://cmux.dev",
-    siteName: "cmux",
-    type: "website",
-  },
-  twitter: {
-    card: "summary",
-    title: "cmux — The terminal built for multitasking",
-    description:
-      "Native macOS terminal for AI coding agents. Works with Claude Code, Codex, OpenCode, Gemini CLI, Kiro, Aider, and any CLI tool.",
-  },
-  metadataBase: new URL("https://cmux.dev"),
-};
+const nextIntlLocaleHeader = "x-next-intl-locale";
 
-export default function RootLayout({
+function localeFromHeader(value: string | null): Locale {
+  return routing.locales.includes(value as Locale)
+    ? (value as Locale)
+    : routing.defaultLocale;
+}
+
+function directionForLocale(locale: Locale): "ltr" | "rtl" {
+  return locale === "ar" ? "rtl" : "ltr";
+}
+
+export default async function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    name: "cmux",
-    operatingSystem: "macOS",
-    applicationCategory: "DeveloperApplication",
-    url: "https://cmux.dev",
-    downloadUrl:
-      "https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg",
-    description:
-      "Native macOS terminal built on Ghostty. Works with Claude Code, Codex, OpenCode, Gemini CLI, Kiro, Aider, and any CLI tool. Vertical tabs, notification rings, split panes, and a socket API.",
-    keywords:
-      "terminal, macOS, Claude Code, Codex, OpenCode, Gemini CLI, Kiro, Aider, AI coding agents, Ghostty",
-    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-  };
+}) {
+  const locale = localeFromHeader((await headers()).get(nextIntlLocaleHeader));
+  const dir = directionForLocale(locale);
 
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <meta name="theme-color" content="#0a0a0a" />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("theme");var light=t==="light"||(t==="system"&&window.matchMedia("(prefers-color-scheme:light)").matches);if(!light)document.documentElement.classList.add("dark");var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=light?"#fafafa":"#0a0a0a"}catch(e){}})()`,
-          }}
-        />
-      </head>
+    <html lang={locale} dir={dir} suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        <Providers>
-          {children}
-          <SiteFooter />
-          <DevPanel />
-        </Providers>
+        {children}
       </body>
     </html>
   );

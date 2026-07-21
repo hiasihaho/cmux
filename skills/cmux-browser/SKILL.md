@@ -10,19 +10,21 @@ Use this skill for browser tasks inside cmux webviews.
 ## Core Workflow
 
 1. Open or target a browser surface.
-2. Snapshot (`--interactive`) to get fresh element refs.
-3. Act with refs (`click`, `fill`, `type`, `select`, `press`).
-4. Wait for state changes.
-5. Re-snapshot after DOM/navigation changes.
+2. Verify navigation with `get url` before waiting or snapshotting.
+3. Snapshot (`--interactive`) to get fresh element refs.
+4. Act with refs (`click`, `fill`, `type`, `select`, `press`).
+5. Wait for state changes.
+6. Re-snapshot after DOM/navigation changes.
 
 ```bash
-cmux browser open https://example.com --json
+cmux --json browser open https://example.com
 # use returned surface ref, for example: surface:7
 
+cmux browser surface:7 get url
+cmux browser surface:7 wait --load-state complete --timeout-ms 15000
 cmux browser surface:7 snapshot --interactive
 cmux browser surface:7 fill e1 "hello"
-cmux browser surface:7 click e2 --snapshot-after --json
-cmux browser surface:7 wait --load-state complete --timeout-ms 15000
+cmux --json browser surface:7 click e2 --snapshot-after
 cmux browser surface:7 snapshot --interactive
 ```
 
@@ -58,11 +60,13 @@ cmux browser <surface> wait --function "document.readyState === 'complete'" --ti
 ### Form Submit
 
 ```bash
-cmux browser open https://example.com/signup --json
+cmux --json browser open https://example.com/signup
+cmux browser surface:7 get url
+cmux browser surface:7 wait --load-state complete --timeout-ms 15000
 cmux browser surface:7 snapshot --interactive
 cmux browser surface:7 fill e1 "Jane Doe"
 cmux browser surface:7 fill e2 "jane@example.com"
-cmux browser surface:7 click e3 --snapshot-after --json
+cmux --json browser surface:7 click e3 --snapshot-after
 cmux browser surface:7 wait --url-contains "/welcome" --timeout-ms 15000
 cmux browser surface:7 snapshot --interactive
 ```
@@ -77,12 +81,15 @@ cmux browser surface:7 get value e11 --json
 ### Stable Agent Loop (Recommended)
 
 ```bash
-# snapshot -> action -> wait -> snapshot
-cmux browser surface:7 snapshot --interactive
-cmux browser surface:7 click e5 --snapshot-after --json
+# navigate -> verify -> wait -> snapshot -> action -> snapshot
+cmux browser surface:7 get url
 cmux browser surface:7 wait --load-state complete --timeout-ms 15000
 cmux browser surface:7 snapshot --interactive
+cmux --json browser surface:7 click e5 --snapshot-after
+cmux browser surface:7 snapshot --interactive
 ```
+
+If `get url` is empty or `about:blank`, navigate first instead of waiting on load state.
 
 ## Deep-Dive References
 
@@ -104,13 +111,44 @@ cmux browser surface:7 snapshot --interactive
 | [templates/authenticated-session.sh](templates/authenticated-session.sh) | Login once, save/load state |
 | [templates/capture-workflow.sh](templates/capture-workflow.sh) | Navigate + capture snapshots/screenshots |
 
+## Viewport Sizing (WKWebView)
+
+Use `cmux browser <surface> viewport <width> <height>` to set an exact logical
+viewport from 1...4096 CSS pixels. The page is aspect-fitted inside its existing
+pane, so pane layout and focus stay unchanged; screenshots use the requested
+logical dimensions. Run `cmux browser <surface> viewport reset` to follow native
+pane sizing again. Close or detach the browser inspector first because its
+inspector-managed split layout cannot be combined with viewport emulation.
+Large viewport and page-zoom combinations are bounded; the viewport command
+returns structured `maximum_page_zoom` details without changing the current
+viewport when the combination exceeds the WKWebView render limits.
+Opening or redocking an attached browser inspector resets emulation to native
+sizing because WebKit owns the attached split geometry.
+
 ## Limits (WKWebView)
 
 These commands currently return `not_supported` because they rely on Chrome/CDP-only APIs not exposed by WKWebView:
-- viewport emulation
 - offline emulation
 - trace/screencast recording
 - network route interception/mocking
 - low-level raw input injection
 
 Use supported high-level commands (`click`, `fill`, `press`, `scroll`, `wait`, `snapshot`) instead.
+
+## Troubleshooting
+
+### `js_error` on `snapshot --interactive` or `eval`
+
+Some complex pages can reject or break the JavaScript used for rich snapshots and ad-hoc evaluation.
+
+Recovery steps:
+
+```bash
+cmux browser surface:7 get url
+cmux browser surface:7 get text body
+cmux browser surface:7 get html body
+```
+
+- Use `get url` first so you know whether the page actually navigated.
+- Fall back to `get text body` or `get html body` when `snapshot --interactive` or `eval` returns `js_error`.
+- If the page is still failing, navigate to a simpler intermediate page, then retry the task from there.
