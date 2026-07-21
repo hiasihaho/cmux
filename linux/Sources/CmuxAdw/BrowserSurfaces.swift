@@ -36,7 +36,14 @@ enum BrowserSurfaceFactory {
         onTitleChanged: @escaping (UUID, UUID, String) -> Void,
         onSurfaceFocused: @escaping (UUID, UUID) -> Void
     ) {
-        guard let widget = webkit_web_view_new() else { return }
+        // A WebDriver automation session may have pre-created this view
+        // (roadmap/06 split adoption); adopt it rather than constructing
+        // a second one, so the driver and cmux drive the same surface.
+        let adopted = BrowserAdoption.pending.removeValue(forKey: leaf.surfaceId)
+        let widgetOrNil: UnsafeMutablePointer<GtkWidget>? = adopted.map {
+            UnsafeMutableRawPointer($0).assumingMemoryBound(to: GtkWidget.self)
+        } ?? webkit_web_view_new()
+        guard let widget = widgetOrNil else { return }
         gtk_widget_set_hexpand(widget, 1)
         gtk_widget_set_vexpand(widget, 1)
         let webView = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: WebKitWebView.self)

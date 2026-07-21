@@ -212,9 +212,15 @@ Effort: moderate, and it touches the surface-creation path that the
 mid-init leak (roadmap/05) also lives in — worth doing carefully, ideally
 after or alongside that hardening.
 
-**Interim recommendation:** keep the standalone-window behavior as the
-default (it is honest and zero-risk), and treat split adoption as the
-next WebDriver increment, gated on the same `CMUX_WEBDRIVER=1`.
+**STATUS: shipped 2026-07-21.** Split adoption is implemented exactly as
+sketched above (pending registry → factory adoption → model insertion
+from `create-web-view`), with one correction learned in testing: the
+pending view must be registered BEFORE the model mutation, because the
+re-render can run the factory before the mutating call returns. The
+standalone window remains the fallback when there is no UI to adopt into.
+Verified: session creation adds a pane; WebDriver and cmux report the
+same URL; a WebDriver trusted click is read back by `browser get text`;
+snapshot and console capture v2 work on the driver-controlled pane.
 
 ## 5. Security posture (unchanged, restated)
 

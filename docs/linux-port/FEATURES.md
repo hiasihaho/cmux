@@ -92,7 +92,11 @@ Small but real. These are genuine additions, not just different internals:
   (`isTrusted: true`), which page JavaScript can never synthesize —
   measured on one page: WebDriver click → `isTrusted=true`, our JS verb →
   `isTrusted=false`. The driver gets an ephemeral profile, not your
-  cookies. macOS cmux has no automation opt-in at all.
+  cookies. The driver's view is adopted as a **real cmux pane**, so the
+  human watches automation happen and cmux's own verbs (snapshot, get
+  text, console capture) address the very same surface — trusted input
+  and rich inspection on one pane. macOS cmux has no automation opt-in at
+  all.
 - ★ **Renderer resize fix** — the fork's macOS-oriented stale-frame replay
   froze GTK surfaces after a window resize; the Linux work Darwin-gated it
   (macOS unchanged), a fix the fork/ecosystem benefits from

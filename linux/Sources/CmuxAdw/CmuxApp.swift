@@ -43,6 +43,20 @@ struct CmuxApp: App {
         ControlSocketServer.shared.start()
 
         // W3C WebDriver opt-in (CMUX_WEBDRIVER=1 only) — roadmap/06.
+        // Automation views become real cmux panes: the driver drives a
+        // split the human can see, and cmux's own verbs address the very
+        // same web view. Runs on the main loop (GTK signal), so the same
+        // dispatch guard as socket commands applies.
+        BrowserAdoption.adoptIntoSplit = { view in
+            SocketDispatchGuard.active = true
+            defer { SocketDispatchGuard.active = false }
+            let surfaceId = handler.adoptBrowserSplit { pendingId in
+                BrowserAdoption.pending[pendingId] = view
+            }
+            guard let surfaceId else { return false }
+            _ = surfaceId
+            return true
+        }
         BrowserWebDriver.enableIfRequested()
 
         // Structural changes save immediately (scene body); this periodic

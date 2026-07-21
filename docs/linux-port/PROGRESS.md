@@ -1010,6 +1010,35 @@ Scope note: this drives a driver-owned window in a driver-launched
 instance, not the human's existing panes (that is the WebDriver model).
 Adopting a cmux split as the automation view is the follow-up.
 
+## 2026-07-21 — WebDriver split adoption: driver and cmux share one pane ✅
+
+The automation view is now a real cmux pane instead of an orphan window.
+`create-web-view` builds the driver's view, then hands it to
+`BrowserAdoption.adoptIntoSplit` (wired in CmuxApp, which owns the model
+bindings): a `.browser` leaf is spliced into the selected workspace and
+the pre-made view is registered in `BrowserAdoption.pending`;
+`BrowserSurfaceFactory.create` adopts that view instead of constructing
+its own. Standalone-window fallback remains when there is no UI yet.
+
+**Bug found and fixed while verifying — ordering matters.** The first
+implementation registered the pending view *after* calling `split()`.
+Mutating the tab layout can trigger a re-render (and therefore the
+surface factory) before the call returns, so the factory built its own
+blank view: WebDriver drove an invisible orphan while the visible pane
+stayed empty (measured: driver url = the test page, cmux url on the pane
+= empty, `#out` not found). `adoptBrowserSplit(register:)` now invokes
+the registration callback BEFORE the model mutation. Same class of race
+as any "publish before you mutate" ordering bug.
+
+Verified in attach mode against a running instance:
+- Session creation grows the workspace 1 pane → 2 panes.
+- **Same surface from both sides**: WebDriver `GET /url` and cmux
+  `browser url --surface surface:2` both report the test page.
+- **Combined power on one pane**: WebDriver trusted click → cmux
+  `get text #out` reads `click isTrusted=true`; cmux `snapshot` returns
+  the role/name tree with element refs; console capture v2 records
+  entries — all against the driver-controlled view.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge
@@ -1048,6 +1077,10 @@ Adopting a cmux split as the automation view is the follow-up.
   `ldd .build/debug/cmux-adw | grep libghostty-gtk`. (`start.sh status`
   now reads `/proc/<pid>/maps`, so a post-rebuild "(deleted)" exe no
   longer misreports the running backend as vte.)
+- Adwaita model mutations can re-render (and run the surface factory)
+  before the mutating call returns. Anything the factory must see —
+  e.g. a pre-made web view for WebDriver adoption — has to be registered
+  BEFORE the model is touched, never after.
 - WebKitGTK main-world JS evaluation is subject to the PAGE's CSP (unlike
   WKWebView, which exempts user-agent scripts). Anything injected with
   `call_async_javascript_function`/`evaluate_javascript` that string-evals

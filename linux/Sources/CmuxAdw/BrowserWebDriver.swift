@@ -26,6 +26,25 @@ import Foundation
 /// Web views handed to automation clients, retained for the session.
 private var automationWebViews: [OpaquePointer] = []
 
+/// Bridge that lets a pre-made web view become a cmux browser pane.
+///
+/// WebDriver never adopts an existing browsing context — session creation
+/// always asks us for a view via `create-web-view` (verified in both
+/// launch and attach modes). Since the view is ours to choose, we can
+/// hand the driver a real pane in the live workspace instead of an orphan
+/// window: the human watches automation happen, and cmux's own socket
+/// verbs address the very same web view.
+enum BrowserAdoption {
+    /// surfaceId → pre-made web view the factory should adopt instead of
+    /// constructing its own.
+    static var pending: [UUID: OpaquePointer] = [:]
+
+    /// Set by CmuxApp (it owns the model bindings): create a browser pane
+    /// in the selected workspace and register `view` for adoption.
+    /// Returns false when there is no UI to adopt into yet.
+    static var adoptIntoSplit: ((OpaquePointer) -> Bool)?
+}
+
 /// A driver connected: identify ourselves and stand ready to hand out a
 /// web view when it asks.
 private func cmuxAutomationStarted(_ session: OpaquePointer) {
@@ -99,9 +118,14 @@ private func cmuxCreateAutomationWebView() -> UnsafeMutableRawPointer? {
     let rawView = UnsafeMutableRawPointer(created)
     let widget = rawView.assumingMemoryBound(to: GtkWidget.self)
 
-    // The driver expects a real, visible browsing context. Its own window
-    // keeps the human's panes untouched; adopting a cmux split instead is
-    // the follow-up noted in roadmap/06.
+    // Preferred: the driver drives a real cmux pane in the live
+    // workspace. Falls back to a standalone window when there is no UI
+    // yet (e.g. a driver-launched instance still starting up).
+    if BrowserAdoption.adoptIntoSplit?(OpaquePointer(rawView)) == true {
+        automationWebViews.append(OpaquePointer(rawView))
+        return rawView
+    }
+
     if let windowWidget = gtk_window_new() {
         let window = UnsafeMutableRawPointer(windowWidget)
             .assumingMemoryBound(to: GtkWindow.self)

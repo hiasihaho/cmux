@@ -857,6 +857,35 @@ struct ControlCommandHandler {
         return newLeaf
     }
 
+    /// Create an empty browser pane in the selected workspace for a
+    /// WebDriver automation view to be adopted into.
+    ///
+    /// `register` runs BEFORE the model mutation on purpose: mutating the
+    /// tab layout can trigger a re-render (and thus the surface factory)
+    /// before this function returns, so the pending view must already be
+    /// registered or the factory builds its own blank view and the
+    /// driver ends up driving an orphan (observed exactly that way).
+    func adoptBrowserSplit(register: (UUID) -> Void) -> UUID? {
+        guard let tab = tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue }),
+              let focused = tab.focusedSurface,
+              let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id })
+        else { return nil }
+
+        let cwd = SurfaceRegistry.shared.currentDirectory(for: focused.surfaceId)
+            ?? tab.workingDirectory
+        let newLeaf = PaneLeaf(kind: .browser(initialURL: ""), workingDirectory: cwd)
+        register(newLeaf.surfaceId)
+
+        guard let layout = tabs.wrappedValue[index].layout.splitting(
+            surfaceId: focused.surfaceId,
+            direction: "right",
+            newLeaf: newLeaf
+        ) else { return nil }
+        tabs.wrappedValue[index].layout = layout
+        tabs.wrappedValue[index].focusedSurfaceId = newLeaf.surfaceId
+        return newLeaf.surfaceId
+    }
+
     private func v2SurfaceSendText(id: Any?, params: [String: Any]) -> String {
         guard let text = params["text"] as? String else {
             return v2Error(id: id, code: "invalid_params", message: "Missing text")

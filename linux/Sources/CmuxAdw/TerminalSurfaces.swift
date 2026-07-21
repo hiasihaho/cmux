@@ -111,6 +111,7 @@ final class SurfaceRegistry {
         BrowserElementRefs.shared.clear(for: surfaceId)
         BrowserFrameSelectors.shared.clear(for: surfaceId)
         BrowserConsoleLog.shared.clearAll(for: surfaceId)
+        BrowserAdoption.pending.removeValue(forKey: surfaceId)
     }
 
     func terminal(for surfaceId: UUID) -> UnsafeMutablePointer<VteTerminal>? {
