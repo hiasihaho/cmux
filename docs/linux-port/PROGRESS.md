@@ -939,6 +939,35 @@ Summary of record:
   after a rebuild, plus my plain `swift build` really had produced a
   VTE-only binary (both fixed/documented above and in the gotchas).
 
+## 2026-07-21 — Console capture v2 (roadmap/06 increment 1) ✅
+
+Killed the strict-CSP console blind spot documented the same day. The old
+hooks wrapped `window.console` via the eval envelope, armed lazily on
+first use — on a strict-CSP site that arming landed in the isolated world,
+wrapped the wrong world's console, and captured nothing the page logged.
+
+Replaced with the native WebKit path: a **document-start user script**
+(`webkit_user_script_new` + `webkit_user_content_manager_add_script`)
+wraps console.*/error/unhandledrejection in the MAIN world and posts each
+entry through a **script message handler**
+(`register_script_message_handler`, signal connected first per the
+WebKitGTK race warning) into a per-surface app-side ring buffer
+(`BrowserConsoleLog`, 512 entries, cleared in `SurfaceRegistry.unregister`).
+User scripts are user-agent scripts — exempt from page CSP and eval-free.
+`console.list/clear` and `errors.list` keep their exact wire shape but now
+read the app-side buffer (no JS round-trip).
+
+Verified on a purpose-built strict-CSP page (`script-src 'self'`, served
+with the header, logging at load): main-world eval was refused (`eval 1+1`
+answered 2 via the isolated-world fallback, proving CSP really was
+strict), yet console list returned the page's own log/warn/error **with no
+arming call ever made**, and errors.list caught a thrown error with its
+source file. Regression-checked on a non-CSP page (capture + main-world
+eval seeing page globals), plus clear and per-surface isolation.
+
+Deliberate semantic: entries logged by our own isolated-world automation
+are NOT captured — we record what the page logs, not what we log.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

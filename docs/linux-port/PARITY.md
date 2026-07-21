@@ -58,7 +58,7 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | browser.dialog.accept / dismiss | ✅ | macOS JS-hook approach (alert/confirm/prompt overridden into a FIFO queue + defaults), armed lazily by the first dialog verb; native GTK dialogs are NOT deferred pre-arm (macOS defers via WKUIDelegate) |
 | browser.cookies.get / set / clear | ✅ | WebKitNetworkSession cookie manager + SoupCookie, async chained add/delete; same wire shape (name/value/domain/path/secure/session_only/expires) |
 | browser.storage.get / set / clear | ✅ | local/session; get without key returns the full map |
-| browser.console.list / clear, browser.errors.list | ✅ | JS ring-buffer hooks (console.* wrap + error/unhandledrejection listeners), armed lazily by the first call — only entries after arming are captured, like macOS |
+| browser.console.list / clear, browser.errors.list | ✅ | **Capture v2** (2026-07-21): document-start user script (CSP-exempt user-agent script, no eval) posts through a script message handler into a per-surface app-side ring buffer. Captures from page load on every site incl. strict-CSP — strictly better than macOS's lazily-armed wrap, which only sees entries after the first call. Note: entries logged by our own isolated-world automation aren't captured (we record what the PAGE logs) |
 | browser.network.requests / route / unroute | ❌ | |
 | browser.download.wait | 🟡 | path-based wait works (non-blocking poll); the no-path event branch times out — macOS's download-event queue is never populated either (no writer exists). Real downloads need a decide-destination handler (future) |
 | browser.tab.list / new / switch / close | ❌ | |

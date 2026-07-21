@@ -47,13 +47,14 @@ internals) · **🟡 partial** (works, with a documented caveat).
   (`cmuxAutomation`) on a CSP eval-refusal: same DOM, no main-world CSP.
   Deviation: on those sites `browser.eval` runs isolated, so **page JS
   globals are invisible** (macOS sees them everywhere).
-- 🟡 **Console/error capture has a strict-CSP blind spot.** The hooks wrap
-  `window.console` in the page world, armed lazily on first use; on a
-  strict-CSP site that arming lands in the isolated world and captures
-  nothing the page itself logs. Fix is planned as increment 1 of
-  `roadmap/06-webkit-native-automation.md` (document-start user script +
-  script message handler — user scripts are CSP-exempt and eval-free, so
-  capture starts at page load on every site).
+- ★ **Console/error capture from page load, on every site.** A
+  document-start *user script* (CSP-exempt, eval-free) posts console and
+  error events through a script message handler into a per-surface
+  app-side buffer — so capture works even on strict-CSP sites and needs
+  no arming call. macOS arms a `window.console` wrap lazily and therefore
+  only sees entries logged after the first `console list`. (We record
+  what the *page* logs; our own isolated-world automation output isn't
+  captured.)
 
 ## Agents, notifications, control
 

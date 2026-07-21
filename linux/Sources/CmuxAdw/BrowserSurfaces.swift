@@ -71,6 +71,11 @@ enum BrowserSurfaceFactory {
             }
         }
 
+        // Console/error capture v2: CSP-exempt document-start user
+        // script + script message handler (roadmap/06 increment 1).
+        // Installed before any load so capture starts at page load.
+        installBrowserConsoleCapture(webView, surfaceId: surfaceId)
+
         SurfaceRegistry.shared.registerBrowser(
             OpaquePointer(webView),
             container: OpaquePointer(widget),

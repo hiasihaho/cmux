@@ -463,67 +463,161 @@ private let cssPathJSHelper = """
       };
 """
 
-// MARK: - telemetry hooks
+// MARK: - telemetry (console/errors) capture v2
 
-/// Wraps console.* and window error events into ring buffers on the page —
-/// verbatim copy of the macOS `telemetryHookBootstrapScriptSource`. Armed
-/// lazily by the first console/errors verb (macOS parity), so only entries
-/// after arming are captured.
-private let browserTelemetryHookScript = """
+/// Per-surface console/error ring buffers filled by the document-start
+/// user script below (roadmap/06 increment 1). Replaces the old lazily
+/// armed `window.console` wrap, which broke on strict-CSP sites: the
+/// arming eval landed in the isolated world and wrapped the wrong
+/// world's console, capturing nothing the page logged. User scripts are
+/// user-agent scripts — exempt from page CSP, no eval — so capture now
+/// starts at page load on every site. Main-loop confined.
+final class BrowserConsoleLog {
+    static let shared = BrowserConsoleLog()
+    private static let limit = 512
+
+    private var console: [UUID: [[String: Any]]] = [:]
+    private var errors: [UUID: [[String: Any]]] = [:]
+
+    /// Wire shapes match the previous JS buffers exactly:
+    /// console `{level, text, timestamp_ms}`, errors
+    /// `{message, source, line, column, timestamp_ms}`.
+    func append(_ entry: [String: Any], for surfaceId: UUID) {
+        let isError = (entry["kind"] as? String) == "error"
+        var row = entry
+        row.removeValue(forKey: "kind")
+        if isError {
+            var list = errors[surfaceId] ?? []
+            list.append(row)
+            if list.count > Self.limit { list.removeFirst(list.count - Self.limit) }
+            errors[surfaceId] = list
+        } else {
+            var list = console[surfaceId] ?? []
+            list.append(row)
+            if list.count > Self.limit { list.removeFirst(list.count - Self.limit) }
+            console[surfaceId] = list
+        }
+    }
+
+    func entries(for surfaceId: UUID, isErrors: Bool) -> [[String: Any]] {
+        (isErrors ? errors[surfaceId] : console[surfaceId]) ?? []
+    }
+
+    func clear(for surfaceId: UUID, isErrors: Bool) {
+        if isErrors { errors[surfaceId] = [] } else { console[surfaceId] = [] }
+    }
+
+    func clearAll(for surfaceId: UUID) {
+        console.removeValue(forKey: surfaceId)
+        errors.removeValue(forKey: surfaceId)
+    }
+}
+
+/// Script-message channel name; also the `window.webkit.messageHandlers`
+/// key the user script posts through.
+private let consoleMessageHandlerName = "cmuxConsole"
+
+/// Document-start user script: wraps console.* and error events and
+/// posts each entry to the app. Plain JS (no eval) so strict CSP cannot
+/// refuse it, and it runs before any page script.
+private let browserConsoleUserScript = """
 (() => {
-  if (window.__cmuxHooksInstalled) return true;
-  window.__cmuxHooksInstalled = true;
-
-  window.__cmuxConsoleLog = window.__cmuxConsoleLog || [];
-  const __pushConsole = (level, args) => {
-    try {
-      const text = Array.from(args || []).map((x) => {
-        if (typeof x === 'string') return x;
-        try { return JSON.stringify(x); } catch (_) { return String(x); }
-      }).join(' ');
-      window.__cmuxConsoleLog.push({ level, text, timestamp_ms: Date.now() });
-      if (window.__cmuxConsoleLog.length > 512) {
-        window.__cmuxConsoleLog.splice(0, window.__cmuxConsoleLog.length - 512);
-      }
-    } catch (_) {}
+  if (window.__cmuxConsoleInstalled) return;
+  window.__cmuxConsoleInstalled = true;
+  const post = (payload) => {
+    try { window.webkit.messageHandlers.\(consoleMessageHandlerName).postMessage(payload); } catch (_) {}
   };
-
-  const methods = ['log', 'info', 'warn', 'error', 'debug'];
-  for (const m of methods) {
-    const orig = (window.console && window.console[m]) ? window.console[m].bind(window.console) : null;
-    window.console[m] = function(...args) {
-      __pushConsole(m, args);
+  const fmt = (args) => Array.from(args || []).map((x) => {
+    if (typeof x === 'string') return x;
+    try { return JSON.stringify(x); } catch (_) { return String(x); }
+  }).join(' ');
+  for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
+    const orig = (window.console && window.console[level])
+      ? window.console[level].bind(window.console) : null;
+    window.console[level] = function(...args) {
+      post({ kind: 'console', level, text: fmt(args), timestamp_ms: Date.now() });
       if (orig) return orig(...args);
     };
   }
-
-  window.__cmuxErrorLog = window.__cmuxErrorLog || [];
   window.addEventListener('error', (ev) => {
-    try {
-      const message = String((ev && ev.message) || '');
-      const source = String((ev && ev.filename) || '');
-      const line = Number((ev && ev.lineno) || 0);
-      const col = Number((ev && ev.colno) || 0);
-      window.__cmuxErrorLog.push({ message, source, line, column: col, timestamp_ms: Date.now() });
-      if (window.__cmuxErrorLog.length > 512) {
-        window.__cmuxErrorLog.splice(0, window.__cmuxErrorLog.length - 512);
-      }
-    } catch (_) {}
+    post({
+      kind: 'error',
+      message: String((ev && ev.message) || ''),
+      source: String((ev && ev.filename) || ''),
+      line: Number((ev && ev.lineno) || 0),
+      column: Number((ev && ev.colno) || 0),
+      timestamp_ms: Date.now()
+    });
   });
   window.addEventListener('unhandledrejection', (ev) => {
-    try {
-      const reason = ev && ev.reason;
-      const message = typeof reason === 'string' ? reason : (reason && reason.message ? String(reason.message) : String(reason));
-      window.__cmuxErrorLog.push({ message, source: 'unhandledrejection', line: 0, column: 0, timestamp_ms: Date.now() });
-      if (window.__cmuxErrorLog.length > 512) {
-        window.__cmuxErrorLog.splice(0, window.__cmuxErrorLog.length - 512);
-      }
-    } catch (_) {}
+    const reason = ev && ev.reason;
+    const message = typeof reason === 'string'
+      ? reason
+      : (reason && reason.message ? String(reason.message) : String(reason));
+    post({
+      kind: 'error', message, source: 'unhandledrejection',
+      line: 0, column: 0, timestamp_ms: Date.now()
+    });
   });
-
-  return true;
-})()
+})();
 """
+
+/// Carries the surface identity across the C signal callback (which may
+/// not capture context), released by the closure-notify below.
+private final class ConsoleMessageBox {
+    let surfaceId: UUID
+    init(surfaceId: UUID) { self.surfaceId = surfaceId }
+}
+
+/// Installs console/error capture on a freshly created browser surface:
+/// connect the signal FIRST, then register the handler (the WebKitGTK
+/// docs warn about the race the other way around), then add the
+/// document-start user script.
+func installBrowserConsoleCapture(
+    _ webView: UnsafeMutablePointer<WebKitWebView>,
+    surfaceId: UUID
+) {
+    guard let manager = webkit_web_view_get_user_content_manager(webView) else { return }
+
+    let box = Unmanaged.passRetained(ConsoleMessageBox(surfaceId: surfaceId)).toOpaque()
+    let callback: @convention(c) (
+        UnsafeMutableRawPointer?, OpaquePointer?, UnsafeMutableRawPointer?
+    ) -> Void = { _, value, userData in
+        guard let userData, let value else { return }
+        let box = Unmanaged<ConsoleMessageBox>.fromOpaque(userData).takeUnretainedValue()
+        guard let json = jsc_value_to_json(value, 0) else { return }
+        let text = String(cString: json)
+        g_free(json)
+        guard let decoded = try? JSONSerialization.jsonObject(with: Data(text.utf8)),
+              let entry = decoded as? [String: Any] else { return }
+        BrowserConsoleLog.shared.append(entry, for: box.surfaceId)
+    }
+    let destroy: GClosureNotify = { data, _ in
+        guard let data else { return }
+        Unmanaged<ConsoleMessageBox>.fromOpaque(data).release()
+    }
+    g_signal_connect_data(
+        UnsafeMutableRawPointer(manager),
+        "script-message-received::\(consoleMessageHandlerName)",
+        unsafeBitCast(callback, to: GCallback.self),
+        box,
+        destroy,
+        GConnectFlags(0)
+    )
+    _ = webkit_user_content_manager_register_script_message_handler(
+        manager, consoleMessageHandlerName, nil
+    )
+
+    if let script = webkit_user_script_new(
+        browserConsoleUserScript,
+        WEBKIT_USER_CONTENT_INJECT_TOP_FRAME,
+        WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START,
+        nil, nil
+    ) {
+        webkit_user_content_manager_add_script(manager, script)
+        webkit_user_script_unref(script)
+    }
+}
 
 // MARK: - dialog hooks
 
@@ -1725,34 +1819,20 @@ extension ControlCommandHandler {
         }
         let isErrors = method == "browser.errors.list"
         let clear = method == "browser.console.clear" || (boolParam(params, "clear") ?? false)
-        let bufferName = isErrors ? "__cmuxErrorLog" : "__cmuxConsoleLog"
         let entriesKey = isErrors ? "errors" : "entries"
-        let clearLiteral = clear ? "true" : "false"
-        // Hooks and buffers live in the TOP window (macOS uses the
-        // non-frame runner too); the idempotent install is prepended so
-        // one round-trip arms and reads.
-        let script = """
-        \(browserTelemetryHookScript);
-        (() => {
-          const items = Array.isArray(window.\(bufferName)) ? window.\(bufferName).slice() : [];
-          if (\(clearLiteral)) {
-            window.\(bufferName) = [];
-          }
-          return { ok: true, items };
-        })()
-        """
-        BrowserJS.run(target.webView, script: script) { outcome in
-            switch outcome {
-            case .failure(let message):
-                respond(self.baError(id: id, code: "js_error", message: message))
-            case .success(let value):
-                let items = ((value as? [String: Any])?["items"] as? [Any]) ?? []
-                var payload = target.refPayload
-                payload[entriesKey] = items
-                payload["count"] = items.count
-                respond(self.baOk(id: id, result: payload))
-            }
+
+        // Capture v2: entries stream in from the document-start user
+        // script (CSP-exempt, active since page load) into an app-side
+        // ring buffer — no JS round-trip, and no strict-CSP blind spot.
+        let store = BrowserConsoleLog.shared
+        let items = store.entries(for: target.surfaceId, isErrors: isErrors)
+        if clear {
+            store.clear(for: target.surfaceId, isErrors: isErrors)
         }
+        var payload = target.refPayload
+        payload[entriesKey] = items
+        payload["count"] = items.count
+        respond(baOk(id: id, result: payload))
     }
 
     // MARK: download wait
