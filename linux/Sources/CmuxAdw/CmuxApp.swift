@@ -79,6 +79,8 @@ struct CmuxApp: App {
         let saveState = { [self] in
             SessionStore.saveIfChanged(tabs: tabs, selection: selection, tabCounter: tabCounter)
         }
+        // Lets non-model code (browser navigation) ask for a save.
+        SessionStore.saveHook = saveState
         Idle(delay: .seconds(15)) {
             saveState()
             return true

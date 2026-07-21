@@ -94,6 +94,15 @@ enum BrowserSurfaceFactory {
         if let settings = webkit_web_view_get_settings(webView) {
             webkit_settings_set_javascript_can_open_windows_automatically(settings, 1)
         }
+        // Capture browser state as soon as a navigation commits (see
+        // browserLoadChangedForSession) rather than waiting for the 15s
+        // session timer.
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(widget), "load-changed",
+            unsafeBitCast(browserLoadChangedForSession, to: GCallback.self),
+            Unmanaged.passRetained(PopupOpenerBox(surfaceId: surfaceId)).toOpaque(),
+            popupOpenerBoxDestroy, GConnectFlags(0)
+        )
         g_signal_connect_data(
             UnsafeMutableRawPointer(widget), "create",
             unsafeBitCast(popupCreate, to: GCallback.self),

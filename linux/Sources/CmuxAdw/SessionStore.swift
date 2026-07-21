@@ -95,6 +95,28 @@ enum SessionStore {
 
     private static var lastSaved: Data?
 
+    /// Set by the app: performs a save with the current model. Lets code
+    /// that has no access to the model (a WebKit signal handler, say) ask
+    /// for one.
+    static var saveHook: (() -> Void)?
+    private static var savePending = false
+
+    /// Debounced save request. A navigation is not a model change, so
+    /// browser state used to reach disk only on the 15s timer — quit a few
+    /// seconds after navigating and the file still held the previous URL,
+    /// which is exactly when a user expects their session to be captured.
+    /// Debounced rather than immediate because a single navigation emits
+    /// several load events, and this writes the whole session file.
+    static func requestSave(afterMs: UInt32 = 1500) {
+        guard !savePending else { return }
+        savePending = true
+        scheduleOnMainLoop(afterMs: afterMs) {
+            savePending = false
+            saveHook?()
+        }
+    }
+
+
     // MARK: save
 
     static func saveIfChanged(tabs: [TerminalTab], selection: UUID, tabCounter: Int) {

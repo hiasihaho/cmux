@@ -1713,3 +1713,41 @@ assumes our own convention.
 Verified: list shows index + selection, `new` adds a tab without adding a
 pane, `switch` moves the selection, `close` removes only that tab. All
 six suites green (61 assertions).
+
+## 2026-07-21 — browser state captured on navigation (not on the 15s timer)
+
+A navigation is not a model change, so browser state used to reach disk
+only via the periodic save: quit a few seconds after navigating and the
+session file still held the previous URL — exactly when a user expects
+their session captured. Browser views now connect `load-changed` and, once
+a load commits, record the URL and request a **debounced** save (1.5s;
+one navigation emits several load events and this rewrites the whole
+session file). Asserted: navigate, quit 3s later, the new URL is on disk.
+
+### The pane-search "regression" that was not one
+
+Right after this change `pane-search-smoke` dropped to 9/11 — both
+failures on the terminal side. Chased properly rather than assumed:
+
+- Stashed the change and ran at HEAD: **still 9/11**. Not mine.
+- Bisected the binary across four commits (`fc84a441`, `c93a6ae8`,
+  `988d0c15`, `4bed15be`) with a minimal repro: **all four failed**,
+  including commits that had passed this same suite an hour earlier. Code
+  that both passes and fails is not a code regression.
+- Root cause: a Ghostty surface spawns its shell on **first map**. A
+  selected workspace only maps if the instance's *window is actually on
+  screen*; these test instances now open occluded (the host also has two
+  qemu VMs at ~300% CPU). Fresh instance: startup workspace's shell came
+  up in 1s, a newly created one never did in 60s, and the app log showed
+  **zero** lines — the factory never ran, which is deterministic, not slow.
+
+The suite now detects the precondition and **skips those two assertions
+loudly**, naming the cause, instead of reporting "search finds nothing in
+terminals" — a missing precondition dressed up as a product failure. The
+browser assertions need no mapped window and still run.
+
+Worth keeping: the discriminator was that only `pane-search` exercises
+terminals at all, so one suite failing while five passed was itself the
+clue. And the A/B that settled it only worked because the repro was
+reduced to *create workspace → select → poll for shell*, small enough to
+run against four binaries.

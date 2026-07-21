@@ -31,6 +31,10 @@ enum BrowserSessionState {
     /// save that races surface creation harmless.
     private static var lastKnownURL: [UUID: String] = [:]
 
+    static func setLastKnownURL(_ url: String, for surfaceId: UUID) {
+        lastKnownURL[surfaceId] = url
+    }
+
     static func capture(surfaceId: UUID, fallbackURL: String) -> SessionStore.BrowserSnapshot? {
         guard let raw = SurfaceRegistry.shared.browser(for: surfaceId) else {
             let url = fallbackURL.isEmpty ? (lastKnownURL[surfaceId] ?? "") : fallbackURL
@@ -159,4 +163,32 @@ enum BrowserSessionState {
 /// model's schedule, not ours.
 enum BrowserRestoreStore {
     static var pending: [UUID: SessionStore.BrowserSnapshot] = [:]
+}
+
+/// Records a browser surface's URL as soon as WebKit commits it, and asks
+/// for a (debounced) session save. Without this, browser state only
+/// reached disk on the 15s timer, because a navigation is not a model
+/// change — so quitting seconds after navigating persisted the old URL.
+let browserLoadChangedForSession: @convention(c) (
+    UnsafeMutableRawPointer?, UInt32, UnsafeMutableRawPointer?
+) -> Void = { viewPtr, loadEvent, userData in
+    guard let viewPtr, let userData else { return }
+    // Only once the load has committed: earlier events still report the
+    // previous document's URI, which is the very staleness being fixed.
+    guard loadEvent == WEBKIT_LOAD_COMMITTED.rawValue
+            || loadEvent == WEBKIT_LOAD_FINISHED.rawValue else { return }
+    let box = Unmanaged<PopupOpenerBox>.fromOpaque(userData).takeUnretainedValue()
+    let webView = UnsafeMutableRawPointer(viewPtr).assumingMemoryBound(to: WebKitWebView.self)
+    if let uri = webkit_web_view_get_uri(webView) {
+        let url = String(cString: uri)
+        if !url.isEmpty { BrowserSessionState.noteURL(url, for: box.surfaceId) }
+    }
+    SessionStore.requestSave()
+}
+
+extension BrowserSessionState {
+    /// Exposed for the load-changed handler; keeps the cache private.
+    static func noteURL(_ url: String, for surfaceId: UUID) {
+        setLastKnownURL(url, for: surfaceId)
+    }
 }

@@ -213,6 +213,28 @@ cx browser --surface "$OPENER" forward >/dev/null 2>&1
 sleep 1
 expect "forward returns to the restored entry" "$before_back" "$(cx browser --surface "$OPENER" get-url 2>/dev/null)"
 
+# ------------------------------------------------ capture is not throttled
+# A navigation is not a model change, so browser state used to reach disk
+# only on the 15s timer: quitting a few seconds after navigating persisted
+# the PREVIOUS url. Now a committed load requests a debounced save.
+info "navigation is captured without waiting for the session timer"
+kill_instance
+rm -f "$SESSION"
+start_instance
+WS2=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+S2=$(cx browser open "http://127.0.0.1:$PAGE_PORT/a.html" --workspace "$WS2" | grep -oE 'surface:[0-9]+')
+cx select-workspace --workspace "$WS2" >/dev/null
+sleep 3
+cx browser --surface "$S2" goto "http://127.0.0.1:$PAGE_PORT/b.html" >/dev/null 2>&1
+sleep 3                     # well inside the old 15s window
+kill_instance
+persisted=$(python3 -c "
+import json
+d=json.load(open('$SESSION'))
+urls=[(s.get('browser') or {}).get('url','') for w in d['workspaces'] for s in w['surfaces'] if s['type']=='browser']
+print('yes' if any(u.endswith('/b.html') for u in urls) else 'no')" 2>/dev/null)
+expect "a navigation is persisted without the 15s timer" "yes" "$persisted"
+
 echo
 echo "== session-persistence-smoke: $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ] || exit 1
