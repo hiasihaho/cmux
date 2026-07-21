@@ -73,8 +73,8 @@ measured by diffing the two capability lists, not estimated.
 
 ### browser — not yet ported
 
-Measured by diffing the two capability lists (2026-07-21): **88 v2 methods
-are implemented on both**, 51 are macOS-only, and a further 29 macOS
+Measured by diffing the two capability lists (2026-07-21): **92 v2 methods
+are implemented on both**, 47 are macOS-only, and a further 29 macOS
 `debug.*` methods are UI-test harness hooks rather than port targets.
 
 | Group | Missing on Linux |
@@ -84,7 +84,6 @@ are implemented on both**, 51 are macOS-only, and a further 29 macOS
 | device emulation | `viewport.set` `geolocation.set` |
 | trusted input | `input_keyboard` `input_mouse` `input_touch` (WebDriver covers the real-input case today) |
 | capture / tracing | `screencast.start` `screencast.stop` `trace.start` `trace.stop` |
-| browser tabs | `tab.list` `tab.new` `tab.switch` `tab.close` |
 | state | `state.save` `state.load` |
 | misc | `focus_webview` `is_webview_focused` `highlight` |
 
@@ -129,7 +128,7 @@ are implemented on both**, 51 are macOS-only, and a further 29 macOS
 | Browser URL / address bar | ❌ | macOS browser panes have an editable address bar (`Sources/Panels/BrowserPanelView.swift`, `debug.browser.address_bar_focused`). Linux navigates only via `browser goto` / links — a human cannot type a URL into a pane |
 | Pane zoom ("focus mode") | ❌ | macOS `toggleSplitZoom` ("Toggle Pane Zoom", `TabManager.toggleSplitZoom`) temporarily expands one pane to fill the workspace, tmux-style. Nothing equivalent on Linux |
 | Browser screencast (capture mode) | ❌ | macOS exposes `browser.screencast.start` / `.stop` over the socket — continuous frame capture, distinct from the one-shot `browser.screenshot` we have |
-| Browser tabs as a socket surface | 🟡 | macOS has `browser.tab.list / new / switch / close`. Linux now has per-pane tabs in the model and UI, so these verbs have something real to address — but they are not implemented yet |
+| Browser tabs as a socket surface | ✅ | `browser.tab.list / new / switch / close` (2026-07-21), addressing the real per-pane tab model. `list` reports each tab's index **within its pane** plus `selected`/`focused`; `new` resolves its anchor the way macOS does (explicit pane → explicit surface → focused surface) |
 | Command palette | ❌ | |
 | Tab drag-and-drop (reorder, tear-off, cross-window) | ❌ | |
 | Multi-window | ❌ | |

@@ -445,6 +445,14 @@ struct ControlCommandHandler {
             return v2PaneSurfaces(id: id, params: params)
         case "browser.open_split":
             return v2BrowserOpenSplit(id: id, params: params)
+        case "browser.tab.list":
+            return v2BrowserTabList(id: id, params: params)
+        case "browser.tab.new":
+            return v2BrowserTabNew(id: id, params: params)
+        case "browser.tab.switch":
+            return v2BrowserTabSwitch(id: id, params: params)
+        case "browser.tab.close":
+            return v2BrowserTabClose(id: id, params: params)
         case "browser.url.get":
             return v2BrowserGetURL(id: id, params: params)
         case "browser.get.title":
@@ -892,11 +900,21 @@ struct ControlCommandHandler {
     /// anchor. This is what popups use: a second page is a tab, not another
     /// split, so opening five of them no longer shreds the layout.
     func adoptBrowserTab(nextTo anchor: UUID, register: (UUID) -> Void) -> UUID? {
+        addBrowserTab(nextTo: anchor, url: "", register: register)
+    }
+
+    /// Adds a browser surface as a tab in the pane hosting `anchor`. Shared
+    /// by popup adoption (which pre-creates the web view and registers it)
+    /// and `browser.tab.new` (which just wants a URL).
+    @discardableResult
+    func addBrowserTab(
+        nextTo anchor: UUID, url: String, register: (UUID) -> Void = { _ in }
+    ) -> UUID? {
         guard let tab = tabs.wrappedValue.first(where: { $0.contains(surfaceId: anchor) }),
               let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id })
         else { return nil }
         let cwd = SurfaceRegistry.shared.currentDirectory(for: anchor) ?? tab.workingDirectory
-        let surface = PaneSurface(kind: .browser(initialURL: ""), workingDirectory: cwd)
+        let surface = PaneSurface(kind: .browser(initialURL: url), workingDirectory: cwd)
         register(surface.surfaceId)
         guard let layout = tabs.wrappedValue[index].layout.addingTab(surface, nextTo: anchor) else {
             return nil

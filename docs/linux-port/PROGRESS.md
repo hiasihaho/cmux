@@ -1686,3 +1686,30 @@ New suite `linux/tests/session-persistence-smoke.sh` (10 assertions:
 migration, tab round-trip, selection, URLs, navigable history). All six
 suites green: webdriver 9/9, navigation 8/8, popup 12/12, search 11/11,
 find 11/11, session 10/10.
+
+## 2026-07-21 — browser.tab.* (closing a parity gap the tab work unlocked)
+
+`browser.tab.list / new / switch / close`, mirroring macOS's verbs of the
+same name. These existed on macOS long before Linux had anywhere to put a
+tab; now that panes hold several surfaces they map straight onto the
+model — a "browser tab" is a browser surface inside a pane, switching one
+is `selecting`, closing one is `closeSurface`.
+
+Followed macOS where it was already right: `tab.new` resolves its anchor
+in the same order (explicit `pane_id`/`target_pane_id` → explicit
+`surface_id` → the workspace's focused surface), and the entries keep
+macOS's `id`/`ref` wire shape. Deviated in one place on purpose: `index`
+is the position **within its pane**, because that is what "tab 2" means
+to someone looking at a tab strip — macOS lists browser panels
+workspace-wide, which was the only sensible reading when a pane could
+hold just one.
+
+One display bug caught in testing: the CLI printed `?` for every ref,
+because `formatHandle` expects a `surface_id`/`surface_ref` pair while
+these entries use macOS's `id`/`ref`. Worth noting the shape — matching
+the macOS wire format is right, and it silently broke a helper that
+assumes our own convention.
+
+Verified: list shows index + selection, `new` adds a tab without adding a
+pane, `switch` moves the selection, `close` removes only that tab. All
+six suites green (61 assertions).

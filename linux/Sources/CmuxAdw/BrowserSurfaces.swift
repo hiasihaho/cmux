@@ -336,3 +336,104 @@ extension ControlCommandHandler {
         reply()
     }
 }
+
+// MARK: - browser.tab.* (per-pane browser tabs)
+
+/// Mirrors macOS `v2BrowserTabList/New/Switch/Close`. Those verbs existed
+/// there long before Linux had anywhere to put a tab; now that panes hold
+/// several surfaces, they map straight onto the model: a "browser tab" is
+/// a browser surface inside a pane, and switching one is selecting it.
+extension ControlCommandHandler {
+
+    func v2BrowserTabList(id: Any?, params: [String: Any]) -> String {
+        let wsId = (params["workspace_id"] as? String)
+            .flatMap { UUID(uuidString: $0) ?? RefRegistry.shared.resolve($0) }
+            ?? selection.wrappedValue
+        guard let tab = tabs.wrappedValue.first(where: { $0.id == wsId }) else {
+            return v2BrowserError(id: id, code: "not_found", message: "Workspace not found")
+        }
+        let registry = RefRegistry.shared
+        var entries: [[String: Any]] = []
+        for pane in tab.panes {
+            for (index, surface) in pane.surfaces.enumerated() {
+                guard case .browser = surface.kind else { continue }
+                entries.append([
+                    "id": surface.surfaceId.uuidString,
+                    "ref": registry.ref(kind: "surface", uuid: surface.surfaceId),
+                    "pane_id": pane.paneId.uuidString,
+                    "pane_ref": registry.ref(kind: "pane", uuid: pane.paneId),
+                    // Index WITHIN the pane — that is what "tab 2" means to
+                    // someone looking at a tab strip.
+                    "index": index,
+                    "selected": pane.selected.surfaceId == surface.surfaceId,
+                    "focused": tab.focusedSurfaceId == surface.surfaceId,
+                    "title": SurfaceRegistry.shared.currentBrowserTitle(for: surface.surfaceId) ?? "",
+                    "url": SurfaceRegistry.shared.currentURL(for: surface.surfaceId) ?? ""
+                ])
+            }
+        }
+        return v2BrowserOk(id: id, result: [
+            "workspace_id": tab.id.uuidString,
+            "workspace_ref": registry.ref(kind: "workspace", uuid: tab.id),
+            "tabs": entries
+        ])
+    }
+
+    func v2BrowserTabNew(id: Any?, params: [String: Any]) -> String {
+        let url = (params["url"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "about:blank"
+        // Anchor resolution follows macOS: explicit pane, else explicit
+        // surface, else the focused surface of the target workspace.
+        let anchor: UUID? = {
+            if let raw = params["pane_id"] as? String ?? params["target_pane_id"] as? String,
+               let paneId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw),
+               let tab = tabs.wrappedValue.first(where: { $0.panes.contains { $0.paneId == paneId } }),
+               let pane = tab.panes.first(where: { $0.paneId == paneId }) {
+                return pane.selected.surfaceId
+            }
+            if let raw = params["surface_id"] as? String,
+               let sid = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw) {
+                return sid
+            }
+            let wsId = (params["workspace_id"] as? String)
+                .flatMap { UUID(uuidString: $0) ?? RefRegistry.shared.resolve($0) }
+                ?? selection.wrappedValue
+            return tabs.wrappedValue.first { $0.id == wsId }?.focusedSurface?.surfaceId
+        }()
+        guard let anchor else {
+            return v2BrowserError(id: id, code: "not_found", message: "No pane to add a tab to")
+        }
+        guard let surfaceId = addBrowserTab(nextTo: anchor, url: url) else {
+            return v2BrowserError(id: id, code: "internal_error", message: "Failed to create browser tab")
+        }
+        let registry = RefRegistry.shared
+        return v2BrowserOk(id: id, result: [
+            "surface_id": surfaceId.uuidString,
+            "surface_ref": registry.ref(kind: "surface", uuid: surfaceId),
+            "url": url
+        ])
+    }
+
+    func v2BrowserTabSwitch(id: Any?, params: [String: Any]) -> String {
+        guard let raw = params["surface_id"] as? String ?? params["id"] as? String,
+              let surfaceId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw),
+              let tab = tabs.wrappedValue.first(where: { $0.contains(surfaceId: surfaceId) }) else {
+            return v2BrowserError(id: id, code: "not_found", message: "Browser tab not found")
+        }
+        selectSurfaceTab(tabId: tab.id, surfaceId: surfaceId)
+        let registry = RefRegistry.shared
+        return v2BrowserOk(id: id, result: [
+            "surface_id": surfaceId.uuidString,
+            "surface_ref": registry.ref(kind: "surface", uuid: surfaceId)
+        ])
+    }
+
+    func v2BrowserTabClose(id: Any?, params: [String: Any]) -> String {
+        guard let raw = params["surface_id"] as? String ?? params["id"] as? String,
+              let surfaceId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw),
+              let tab = tabs.wrappedValue.first(where: { $0.contains(surfaceId: surfaceId) }) else {
+            return v2BrowserError(id: id, code: "not_found", message: "Browser tab not found")
+        }
+        closeSurface(tabId: tab.id, surfaceId: surfaceId)
+        return v2BrowserOk(id: id, result: ["closed": true, "surface_id": surfaceId.uuidString])
+    }
+}

@@ -2543,6 +2543,62 @@ struct CMUXCLI {
             return
         }
 
+        if subcommand == "tab" {
+            let action = (subArgs.first ?? "list").lowercased()
+            let rest = Array(subArgs.dropFirst())
+            var params: [String: Any] = [:]
+            switch action {
+            case "list":
+                if let ws = optionValue(subArgs, name: "--workspace") {
+                    params["workspace_id"] = try resolveWorkspaceId(ws, client: client)
+                }
+                let payload = try client.sendV2(method: "browser.tab.list", params: params)
+                if jsonOutput {
+                    print(jsonString(formatIDs(payload, mode: idFormat)))
+                } else {
+                    let tabs = (payload["tabs"] as? [[String: Any]]) ?? []
+                    if tabs.isEmpty { print("No browser tabs") }
+                    for entry in tabs {
+                        // tab.list entries use macOS's wire shape (`id`/`ref`),
+                        // not the `surface_id`/`surface_ref` pair that
+                        // formatHandle expects — read the field directly.
+                        let ref = (idFormat == .uuids
+                            ? (entry["id"] as? String)
+                            : (entry["ref"] as? String)) ?? "?"
+                        let mark = ((entry["selected"] as? Bool) == true) ? "*" : " "
+                        let idx = (entry["index"] as? Int) ?? 0
+                        let title = (entry["title"] as? String) ?? ""
+                        let url = (entry["url"] as? String) ?? ""
+                        print("\(mark) \(ref)  [\(idx)]  \(title.isEmpty ? url : title)")
+                    }
+                }
+            case "new":
+                let url = rest.filter { !$0.hasPrefix("--") }.joined(separator: " ")
+                if !url.isEmpty { params["url"] = url }
+                if let surfaceRaw, let resolved = try normalizeSurfaceHandle(surfaceRaw, client: client) {
+                    params["surface_id"] = resolved
+                }
+                if let ws = optionValue(subArgs, name: "--workspace") {
+                    params["workspace_id"] = try resolveWorkspaceId(ws, client: client)
+                }
+                let payload = try client.sendV2(method: "browser.tab.new", params: params)
+                output(payload, fallback: "OK \(formatHandle(payload, kind: "surface", idFormat: idFormat) ?? "")")
+            case "switch", "close":
+                let target = rest.first ?? surfaceRaw
+                guard let target, let resolved = try normalizeSurfaceHandle(target, client: client) else {
+                    throw CLIError(message: "browser tab \(action) requires a surface handle")
+                }
+                params["surface_id"] = resolved
+                let payload = try client.sendV2(
+                    method: action == "switch" ? "browser.tab.switch" : "browser.tab.close", params: params
+                )
+                output(payload, fallback: "OK")
+            default:
+                throw CLIError(message: "browser tab: unknown action '\(action)' (list|new|switch|close)")
+            }
+            return
+        }
+
         if subcommand == "find-in-page" || subcommand == "highlight" {
             let sid = try requireSurface()
             var params: [String: Any] = ["surface_id": sid]
@@ -4678,6 +4734,8 @@ struct CMUXCLI {
               press|key|keydown|keyup [--key <key> | <key>] [--snapshot-after]
               select [--selector <css> | <css>] [--value <value> | <value>] [--snapshot-after]
               scroll [--selector <css>] [--dx <n>] [--dy <n>] [--snapshot-after]
+              tab list | tab new [url] | tab switch <surface> | tab close <surface>
+                browser tabs within a pane (per-pane tab strip)
               find-in-page|highlight <text> [--case-sensitive] | --next | --previous | --clear
                 same find controller as Ctrl+Shift+F in a browser pane
               inspect|devtools [--direction <right|down|left|up>]
@@ -6690,6 +6748,7 @@ struct CMUXCLI {
           browser find nth <index> <selector>   (0-based; negative counts from end)
           browser frame <selector|main>
           browser dialog <accept|dismiss> [text]
+          browser tab <list|new|switch|close> [args]
           browser find-in-page <text> [--case-sensitive] | --next | --previous | --clear
           browser inspect|devtools [--direction <right|down|left|up>]
           browser screenshot [--out <path>] [--full-page]
