@@ -209,3 +209,17 @@ General shape: when asserting on a lifecycle hook, first prove the
 simulated event takes the same path as the human's. The A/B control arm
 (same binary, hook disabled by env) is what caught this: with the wrong
 close, WITH and WITHOUT were indistinguishable.
+
+## On merging a repo that outgrew you
+
+The dry-run measurement ("7 conflicting files") was true and still
+misleading: one of the seven was a symlinked shared source that had
+grown 4× and sprouted package dependencies. Conflict count measures
+textual overlap, not integration cost — for shared-by-symlink sources,
+diff the *dependency graph*, not just the file.
+
+Two smaller ones from the same night: an unpinned transitive dependency
+(branch ref inside a pinned package) can break a build that has not
+changed at all — commit the lockfile; and when extracting a target's
+file list from a pbxproj, ids are not uniformly 24 hex chars — validate
+the parse against a symbol you know must be there.

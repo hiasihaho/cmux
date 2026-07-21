@@ -125,7 +125,17 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    - **Multi-window** (`newWindow`/`closeWindow`) — the whole
      `window.create/close/current/focus` family, a phase of its own.
 
-6. **Deferred: merge `linux-port` into the fork's `main`.** Not urgent —
+6. ✅ **DONE (2026-07-22): the catch-up merge.** origin/main (5657
+   commits) merged into linux-port and upstream's entire CLI ported to
+   Linux (see PROGRESS 2026-07-22 — packages, compat layers, /proc
+   ports). The fork's `main` now carries the merged result. Remaining
+   drift: upstream/main was ~268 commits ahead of origin/main at merge
+   time — the next catch-up is small. The macOS build is untouched in
+   intent but UNVERIFIED (no toolchain here); verify on the VM before
+   any upstream PR. The old procedure below still applies to future
+   merges.
+
+   **(historical) Deferred: merge `linux-port` into the fork's `main`.** Not urgent —
    the work is pushed to `origin/linux-port` and the upstream PR flows
    from there, so nothing is stranded. But it is real work that gets
    harder the longer it waits, and it has a trap:

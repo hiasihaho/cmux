@@ -2385,3 +2385,65 @@ clean URL, `--jsn` and `--snapshot-after-typo` error out client-side
 (no split created), leading-flag form unchanged. Also confirmed
 "multiple browser surfaces" disambiguation still works — the second
 browser pane in the workspace was the human's, not a stray.
+
+### The catch-up merge: 5657 commits, and upstream's CLI ported (2026-07-22)
+
+The fork's `main` had drifted since the port began. The dry-run assessment
+found the merge itself cheap — seven conflicting files across 5657
+incoming commits, everything else disjoint — but one conflict hid the
+real bill: `CLI/cmux.swift`, shared into the Linux build by symlink, had
+grown upstream from one 14k-line file into **85 files / 62k lines**
+importing four internal packages and a stack of Apple frameworks. The
+user chose the full port over decoupling, and it landed the same night:
+the complete upstream CLI now builds and runs on Linux, and all 8 suites
+(88 assertions) pass with it driving our server.
+
+What the port actually consisted of, roughly in effort order:
+
+1. **Hunk resolution** (21 in cmux.swift). Upstream's rewritten socket
+   client won wholesale — EINTR-safe writes, per-verb response timeouts.
+   Our Linux verbs (`search`, `zoom-pane`) and navigation-barrier flags
+   survive beside upstream's new dispatch. `--background` restored as an
+   alias of `--focus false` (every suite and agent uses it).
+2. **Package wiring.** CmuxFoundation, CmuxSettings, CMUXAgentLaunch,
+   CmuxControlSocket into linux/Package.swift; swift-crypto replaces
+   CryptoKit off-macOS (conditional dependency, macOS graph untouched).
+3. **Mechanical guards** across ~60 files: `import Darwin` → Glibc,
+   os/OSLog/Security/SQLite3 behind canImport, explicit CoreFoundation
+   imports (macOS's Foundation re-exports it; corelibs doesn't).
+4. **Compat layers**, one file per package: `Darwin.`-qualified syscall
+   shims, OSAllocatedUnfairLock over NSLock, a no-op OSLog Logger that
+   still type-checks `privacy:` interpolations, and
+   `String(localized:defaultValue:)` returning the development string —
+   corelibs has no String.LocalizationValue at all.
+5. **Real ports, not stubs**: peer credentials via SO_PEERCRED +
+   /proc/<pid>/stat ancestry walk (same security boundary as Darwin's
+   LOCAL_PEERCRED + sysctl), process introspection via /proc,
+   SecRandomCopyBytes → getentropy, kqueue/DispatchSource file- and
+   process-watches → polling twins, and a Linux FileWatcher actor
+   (mtime polling) so settings hot-reload still works.
+6. **Server/ and Coordinator/ compile out** — those trees are the mac
+   app's side of the socket; Linux has its own (ControlProtocol.swift).
+   That also dropped the lone @Observable, dodging a Fedora toolchain
+   quirk (libswiftObservation leaves swift::threading::fatal undefined;
+   `--allow-shlib-undefined` matches what plain swiftc accepts).
+
+Traps that cost a round each, worth remembering:
+
+- **The pbxproj is the authority on what a shared target compiles.**
+  `JSONCParser`, `RemoteRelayZshBootstrap` and five more live in
+  `Sources/`, not `CLI/` — the Xcode CLI target compiles them in. And
+  parsing the pbxproj with a 24-hex id regex silently missed the
+  entries with 8-char ids; the "missing symbol" errors were the tell.
+- **An unpinned transitive dependency broke a pinned one.**
+  adwaita-swift references `meta` by branch; a fresh resolve picked up
+  a meta where `blockUpdates` went internal, breaking the pinned
+  adwaita-swift revision. The main tree never noticed — its cached
+  checkout was old. linux/Package.resolved is committed from now on.
+- **VTE-only builds had silently rotted** — scrollback code called
+  ghostty* helpers unconditionally; always building CMUX_GHOSTTY=1 hid
+  it. Honest no-op fallbacks restore the VTE build.
+
+macOS is untouched: every change is behind canImport/os guards, in
+Linux-only compat files, or under linux/. The macOS build itself cannot
+be verified from this machine — noted for the next VM run.
