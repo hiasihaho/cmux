@@ -157,12 +157,35 @@ final class ControlSocketServer {
         Idle {
             dispatcher(line) { response.fulfill($0) }
         }
-        if let value = response.wait(seconds: 15) { return value }
+        if let value = response.wait(seconds: Self.responseBudget(for: line)) { return value }
         // v2 clients need a JSON envelope even for transport-level timeouts.
         if line.hasPrefix("{") {
             return #"{"id":null,"ok":false,"error":{"code":"timeout","message":"Command timed out"}}"#
         }
         return "ERROR: Command timed out"
+    }
+
+    /// Verbs that carry their own `timeout_ms` (browser wait/navigate/
+    /// download) must outlive it. A flat cap silently truncated them and
+    /// reported a transport timeout that reads exactly like the condition
+    /// never being met — the caller cannot tell "your predicate failed"
+    /// from "we hung up on you first".
+    private static func responseBudget(for line: String) -> Double {
+        let floor = 15.0
+        guard line.hasPrefix("{"),
+              let data = line.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let params = object["params"] as? [String: Any] else { return floor }
+        let requested: Int?
+        if let value = params["timeout_ms"] as? Int {
+            requested = value
+        } else if let value = params["timeout_ms"] as? NSNumber {
+            requested = value.intValue
+        } else {
+            requested = nil
+        }
+        guard let requested, requested > 0 else { return floor }
+        return max(floor, Double(requested) / 1000.0 + 5.0)
     }
 }
 

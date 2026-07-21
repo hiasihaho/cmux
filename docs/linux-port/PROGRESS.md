@@ -1217,3 +1217,57 @@ Traps this cycle added:
   `wait --selector/--text/--url-contains/--load-state/--function
   --timeout-ms` has existed all along. The QA agent found it in two
   minutes. Grep the CLI surface before designing a replacement for it.
+
+## 2026-07-21 — navigation barrier: `goto` no longer returns on a stale page
+
+Fixes bug B from the SPA-extraction dogfood above, blocking-by-default as
+decided. `browser.navigate` / `back` / `forward` / `reload` moved from the
+synchronous v2 group into the async one and now hold their response until
+the new document is committed.
+
+**How it resolves**, in order: `WEBKIT_LOAD_FINISHED` (fully loaded — what
+a caller means by "go here"), else `WEBKIT_LOAD_COMMITTED` once the
+deadline passes (the stale-document hazard is gone, subresources may still
+be in flight; reported as `load_state`), else a real `timeout` error —
+with no commit at all the *old* page would still be answering, so claiming
+success would be a lie. Default budget 10s, `--timeout-ms` to change it,
+`--no-wait` to opt back into fire-and-forget.
+
+`load-changed` is connected **before** the load is requested; polling after
+the fact is precisely what made the old code race. Optional
+`--wait-selector`/`--wait-function`/`--wait-load-state` chain into the
+existing `browser.wait` machinery *inside* the same barrier — issued as two
+separate commands there is still a gap the old document can answer in.
+
+Result: the live-site race went 2-stale-in-12 → **0 in 30**; against the
+new suite's deliberately delayed fixture, 20/20 clean where `--no-wait`
+(the old behavior) is 20/20 stale.
+
+Three further bugs surfaced while building it:
+
+- **Stale load events settle the wrong barrier.** Starting a navigation
+  cancels any in-flight one, and the cancellation *also* emits
+  `LOAD_FINISHED` — the first version honored it and returned "finished"
+  for a load that was never ours (the unreachable-host assertion returned
+  OK in 116ms). Fixed by requiring `COMMITTED` before `FINISHED` counts:
+  a commit is the earliest point the event is provably ours. **My own
+  regression test caught this in my own fix** — worth remembering as an
+  argument for writing the test before believing the patch.
+- **The transport silently truncated every `timeout_ms` over 15s.** Both
+  `ControlSocketServer.dispatchOnMainLoop` and the CLI capped at a flat
+  15s, so `wait --timeout-ms 20000` died at 15s with a transport timeout
+  that reads *exactly* like the condition never being met — the caller
+  cannot distinguish "your predicate failed" from "we hung up on you".
+  This is almost certainly the dogfood agent's "transient 20s timeout".
+  Both ends now derive their budget from the request's own `timeout_ms`.
+- **`goto` folded trailing flags into the URL.** `subArgs.joined(" ")`
+  took *all* remaining args, so `goto <url> --snapshot-after` navigated to
+  `"<url> --snapshot-after"`. Flags are now parsed out first.
+
+macOS has the same navigation race (`v2BrowserNavigate` → `navigateSmart`
+→ immediate `.ok`), so the barrier is a genuine Linux-side improvement
+rather than a port artifact; noted in FEATURES.md and worth mentioning
+upstream.
+
+New suite: `linux/tests/browser-navigation-smoke.sh` — 8 assertions,
+4 clean runs, and `webdriver-smoke.sh` still 9/9.

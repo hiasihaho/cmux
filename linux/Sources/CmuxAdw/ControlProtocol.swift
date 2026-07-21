@@ -284,6 +284,14 @@ struct ControlCommandHandler {
             return v2BrowserSnapshot(id: id, params: params, respond: respond)
         case "browser.wait":
             return v2BrowserWait(id: id, params: params, respond: respond)
+        case "browser.navigate":
+            return v2BrowserNavigate(id: id, params: params, respond: respond)
+        case "browser.back":
+            return v2BrowserHistory(id: id, params: params, action: "back", respond: respond)
+        case "browser.forward":
+            return v2BrowserHistory(id: id, params: params, action: "forward", respond: respond)
+        case "browser.reload":
+            return v2BrowserHistory(id: id, params: params, action: "reload", respond: respond)
         case "browser.click", "browser.dblclick", "browser.hover", "browser.focus",
              "browser.fill", "browser.type", "browser.check", "browser.uncheck",
              "browser.select", "browser.scroll_into_view",
@@ -431,18 +439,10 @@ struct ControlCommandHandler {
             return v2PaneSurfaces(id: id, params: params)
         case "browser.open_split":
             return v2BrowserOpenSplit(id: id, params: params)
-        case "browser.navigate":
-            return v2BrowserNavigate(id: id, params: params)
         case "browser.url.get":
             return v2BrowserGetURL(id: id, params: params)
         case "browser.get.title":
             return v2BrowserGetTitle(id: id, params: params)
-        case "browser.back":
-            return v2BrowserHistory(id: id, params: params, action: "back")
-        case "browser.forward":
-            return v2BrowserHistory(id: id, params: params, action: "forward")
-        case "browser.reload":
-            return v2BrowserHistory(id: id, params: params, action: "reload")
         case "browser.identify":
             return v2BrowserIdentify(id: id, params: params)
         case "notification.create":

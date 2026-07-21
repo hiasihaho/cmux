@@ -553,7 +553,8 @@ final class SocketClient {
         }
     }
 
-    func send(command: String) throws -> String {
+    func send(command: String, timeoutSeconds: TimeInterval? = nil) throws -> String {
+        let responseTimeout = timeoutSeconds ?? Self.responseTimeoutSeconds
         guard socketFD >= 0 else { throw CLIError(message: "Not connected") }
         let payload = command + "\n"
         try payload.withCString { ptr in
@@ -577,7 +578,7 @@ final class SocketClient {
                 if sawNewline {
                     break
                 }
-                if Date().timeIntervalSince(start) > Self.responseTimeoutSeconds {
+                if Date().timeIntervalSince(start) > responseTimeout {
                     throw CLIError(message: "Command timed out")
                 }
                 continue
@@ -622,7 +623,15 @@ final class SocketClient {
             throw CLIError(message: "Failed to encode v2 request")
         }
 
-        let raw = try send(command: requestLine)
+        // Mirror the server's rule: a verb carrying its own `timeout_ms`
+        // must not be cut off by the client's flat default first.
+        var timeoutSeconds: TimeInterval?
+        if let requested = (params["timeout_ms"] as? Int)
+            ?? (params["timeout_ms"] as? NSNumber)?.intValue, requested > 0 {
+            timeoutSeconds = max(Self.responseTimeoutSeconds, Double(requested) / 1000.0 + 10.0)
+        }
+
+        let raw = try send(command: requestLine, timeoutSeconds: timeoutSeconds)
 
         // The server may return plain-text errors (e.g., "ERROR: Access denied ...")
         // before the JSON protocol starts. Surface these directly instead of letting
@@ -2530,14 +2539,13 @@ struct CMUXCLI {
 
         if subcommand == "goto" || subcommand == "navigate" {
             let sid = try requireSurface()
-            let url = subArgs.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            let (navParams, rest) = navigationParams(subArgs)
+            let url = rest.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !url.isEmpty else {
                 throw CLIError(message: "browser \(subcommand) requires a URL")
             }
             var params: [String: Any] = ["surface_id": sid, "url": url]
-            if hasFlag(subArgs, name: "--snapshot-after") {
-                params["snapshot_after"] = true
-            }
+            params.merge(navParams) { _, new in new }
             let payload = try client.sendV2(method: "browser.navigate", params: params)
             output(payload, fallback: "OK")
             return
@@ -2551,9 +2559,7 @@ struct CMUXCLI {
                 "reload": "browser.reload",
             ]
             var params: [String: Any] = ["surface_id": sid]
-            if hasFlag(subArgs, name: "--snapshot-after") {
-                params["snapshot_after"] = true
-            }
+            params.merge(navigationParams(subArgs).0) { _, new in new }
             let payload = try client.sendV2(method: methodMap[subcommand]!, params: params)
             output(payload, fallback: "OK")
             return
@@ -4563,8 +4569,10 @@ struct CMUXCLI {
             Subcommands:
               open|open-split|new [url] [--workspace <id|ref|index>] [--window <id|ref|index>]
                 open/open-split/new default to $CMUX_WORKSPACE_ID when --workspace is omitted and --window is not set
-              goto|navigate <url> [--snapshot-after]
-              back|forward|reload [--snapshot-after]
+              goto|navigate <url> [--wait-selector <css>|--wait-function <js>|--wait-load-state <state>] [--timeout-ms <ms>|--timeout <seconds>] [--no-wait] [--snapshot-after]
+                blocks until the new document is committed, so a following eval/wait
+                cannot read the previous page; --no-wait restores fire-and-forget
+              back|forward|reload [same wait flags as goto] [--snapshot-after]
               url|get-url
               focus-webview | is-webview-focused
               snapshot [--interactive|-i] [--cursor] [--compact] [--max-depth <n>] [--selector <css>]
@@ -4659,6 +4667,33 @@ struct CMUXCLI {
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "\\r")
         return "\"\(escaped)\""
+    }
+
+    /// Navigation-barrier options shared by goto/back/forward/reload.
+    /// Returns the params to merge plus the args with those flags removed —
+    /// callers join the remainder into a URL, so leaving flags in it would
+    /// navigate to "https://example.com --snapshot-after".
+    private func navigationParams(_ args: [String]) -> ([String: Any], [String]) {
+        var params: [String: Any] = [:]
+        let (waitSelector, r1) = parseOption(args, name: "--wait-selector")
+        let (waitFunction, r2) = parseOption(r1, name: "--wait-function")
+        let (waitLoadState, r3) = parseOption(r2, name: "--wait-load-state")
+        let (timeoutMsRaw, r4) = parseOption(r3, name: "--timeout-ms")
+        let (timeoutSecRaw, r5) = parseOption(r4, name: "--timeout")
+
+        if let waitSelector { params["wait_selector"] = waitSelector }
+        if let waitFunction { params["wait_function"] = waitFunction }
+        if let waitLoadState { params["wait_load_state"] = waitLoadState }
+        if let timeoutMsRaw, let value = Int(timeoutMsRaw) {
+            params["timeout_ms"] = value
+        } else if let timeoutSecRaw, let value = Double(timeoutSecRaw) {
+            params["timeout_ms"] = Int(value * 1000)
+        }
+        if hasFlag(r5, name: "--no-wait") { params["no_wait"] = true }
+        if hasFlag(r5, name: "--snapshot-after") { params["snapshot_after"] = true }
+
+        let rest = r5.filter { $0 != "--no-wait" && $0 != "--snapshot-after" }
+        return (params, rest)
     }
 
     private func parseOption(_ args: [String], name: String) -> (String?, [String]) {
@@ -6532,7 +6567,7 @@ struct CMUXCLI {
           browser [--surface <id|ref|index> | <surface>] <subcommand> ...
           browser open [url]                   (create browser split in caller's workspace; if surface supplied, behaves like navigate)
           browser open-split [url]
-          browser goto|navigate <url> [--snapshot-after]
+          browser goto|navigate <url> [--wait-selector <css>|--wait-function <js>] [--timeout-ms <ms>] [--no-wait] [--snapshot-after]
           browser back|forward|reload [--snapshot-after]
           browser url|get-url
           browser snapshot [--interactive|-i] [--cursor] [--compact] [--max-depth <n>] [--selector <css>]

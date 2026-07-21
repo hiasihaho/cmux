@@ -121,16 +121,9 @@ extension ControlCommandHandler {
         ])
     }
 
-    func v2BrowserNavigate(id: Any?, params: [String: Any]) -> String {
-        guard let webView = browserWebView(params) else {
-            return v2BrowserError(id: id, code: "not_found", message: "Browser surface not found")
-        }
-        guard let url = params["url"] as? String, !url.isEmpty else {
-            return v2BrowserError(id: id, code: "invalid_params", message: "Missing url")
-        }
-        webkit_web_view_load_uri(webView, url)
-        return v2BrowserOk(id: id, result: ["url": url])
-    }
+    // `browser.navigate` / back / forward / reload live in
+    // BrowserAutomation.swift: they complete asynchronously now, holding the
+    // response until the new document is committed.
 
     func v2BrowserGetURL(id: Any?, params: [String: Any]) -> String {
         guard let webView = browserWebView(params) else {

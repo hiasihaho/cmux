@@ -569,6 +569,47 @@ private final class ConsoleMessageBox {
     init(surfaceId: UUID) { self.surfaceId = surfaceId }
 }
 
+/// One navigation in flight. `load-changed` is connected BEFORE the load is
+/// requested, so "has it committed yet?" cannot race the request — polling
+/// after the fact is what made `goto` return while the *previous* document
+/// was still live, which turned into silently reading the wrong page.
+private final class NavigationBarrier {
+    var handlerId: UInt = 0
+    var webView: UnsafeMutablePointer<WebKitWebView>?
+    var committed = false
+    var onEvent: ((UInt32) -> Void)?
+    private var settled = false
+
+    /// Idempotent by design: the load event and the deadline race, and
+    /// whichever arrives first owns the single response.
+    func settle() -> Bool {
+        guard !settled else { return false }
+        settled = true
+        if let webView, handlerId != 0 {
+            g_signal_handler_disconnect(UnsafeMutableRawPointer(webView), handlerId)
+            handlerId = 0
+        }
+        onEvent = nil
+        return true
+    }
+}
+
+private let navigationLoadChanged: @convention(c) (
+    UnsafeMutableRawPointer?, UInt32, UnsafeMutableRawPointer?
+) -> Void = { _, loadEvent, userData in
+    guard let userData else { return }
+    let barrier = Unmanaged<NavigationBarrier>.fromOpaque(userData).takeUnretainedValue()
+    // Copy the closure out first: `settle()` clears `onEvent`, and releasing
+    // it while it is still on the stack would be a use-after-free.
+    let handler = barrier.onEvent
+    handler?(loadEvent)
+}
+
+private let navigationBarrierDestroy: GClosureNotify = { data, _ in
+    guard let data else { return }
+    Unmanaged<NavigationBarrier>.fromOpaque(data).release()
+}
+
 /// Installs console/error capture on a freshly created browser surface:
 /// connect the signal FIRST, then register the handler (the WebKitGTK
 /// docs warn about the race the other way around), then add the
@@ -747,6 +788,152 @@ extension ControlCommandHandler {
                 respond(self.baOk(id: id, result: payload))
             }
         }
+    }
+
+    /// `goto`. Blocks until the new document is live (see `runNavigation`);
+    /// `no_wait` restores the old fire-and-forget behavior.
+    func v2BrowserNavigate(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        guard let url = stringParam(params, "url") else {
+            return respond(baError(id: id, code: "invalid_params", message: "Missing url"))
+        }
+        runNavigation(id: id, params: params, target: target,
+                      baseResult: ["url": url], respond: respond) { webView in
+            webkit_web_view_load_uri(webView, url)
+        }
+    }
+
+    /// back/forward/reload commit a new document exactly like `goto` does,
+    /// so they get the same barrier rather than their own race.
+    func v2BrowserHistory(
+        id: Any?, params: [String: Any], action: String,
+        respond: @escaping (String) -> Void
+    ) {
+        guard let target = automationTarget(params) else {
+            return respond(baError(id: id, code: "not_found", message: "Browser surface not found"))
+        }
+        runNavigation(id: id, params: params, target: target,
+                      baseResult: ["action": action], respond: respond) { webView in
+            switch action {
+            case "back": webkit_web_view_go_back(webView)
+            case "forward": webkit_web_view_go_forward(webView)
+            default: webkit_web_view_reload(webView)
+            }
+        }
+    }
+
+    /// Shared navigation barrier. WebKit loads asynchronously, so returning
+    /// as soon as the load is *requested* leaves the previous document
+    /// answering every follow-up command — success is reported while the
+    /// data is from the wrong page. We therefore hold the response until the
+    /// new document is committed.
+    ///
+    /// Resolution, in order of preference: FINISHED (the page is fully
+    /// loaded — what a caller means by "go here"), else COMMITTED once the
+    /// deadline passes (the stale-document hazard is gone, the page may
+    /// still be fetching subresources; reported as `load_state`), else a
+    /// real `timeout` error, because with no commit at all the old page is
+    /// still the one that would answer.
+    private func runNavigation(
+        id: Any?,
+        params: [String: Any],
+        target: AutomationTarget,
+        baseResult: [String: Any],
+        respond: @escaping (String) -> Void,
+        start: (UnsafeMutablePointer<WebKitWebView>) -> Void
+    ) {
+        var result = baseResult
+        if boolParam(params, "no_wait") == true {
+            start(target.webView)
+            result["load_state"] = "started"
+            return respond(baOk(id: id, result: result))
+        }
+
+        let timeoutMs = max(1, intParam(params, "timeout_ms") ?? 10_000)
+        let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1000.0)
+        let barrier = NavigationBarrier()
+        barrier.webView = target.webView
+
+        // When the caller also passed a predicate, chain straight into
+        // `wait` so `goto --wait-selector` is ONE barrier; issuing them as
+        // two commands leaves a gap the old document can still answer in.
+        let succeed: (String) -> Void = { loadState in
+            result["load_state"] = loadState
+            guard let waitParams = self.navigationWaitParams(params, deadline: deadline) else {
+                return respond(self.baOk(id: id, result: result))
+            }
+            self.v2BrowserWait(id: id, params: waitParams, respond: respond)
+        }
+
+        barrier.onEvent = { [weak barrier] event in
+            guard let barrier else { return }
+            switch event {
+            case WEBKIT_LOAD_COMMITTED.rawValue:
+                barrier.committed = true
+            case WEBKIT_LOAD_FINISHED.rawValue:
+                // Only OUR load counts. Starting a navigation cancels any
+                // in-flight one, and that cancellation also emits FINISHED —
+                // honoring it would settle the barrier on the *previous*
+                // load and hand back the very staleness this exists to stop.
+                // A commit is the earliest point the event is provably ours.
+                guard barrier.committed, barrier.settle() else { return }
+                succeed("finished")
+            default:
+                break
+            }
+        }
+
+        let box = Unmanaged.passRetained(barrier).toOpaque()
+        barrier.handlerId = g_signal_connect_data(
+            UnsafeMutableRawPointer(target.webView),
+            "load-changed",
+            unsafeBitCast(navigationLoadChanged, to: GCallback.self),
+            box,
+            navigationBarrierDestroy,
+            GConnectFlags(0)
+        )
+
+        start(target.webView)
+
+        scheduleOnMainLoop(afterMs: UInt32(timeoutMs)) {
+            guard barrier.settle() else { return }
+            if barrier.committed {
+                succeed("committed")
+            } else {
+                respond(self.baError(
+                    id: id, code: "timeout",
+                    message: "Navigation did not commit before timeout",
+                    data: ["timeout_ms": timeoutMs]
+                ))
+            }
+        }
+    }
+
+    /// Maps the navigation-scoped wait flags onto `browser.wait`'s own
+    /// parameter names, budgeting whatever is left of the deadline. Returns
+    /// nil when the caller asked for no predicate (plain `goto`), since
+    /// `wait` would otherwise apply its own readyState default.
+    private func navigationWaitParams(
+        _ params: [String: Any], deadline: Date
+    ) -> [String: Any]? {
+        var waitParams = params
+        for key in ["url", "selector", "sel", "element_ref", "ref",
+                    "function", "url_contains", "text_contains", "load_state"] {
+            waitParams.removeValue(forKey: key)
+        }
+        if let selector = stringParam(params, "wait_selector") {
+            waitParams["selector"] = selector
+        } else if let fn = stringParam(params, "wait_function") {
+            waitParams["function"] = fn
+        } else if let state = stringParam(params, "wait_load_state") {
+            waitParams["load_state"] = state
+        } else {
+            return nil
+        }
+        waitParams["timeout_ms"] = max(250, Int(deadline.timeIntervalSinceNow * 1000))
+        return waitParams
     }
 
     func v2BrowserWait(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {

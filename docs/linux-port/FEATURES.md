@@ -97,6 +97,17 @@ Small but real. These are genuine additions, not just different internals:
   text, console capture) address the very same surface — trusted input
   and rich inspection on one pane. macOS cmux has no automation opt-in at
   all.
+- ★ **Navigation barrier on `goto`/`back`/`forward`/`reload`.** The verb
+  holds its response until the new document is committed, so a following
+  `eval`/`wait`/`snapshot` cannot read the page you just navigated away
+  from. macOS has the same latent race (`v2BrowserNavigate` calls
+  `navigateSmart(url)` and returns `.ok` immediately), so this is a real
+  divergence, not a port artifact — measured 2 stale reads in 12 against a
+  live site before the fix, and 20/20 stale against a deliberately slowed
+  local server. Optional `--wait-selector`/`--wait-function`/
+  `--wait-load-state` chain onto the same barrier atomically; `--no-wait`
+  restores the old fire-and-forget behavior. Regression test:
+  `linux/tests/browser-navigation-smoke.sh`.
 - ★ **Renderer resize fix** — the fork's macOS-oriented stale-frame replay
   froze GTK surfaces after a window resize; the Linux work Darwin-gated it
   (macOS unchanged), a fix the fork/ecosystem benefits from

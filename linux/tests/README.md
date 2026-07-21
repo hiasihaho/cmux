@@ -7,6 +7,7 @@ socket and session file).
 
 | Script | What it covers |
 |---|---|
+| [`browser-navigation-smoke.sh`](browser-navigation-smoke.sh) | The navigation barrier: goto/back/forward/reload must never let a following eval read the previous document; plus load_state, wait-flag chaining, honest timeouts |
 | [`webdriver-smoke.sh`](webdriver-smoke.sh) | The whole WebDriver stack: automation opt-in, attach mode, split adoption, trusted input, and cmux+WebDriver sharing one surface — plus a live strict-CSP run against github.com |
 | [`ghostty-embed-smoke.c`](ghostty-embed-smoke.c) | Minimal C harness that hosts a Ghostty surface in a plain GtkApplication (proves the embedding shim independent of cmux) |
 | [`ghostty-resize-bisect.sh`](ghostty-resize-bisect.sh) | X11 screenshot-diff detector for the (fixed) post-resize freeze; kept for reference — see the caveats in its header |
@@ -64,3 +65,34 @@ navigates GitHub · cmux observes that navigation on the same pane.
 - **Each WebDriver session adopts its own pane**, so a second session
   against the same instance adds another surface — target surfaces by the
   ref captured after *that* session started, not a hard-coded one.
+
+## browser-navigation-smoke.sh
+
+```sh
+linux/tests/browser-navigation-smoke.sh          # 8 assertions, cleans up
+linux/tests/browser-navigation-smoke.sh --keep   # leave the instance up
+```
+
+Serves its own fixture with a **deliberate 300 ms server-side stall**, so
+the race window is wide and the verdict does not depend on network luck.
+
+### Lessons this harness encodes
+
+- **A race test needs proven discriminating power.** The suite runs the
+  same loop twice — once with the barrier, once with `--no-wait` (which is
+  exactly the pre-fix behavior) — and prints the latter's stale count as
+  INFO. Barrier 0/20 while `--no-wait` is 20/20 is what makes the PASS
+  meaningful; if that INFO ever drops to 0, the fixture has stopped
+  widening the window and the assertion has quietly lost its teeth. It is
+  deliberately *not* asserted on, because timing-dependent expectations
+  are how you get a flaky suite.
+- **Stall the server, not the client.** A fixed client-side sleep tests
+  nothing; a slow *response* is what actually opens the race.
+- **Thread the fixture server.** `HTTPServer` is serial, so a handler that
+  sleeps 300 ms turns rapid-fire navigations into a backlog that wedges
+  every later assertion — which reads exactly like a product bug. Use
+  `ThreadingHTTPServer`. (This cost one confusing round of six cascading
+  failures.)
+- **`--json` prints the result payload directly**, with no `result`
+  wrapper. A `.get("result", d)` fallback silently hides which of the two
+  you actually got; assert on the real shape.
