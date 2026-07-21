@@ -2059,3 +2059,42 @@ regression shows up as the warning it really is.
 there are no matches, so a `|| echo 0` fallback yields `"0\n0"`.)
 
 Suites: 7 suites, 74 assertions, 0 failed.
+
+## 2026-07-21 — browser address bar
+
+Third of the four. Until now a browser pane could only be pointed
+somewhere by `cmux browser goto` or by following a link — a human could
+not type a URL into it, which macOS panes have always allowed.
+
+The interesting part is not the widget but the resolver, and it is
+**macOS's own rules ported deliberately rather than approximated**
+(`resolveBrowserNavigableURL`), because the awkward cases are where two
+implementations drift:
+
+- `localhost:3000` / `127.0.0.1:8080` are checked *before* generic URL
+  parsing, since `URL("localhost:3777")` reads `localhost` as a **scheme**
+  — and they resolve to `http`, not `https`;
+- anything containing a space is a search, never a URL;
+- a bare `example.com` is promoted to `https`;
+- a scheme we do not navigate (`javascript:`, `data:`) resolves to
+  nothing rather than being loaded.
+
+Non-URL text falls through to a search engine. macOS keeps the engine in
+user defaults; Linux has no settings surface yet, so it is `CMUX_SEARCH_URL`
+with the same default rather than a hardcoded choice nobody can change —
+and the test points it at a local fixture, so a suite run never contacts a
+search engine.
+
+The bar mirrors navigations driven from anywhere (it rides the same
+`load-changed` handler added for session capture) and refuses to overwrite
+the entry while it has focus, so a page load cannot eat what someone is
+typing.
+
+**Tested by actually typing into it.** `xdotool` drives real clicks and
+keystrokes on the suite's private X display, so the assertions cover the
+widget and the resolver together — asserting on the resolver alone would
+have tested the easy half. Verified: typed `127.0.0.1:8419/a.html` with no
+scheme → `http://…`, a non-URL query → the fixture search URL.
+
+New suite `browser-urlbar-smoke.sh` (5 assertions). 8 suites, 79
+assertions, 0 failed.

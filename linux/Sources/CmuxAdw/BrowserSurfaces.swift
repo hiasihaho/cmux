@@ -120,6 +120,9 @@ enum BrowserSurfaceFactory {
         guard let container = containerOrNil else { return }
         gtk_widget_set_hexpand(container, 1)
         gtk_widget_set_vexpand(container, 1)
+        if let urlBar = BrowserURLBar.build(webView: webView, surfaceId: surfaceId) {
+            gtk_box_append(UnsafeMutableRawPointer(container).assumingMemoryBound(to: GtkBox.self), urlBar)
+        }
         if let findBar = BrowserFindBar.build(webView: webView, surfaceId: surfaceId) {
             gtk_box_append(UnsafeMutableRawPointer(container).assumingMemoryBound(to: GtkBox.self), findBar)
         }

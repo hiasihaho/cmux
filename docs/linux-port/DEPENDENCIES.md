@@ -67,6 +67,7 @@ should probably pick one and state it, rather than carry both.
 | `WebKitWebDriver` (`webkitgtk6.0`) | `webdriver-smoke.sh` | that suite skips/fails |
 | **`xorg-x11-server-Xvfb`** | a private, always-mapped X display for test instances | **see below** |
 | `ImageMagick` (`import`, `magick`) | screenshots of the app under Xvfb | no visual verification |
+| `xdotool` | drives real keyboard/mouse input at the widget level (address bar typing) | those assertions skip |
 | `gcc` + `gtk4-devel`/`webkitgtk6.0-devel` | the standalone C probes (`inspector-probe.c`, `popup-probe.c`, `find-probe.c`) | probes cannot be rebuilt |
 
 ```sh

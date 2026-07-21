@@ -21,6 +21,7 @@ SUITES=(
     browser-find-smoke
     session-persistence-smoke
     pane-zoom-smoke
+    browser-urlbar-smoke
 )
 
 if [ $# -gt 0 ]; then

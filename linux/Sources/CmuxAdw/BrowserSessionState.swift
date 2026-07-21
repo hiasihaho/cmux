@@ -181,7 +181,10 @@ let browserLoadChangedForSession: @convention(c) (
     let webView = UnsafeMutableRawPointer(viewPtr).assumingMemoryBound(to: WebKitWebView.self)
     if let uri = webkit_web_view_get_uri(webView) {
         let url = String(cString: uri)
-        if !url.isEmpty { BrowserSessionState.noteURL(url, for: box.surfaceId) }
+        if !url.isEmpty {
+            BrowserSessionState.noteURL(url, for: box.surfaceId)
+            BrowserURLBar.update(surfaceId: box.surfaceId, url: url)
+        }
     }
     SessionStore.requestSave()
 }
