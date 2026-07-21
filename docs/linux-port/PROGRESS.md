@@ -2170,3 +2170,50 @@ in CATCHUP as an explicit to-do, split into "needs a small dialog"
 jump-to-unread, open folder, JS console, flash, multi-window).
 
 8 suites, 79 assertions, 0 failed.
+
+## 2026-07-21 — terminal scrollback survives a restart
+
+Fourth and last of the gaps. A restored pane now shows what was on it.
+
+**The unknown resolved in an unexpected direction.** The worry was that
+Ghostty offered no way to put text on a terminal without it reaching the
+shell: every termio message is a *write*, which goes to the pty and is
+handed to the child as input — replaying a user's own history that way
+would execute it. Reading the code found `Termio.processOutput`, the
+entry point the pty read loop already uses, but no message routed to it.
+
+So the fork gained one (`ghostty` `1bda2cc75`, branch `linux-gtk-embed`):
+`inject_output` carries owned bytes to the io thread, whose handler calls
+`processOutput`. Threading is correct **by construction** — it runs
+exactly where the read loop already runs, so the parser is still driven
+from one thread and no new locking appears. The shim exports it as
+`ghostty_embed_surface_write_display`, beside the existing `send_text`
+(pty) and `read_text`.
+
+That makes the Linux path cleaner than macOS's, which writes the text to
+a temp file, passes its path in the child's environment, and relies on
+shell integration to print it at startup. No temp file, no environment
+variable, no dependence on the user's shell — and no route by which the
+text could reach the shell as input. Asserted directly: after a restart
+the marker is on screen **and** there is no "command not found", which is
+what a send_text replay would have produced.
+
+Two macOS decisions copied rather than rediscovered
+(`SessionPersistencePolicy`): truncate to a per-terminal budget, because
+the session file is rewritten on every structural change; and truncate
+**ANSI-safely**, because a cut landing mid escape sequence replays
+malformed control bytes into a fresh terminal. The replayed block is also
+wrapped in a reset so captured text ending mid-colour cannot bleed into
+the first prompt.
+
+Only the visible screen is stored, not full history — `read_text` can
+return the whole buffer, and persisting megabytes per pane on every save
+would be the wrong trade.
+
+Restore is retried: a Ghostty surface has no terminal until it is first
+mapped, so a background workspace may not be able to accept the replay
+for some time. It retries for ~10s, then drops the text rather than
+holding the expectation forever.
+
+session-persistence-smoke is now 19 assertions; 8 suites, 82 total, 0
+failed.

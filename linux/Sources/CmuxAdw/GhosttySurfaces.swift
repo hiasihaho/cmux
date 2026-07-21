@@ -135,6 +135,10 @@ enum GhosttySurfaceFactory {
             for: leaf.surfaceId
         )
 
+        // Replay saved screen text once the shell is actually up — the
+        // surface has no terminal until it is first mapped.
+        TerminalScrollbackStore.replayIfPending(surfaceId: leaf.surfaceId)
+
         let tabId = tab.id
         let surfaceId = leaf.surfaceId
 
@@ -273,6 +277,20 @@ extension SurfaceRegistry {
     }
 
     /// Shell working directory reported via OSC 7 (property-backed).
+    /// Replays text into a Ghostty pane as terminal *output* — parsed and
+    /// drawn, never handed to the shell. `send_text` would type it in
+    /// instead, which for restored scrollback means executing whatever the
+    /// user's history happened to contain.
+    @discardableResult
+    func ghosttyWriteDisplay(for surfaceId: UUID, text: String) -> Bool {
+        guard let pointer = ghostty(for: surfaceId), !text.isEmpty else { return false }
+        let widget = UnsafeMutableRawPointer(pointer)
+        var bytes = Array(text.utf8)
+        return bytes.withUnsafeMutableBufferPointer { buffer in
+            ghostty_embed_surface_write_display(widget, buffer.baseAddress, buffer.count)
+        }
+    }
+
     func currentGhosttyDirectory(for surfaceId: UUID) -> String? {
         guard let pointer = ghostty(for: surfaceId) else { return nil }
         let widget = UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: GtkWidget.self)

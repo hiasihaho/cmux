@@ -283,4 +283,47 @@ else
     skip "terminal cwd assertions" "the shell never started (unmapped window)"
 fi
 
+# ------------------------------------------------------ scrollback replay
+# A restored pane should show what was on it. Ghostty gets the text via the
+# fork's `inject_output` message, so it is parsed as terminal OUTPUT — a
+# send_text replay would hand the user's own history to the shell as input.
+info "terminal screen text survives a restart"
+kill_instance
+rm -f "$SESSION"
+start_instance || exit 2
+WS5=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+cx select-workspace --workspace "$WS5" >/dev/null
+T5=$(first_surface_ref "$WS5")
+if [ -n "$T5" ] && wait_for_shell "$T5"; then
+    cx send --surface "$T5" 'echo SCROLLBACK_MARKER_XYZ\n' >/dev/null 2>&1
+    sleep 2
+    cx new-workspace --cwd /tmp --background >/dev/null 2>&1   # force a save
+    sleep 2
+    stored=$(python3 -c "
+import json
+d=json.load(open('$SESSION'))
+sb=[s.get('scrollback') for w in d['workspaces'] for s in w['surfaces'] if s['type']=='terminal']
+print('yes' if any(x and 'SCROLLBACK_MARKER_XYZ' in x for x in sb) else 'no')" 2>/dev/null)
+    expect "screen text is captured into the session" "yes" "$stored"
+
+    kill_instance
+    start_instance || exit 2
+    sleep 3
+    T5B=$(first_surface_ref "$WS5")
+    [ -n "$T5B" ] && wait_for_shell "$T5B" 30
+    sleep 2
+    replayed=$(cx read-screen --surface "$T5B" 2>/dev/null | grep -c SCROLLBACK_MARKER_XYZ)
+    [ "${replayed:-0}" -gt 0 ] \
+        && ok "screen text is replayed after a restart ($replayed line(s))" \
+        || bad "scrollback replay" "marker not on screen after restart"
+
+    # The replay must not reach the shell as input: if it had, the marker
+    # line would have been executed and the shell would echo a command not
+    # found, or worse, run whatever was in the history.
+    errs=$(cx read-screen --surface "$T5B" 2>/dev/null | grep -ci "command not found")
+    expect "replayed text was not executed by the shell" "0" "${errs:-0}"
+else
+    skip "scrollback assertions" "the shell never started (unmapped window)"
+fi
+
 finish

@@ -35,6 +35,10 @@ enum SessionStore {
         var type: String
         var workingDirectory: String
         var browser: BrowserSnapshot?
+        /// Terminal screen text, replayed on restore so a restored pane
+        /// shows what was on it. Optional, so files written before this
+        /// still decode.
+        var scrollback: String?
     }
 
     /// `url`/`zoom`/history are the portable baseline (what macOS stores).
@@ -165,9 +169,15 @@ enum SessionStore {
                 // Live cwd via OSC 7 beats the spawn-time directory.
                 let cwd = SurfaceRegistry.shared.currentDirectory(for: surface.surfaceId)
                     ?? surface.workingDirectory
+                // Only what is on screen: the full history would bloat a
+                // file rewritten on every structural change.
+                let text = SurfaceRegistry.shared.ghosttyReadText(
+                    for: surface.surfaceId, includeScrollback: false
+                )
                 surfaces.append(SurfaceSnapshot(
                     id: surface.surfaceId.uuidString, type: "terminal",
-                    workingDirectory: cwd, browser: nil
+                    workingDirectory: cwd, browser: nil,
+                    scrollback: text.flatMap { TerminalScrollback.truncate($0) }
                 ))
             case .browser(let initialURL):
                 surfaces.append(SurfaceSnapshot(
@@ -268,6 +278,9 @@ enum SessionStore {
                     }
                 } else {
                     kind = .terminal
+                    if let text = entry.scrollback, !text.isEmpty {
+                        TerminalScrollbackStore.pending[id] = text
+                    }
                 }
                 byId[entry.id] = PaneSurface(
                     surfaceId: id, kind: kind,
