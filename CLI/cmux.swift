@@ -589,7 +589,11 @@ final class SocketClient {
                 break
             }
             data.append(buffer, count: count)
-            if data.contains(UInt8(0x0A)) {
+            // Scan only the bytes just read: `sawNewline` is monotonic, so
+            // rescanning the whole accumulator each round made large
+            // responses quadratic (6 MB eval result took 44s, CPU-bound
+            // here rather than in the app).
+            if !sawNewline, buffer[0..<count].contains(UInt8(0x0A)) {
                 sawNewline = true
             }
         }

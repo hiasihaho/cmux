@@ -1153,3 +1153,67 @@ exit codes.
   it runs in a named isolated world (which shares the DOM but bypasses
   main-world CSP). `BrowserJS.run` handles this; new injection paths must
   too.
+
+## 2026-07-21 — SPA extraction dogfood (pocketyoga): two real bugs, one fixed
+
+Dogfood cycle 6, run against the **dev** instance (see trap below), focus:
+"extract all yoga poses from a client-rendered Vue SPA using ONLY cmux
+browser verbs". Result: the agent extracted **563/563 poses, 0 missed, 0
+spurious, 562/562 descriptions**, scored against the site's own
+`poses.json`. The browser stack is genuinely capable of this job — the
+value of the run was the two defects it surfaced on the way.
+
+**Bug A — `browser eval` result transfer was quadratic (FIXED).**
+`SocketClient.send` in `CLI/cmux.swift` rescanned the *entire* accumulated
+`Data` for a newline after every 8 KB read: `N/8192 × O(N)`. Measured
+before → after: 1 MB 1.43s → 0.24s, 3 MB 11.65s → 0.50s, 6 MB 44.32s →
+0.87s (51×), 16 MB ~5min projected → 2.15s. Now linear. `sawNewline` is
+monotonic, so scanning only the newly-read chunk is semantically
+identical; the change is plain Swift stdlib in the shared CLI, so macOS
+gets it too. Symptom worth remembering: **no error, no truncation — it
+just looked like a hang**, which is worse than failing.
+
+**Bug B — `goto` returns before the navigation commits (OPEN).**
+`v2BrowserNavigate` (`BrowserSurfaces.swift:131`) calls
+`webkit_web_view_load_uri` and returns OK synchronously. WebKit loads
+async, so a following `eval`/`wait` can run against the *previous*
+document and report success. Reproduced independently of the agent:
+12 × (`goto` → `eval 'location.pathname'`) gave **10 correct, 2 stale**.
+This is the dangerous class — not a crash but silent wrong data, and a
+`wait` predicate that happens to be true on the old page passes
+instantly. Fix direction: defer the response until
+`WEBKIT_LOAD_COMMITTED` (the socket layer already supports async
+`respond`), and/or `goto --wait-selector/--wait-function` as an atomic
+navigation barrier. Decide whether blocking becomes the default.
+
+Verified-good in the same run: `browser wait --selector/--function` with
+correct OK/rc=1 semantics (settle detection needs **zero sleeps** — an
+85-page crawl ran at 0.64 s/page), `fill` triggering real Vue reactivity
+and debounced refetch, JS state persisting across `eval` calls on one
+document, and honest error surfaces (`js_error`/`not_found`/`timeout`).
+Known friction: `snapshot` truncates node text at ~110 chars with no
+override; no `eval --file`/stdin, so scripts must be inlined into shell
+strings.
+
+Traps this cycle added:
+
+- **Dogfood must target the dev instance now that Ghostty is default.**
+  Ghostty surfaces spawn their shell on first map, so the tester's
+  *background* workspace stays shell-less — and on the daily instance the
+  harness deliberately skips the `select-workspace` that would start it
+  (focus etiquette). A daily-targeted run would sit there and time out.
+  `CMUX_SOCKET_PATH=/tmp/cmux-dev.sock linux/scripts/dogfood.sh …`.
+- **An oracle is ground truth only for the surface under test.**
+  `poses.json` holds 563 poses, but `visibility` splits them 167
+  primary / 312 secondary / 84 tertiary, and the index page links *only*
+  the 167 primary. Asserting "did you get all 563?" against an
+  index-only extraction would score a perfect result as a 70% failure.
+  (The agent got all 563 anyway, by reading the app's in-memory store and
+  crawling detail pages.)
+- **Check the product's own surface before declaring a primitive
+  missing.** The pre-run design note claimed a `wait_for_js` wrapper was
+  "the key missing primitive"; it was inferred from the *test harness's*
+  helpers rather than from `cmux browser --help`, where
+  `wait --selector/--text/--url-contains/--load-state/--function
+  --timeout-ms` has existed all along. The QA agent found it in two
+  minutes. Grep the CLI surface before designing a replacement for it.
