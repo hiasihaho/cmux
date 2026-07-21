@@ -69,6 +69,7 @@ should probably pick one and state it, rather than carry both.
 | `ImageMagick` (`import`, `magick`) | screenshots of the app under Xvfb | no visual verification |
 | `xdotool` | drives real keyboard/mouse input at the widget level (address bar typing) | those assertions skip |
 | `gcc` + `gtk4-devel`/`webkitgtk6.0-devel` | the standalone C probes (`inspector-probe.c`, `popup-probe.c`, `find-probe.c`) | probes cannot be rebuilt |
+| `libX11-devel` (with `cc`) | `tests/helpers/wmdelete.c` — sends a real WM_DELETE_WINDOW; `xdotool windowclose` destroys the window and bypasses GTK's `close-request`, so the exit-save test needs the polite close | exit-save assertions skip |
 
 ```sh
 sudo dnf install -y python3 curl iproute xorg-x11-server-Xvfb ImageMagick

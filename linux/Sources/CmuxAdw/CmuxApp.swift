@@ -85,6 +85,16 @@ struct CmuxApp: App {
             saveState()
             return true
         }
+        // …and once more as the window closes, while the terminals still
+        // exist to be read. Retried until the application has registered a
+        // window; `install` reports whether it got one.
+        Idle(delay: .seconds(1)) {
+            !SessionExitSave.install {
+                SessionStore.isFinalSave = true
+                defer { SessionStore.isFinalSave = false }
+                saveState()
+            }
+        }
     }
 
     var scene: Scene {

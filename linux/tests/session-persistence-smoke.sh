@@ -390,4 +390,61 @@ else
     skip "background-workspace scrollback assertions" "the shell never started"
 fi
 
+# ------------------------------------------------------- save on window close
+# Terminal output is not a model change, so it reached disk only via the
+# 15s pass: run `ls`, close the window, reopen — and the pane came back
+# missing its last seconds of output (or, for a young pane, everything).
+# A close-request hook now runs one final save, with the scrollback read
+# throttle bypassed, while the terminals are still alive to be read.
+#
+# The close must be the POLITE one (WM_DELETE_WINDOW, what a window
+# manager's ✕ sends): `xdotool windowclose` calls XDestroyWindow, which
+# bypasses close-request entirely — that difference cost a debugging
+# round. Hence the tiny compiled helper.
+info "closing the window saves un-persisted terminal output"
+WMDEL="$WORK/wmdelete"
+if [ "$USE_XVFB" = "1" ] && command -v xdotool >/dev/null 2>&1 \
+   && cc -o "$WMDEL" "$TESTS_DIR/helpers/wmdelete.c" -lX11 2>/dev/null; then
+    kill_instance
+    rm -f "$SESSION"
+    start_instance || exit 2
+    T7=$(first_surface_ref workspace:1)
+    if [ -n "$T7" ] && wait_for_shell "$T7"; then
+        cx send --surface "$T7" 'echo EXIT_SAVE_MARKER_XYZ\n' >/dev/null 2>&1
+        sleep 1   # well inside both the 15s pass and the 2s read throttle
+        WIN=$(DISPLAY="$XDISPLAY" xdotool search --name '^cmux$' | head -1)
+        DISPLAY="$XDISPLAY" "$WMDEL" "$WIN"
+        for _ in $(seq 1 20); do
+            pgrep -x cmux-adw 2>/dev/null | while read -r pid; do
+                tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null \
+                    | grep -q "CMUX_APP_ID=$APP_ID" && echo alive
+            done | grep -q alive || break
+            sleep 0.5
+        done
+        fired=$(grep -c "exit save firing" "$LOG" 2>/dev/null)
+        expect "close-request ran the final save" "1" "${fired:-0}"
+        sbdir="$(dirname "$SESSION")/scrollback"
+        saved=$(grep -l EXIT_SAVE_MARKER_XYZ "$sbdir"/*.txt 2>/dev/null | wc -l)
+        [ "${saved:-0}" -gt 0 ] \
+            && ok "output from 1s before the close is on disk" \
+            || bad "exit save" "marker not in any file under $sbdir"
+
+        # And the round trip the human actually sees: reopen, text is back,
+        # each line at column 0 (read-screen would show a staircase's
+        # displaced columns as leading whitespace).
+        start_instance || exit 2
+        T7B=$(first_surface_ref workspace:1)
+        [ -n "$T7B" ] && wait_for_shell "$T7B" 30
+        sleep 2
+        col0=$(cx read-screen --surface "$T7B" 2>/dev/null | grep -c '^EXIT_SAVE_MARKER_XYZ')
+        [ "${col0:-0}" -gt 0 ] \
+            && ok "reopened pane shows the output, un-staircased" \
+            || bad "reopen after close" "marker missing or indented (LF without CR)"
+    else
+        skip "exit-save assertions" "the shell never started"
+    fi
+else
+    skip "exit-save assertions" "needs Xvfb + xdotool + cc/libX11 (see DEPENDENCIES.md)"
+fi
+
 finish

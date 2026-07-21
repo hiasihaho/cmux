@@ -54,11 +54,34 @@ enum TerminalScrollback {
         return result.isEmpty ? nil : result
     }
 
+    /// Line endings as a *terminal* means them, not as a file does.
+    ///
+    /// `read_text` returns clipboard-shaped text: rows joined with bare
+    /// LF. Replayed through `inject_output` those bytes reach the terminal
+    /// parser directly, where LF means "down one row" and nothing else —
+    /// so every line starts where the previous one ended and the whole
+    /// block staircases off to the right.
+    ///
+    /// macOS gets the CR for free and never has to think about it: it
+    /// replays by having the shell print a temp file to the pty, and the
+    /// tty line discipline's `ONLCR` flag rewrites LF to CRLF on the way
+    /// out. Bypassing the pty is what makes the Linux path simpler; this
+    /// is the bill for it.
+    ///
+    /// CRLF is collapsed first so the conversion is idempotent, and a
+    /// lone CR is left alone — in captured output it is column-0 movement
+    /// the writer meant, not a line break.
+    static func normalizeLineEndings(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\n", with: "\r\n")
+    }
+
     /// Reset styling before and after the replayed block: the captured
     /// text can end mid-colour, and the shell's first prompt should not
     /// inherit it.
     static func replayPayload(_ text: String) -> String {
-        "\u{1B}[0m" + text + "\u{1B}[0m\r\n"
+        "\u{1B}[0m" + normalizeLineEndings(text) + "\u{1B}[0m\r\n"
     }
 }
 
@@ -188,9 +211,15 @@ enum ScrollbackStore {
     /// Reads full history when a budget allows it, so raising the limit
     /// actually keeps more — capturing only the visible screen would make
     /// the setting meaningless.
-    static func capture(surfaceId: UUID) {
+    ///
+    /// `force` skips the throttle, for the one save where being up to two
+    /// seconds stale is not acceptable: the last one before the window
+    /// closes. Without it the exit save is a no-op precisely when the user
+    /// ran something and quit straight after.
+    static func capture(surfaceId: UUID, force: Bool = false) {
         let now = Date()
-        if let previous = lastRead[surfaceId], now.timeIntervalSince(previous) < readInterval {
+        if !force, let previous = lastRead[surfaceId],
+           now.timeIntervalSince(previous) < readInterval {
             return
         }
         lastRead[surfaceId] = now
@@ -206,11 +235,16 @@ enum ScrollbackStore {
     }
 
     static func write(_ text: String?, for surfaceId: UUID) {
+        // "Could not read" is not "there is nothing to keep". A pane whose
+        // shell has not started — or whose widget is being torn down —
+        // reports nil, and treating that as an empty pane would delete a
+        // perfectly good file. Only a surface that genuinely reports its
+        // text may retire what is on disk.
+        guard let text else { return }
         let budget = limit
-        let payload = text.flatMap {
-            budget == 0 ? TerminalScrollback.truncate($0, limit: Int.max)
-                        : TerminalScrollback.truncate($0, limit: budget)
-        }
+        let payload = budget == 0
+            ? TerminalScrollback.truncate(text, limit: Int.max)
+            : TerminalScrollback.truncate(text, limit: budget)
         guard let payload, !payload.isEmpty else {
             // Nothing to keep: drop any stale file so a cleared pane does
             // not come back showing yesterday's output.

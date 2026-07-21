@@ -196,3 +196,16 @@ instead of reaching the user. And after the real fix, running it
 *backwards*: reinstate the original bug, confirm the new assertion fails,
 restore. A regression test that has never failed is a hypothesis, not a
 guard.
+
+## On testing "close" with the wrong close
+
+`xdotool windowclose` calls `XDestroyWindow` — the window vanishes, the
+app quits, and it looks exactly like a close. But no `WM_DELETE_WINDOW`
+is sent, so GTK's `close-request` never fires, and a hook hanging off it
+tests as dead while being merely bypassed. The polite close a window
+manager's ✕ performs is a ClientMessage, and headless there is no WM to
+send it — so the harness sends it itself (tests/helpers/wmdelete.c).
+General shape: when asserting on a lifecycle hook, first prove the
+simulated event takes the same path as the human's. The A/B control arm
+(same binary, hook disabled by env) is what caught this: with the wrong
+close, WITH and WITHOUT were indistinguishable.

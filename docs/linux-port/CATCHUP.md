@@ -69,6 +69,18 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    `load-changed` with a debounce, divider positions as fractions, and
    the browser URL bar + pane zoom + `browser.tab.*`.
 
+   **Next (decided 2026-07-21): VTE backend parity for scrollback.**
+   Only Ghostty panes capture/replay today — `ghosttyReadText` returns
+   nil for VTE surfaces, so under `CMUX_TERM=vte` the feature is absent
+   (not broken). Feasibility checked against VTE 0.82.3: capture via
+   `vte_terminal_get_text_range_format` (rows spanning the scrollback,
+   bounds from the terminal's adjustment), replay via `vte_terminal_feed`
+   — the exact analog of the fork's `inject_output`, parsed as output and
+   never reaching the shell. The LF→CRLF normalization already lives in
+   the backend-agnostic `replayPayload`, so the staircase lesson carries
+   over for free. Achievable; it is a second implementation, not a port
+   blocker.
+
    Still open on the settings side: `CMUX_SCROLLBACK_LIMIT`,
    `CMUX_SEARCH_URL` and `CMUX_TERM` are env-var-only. Next is an XDG
    config file so they persist, then a preferences window —

@@ -2309,3 +2309,51 @@ text is not replayed twice.
 Note for later: only Ghostty panes capture and replay scrollback —
 `ghosttyReadText` returns nil for VTE surfaces, so under the VTE backend
 this feature is simply absent (not broken).
+
+### The staircase, and output lost at close (2026-07-21)
+
+User report with screenshot: after `ls`, close, reopen, the replayed
+listing came back as a staircase — every line starting where the previous
+one ended — and sometimes came back not at all. Two distinct bugs.
+
+**The staircase: LF without CR.** `read_text` returns clipboard-shaped
+text, rows joined with bare `\n`; `inject_output` hands those bytes to the
+terminal parser, where LF means "down one row" and nothing else. macOS
+never meets this bug because it replays through the pty, whose line
+discipline (`ONLCR`) rewrites LF→CRLF on the way out — the trick it gets
+for free by the route it takes. Bypassing the pty is what makes our path
+simpler and safer; the CR is the bill for it. `replayPayload` now
+normalizes LF→CRLF (collapsing CRLF first so it is idempotent; a lone CR
+is left alone — in captured output that is column-0 movement the writer
+meant).
+
+**Output lost at close.** Terminal output is not a model change, so a
+pane's text reached disk only on the 15s periodic pass — run `ls`, close
+the window, reopen, and the pane misses its last seconds. Same shape as
+the browser-navigation capture bug fixed on 07-20, now on the terminal
+side. Fixed with a `close-request` hook on the window that runs one final
+save while the terminals are still alive (an application-`shutdown` hook
+would read every pane as already destroyed), with the scrollback read
+throttle bypassed for that save only (`capture(force:)`) — being 2s stale
+is fine when another save follows, and fatal when none does.
+
+Two more findings from verifying it:
+
+- **`xdotool windowclose` is not a close.** It calls `XDestroyWindow`,
+  which never sends `WM_DELETE_WINDOW`, so GTK's `close-request` never
+  fires and the hook looked broken while being merely untested. The A/B
+  harness (and now the suite) sends a real WM_DELETE ClientMessage via a
+  20-line C helper (`tests/helpers/wmdelete.c`) — the same close a window
+  manager's ✕ performs.
+- **`ScrollbackStore.write(nil)` deleted good files.** "Could not read"
+  (shell not started, widget tearing down) was treated as "pane is
+  empty", removing the very file that would have restored the pane. Now
+  only a surface that genuinely reports text may retire its file.
+
+Verified causally, not just green: A/B with the identical binary
+(`CMUX_DISABLE_EXIT_SAVE=1` as the control arm), closing 1s after `ls` —
+with the hook, output not yet on disk at close time was rescued (3/3
+firings logged); without it, the run that had nothing on disk stayed
+empty, which is precisely the reported bug. Suite: 8 suites green,
+session-persistence now 25 assertions including the polite-close round
+trip and a column-0 (un-staircased) check.

@@ -128,6 +128,10 @@ enum SessionStore {
 
     // MARK: save
 
+    /// Set for the save that runs as the window closes: scrollback is then
+    /// read unthrottled, because there is no later save to catch up.
+    static var isFinalSave = false
+
     static func saveIfChanged(tabs: [TerminalTab], selection: UUID, tabCounter: Int) {
         guard !tabs.isEmpty else { return }
         let snapshot = snapshot(tabs: tabs, selection: selection, tabCounter: tabCounter)
@@ -175,7 +179,7 @@ enum SessionStore {
                 // Scrollback goes to its own file, not into this document:
                 // the session JSON is rewritten on every model change, so
                 // inline text made every line of output rewrite everything.
-                ScrollbackStore.capture(surfaceId: surface.surfaceId)
+                ScrollbackStore.capture(surfaceId: surface.surfaceId, force: isFinalSave)
                 surfaces.append(SurfaceSnapshot(
                     id: surface.surfaceId.uuidString, type: "terminal",
                     workingDirectory: cwd, browser: nil, scrollback: nil
