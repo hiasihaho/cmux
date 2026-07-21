@@ -104,6 +104,8 @@ GTK4 prefers Wayland whenever that variable is set, and would ignore
 | `CMUX_APP_ID` | GApplication id — what makes a dev/test instance isolated from the daily |
 | `CMUX_SOCKET_PATH` | control socket path (default `$XDG_RUNTIME_DIR/cmux.sock`) |
 | `CMUX_SESSION_PATH` | session JSON path (default `$XDG_DATA_HOME/cmux/session-linux.json`) |
+| `CMUX_SCROLLBACK_LIMIT` | characters of terminal scrollback kept per pane; **0 keeps everything**. Default 65536 |
+| `CMUX_SEARCH_URL` | address-bar search template (`%s` = query); default Google, as on macOS |
 | `CMUX_TERM=vte` | force the VTE backend instead of embedded Ghostty |
 | `CMUX_GHOSTTY=1` | **build-time**: link the Ghostty shim |
 | `CMUX_GNOME=50` | **build-time**: target GNOME 50 (adwaita-swift `main`) |

@@ -299,12 +299,15 @@ if [ -n "$T5" ] && wait_for_shell "$T5"; then
     sleep 2
     cx new-workspace --cwd /tmp --background >/dev/null 2>&1   # force a save
     sleep 2
-    stored=$(python3 -c "
-import json
-d=json.load(open('$SESSION'))
-sb=[s.get('scrollback') for w in d['workspaces'] for s in w['surfaces'] if s['type']=='terminal']
-print('yes' if any(x and 'SCROLLBACK_MARKER_XYZ' in x for x in sb) else 'no')" 2>/dev/null)
-    expect "screen text is captured into the session" "yes" "$stored"
+    # Scrollback lives OUTSIDE the session document: that file is
+    # rewritten on every model change, so inline text made every line of
+    # output rewrite everything (~327KB per save before this).
+    sbdir="$(dirname "$SESSION")/scrollback"
+    stored=$(grep -l SCROLLBACK_MARKER_XYZ "$sbdir"/*.txt 2>/dev/null | wc -l)
+    [ "${stored:-0}" -gt 0 ] && ok "screen text is captured to its own file" \
+                             || bad "scrollback capture" "no file under $sbdir holds the marker"
+    inline=$(grep -c SCROLLBACK_MARKER_XYZ "$SESSION" 2>/dev/null)
+    expect "and NOT inlined into the session json" "0" "${inline:-0}"
 
     kill_instance
     start_instance || exit 2

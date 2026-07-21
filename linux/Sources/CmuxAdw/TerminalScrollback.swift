@@ -92,3 +92,114 @@ enum TerminalScrollbackStore {
         }
     }
 }
+
+/// Scrollback on disk, one file per surface.
+///
+/// It used to live inline in the session JSON, which is rewritten on every
+/// model change — so every line of terminal output made the whole document
+/// dirty and triggered a full rewrite. With only the visible screen stored
+/// that was already ~327 KB per save; uncapped it would be megabytes, many
+/// times a minute. That write amplification, not disk space, is what forced
+/// the original character budget.
+///
+/// Out of band, a pane that is not scrolling costs nothing: files are
+/// written only when that surface's text actually changed. Which is what
+/// makes a large — or unlimited — limit affordable.
+enum ScrollbackStore {
+
+    /// Alongside the session file, so an instance pointed at its own
+    /// `CMUX_SESSION_PATH` (every test suite) keeps its own scrollback
+    /// rather than writing into the user's real state directory.
+    static var directory: URL {
+        SessionStore.fileURL.deletingLastPathComponent().appendingPathComponent("scrollback")
+    }
+
+    /// Character budget. `CMUX_SCROLLBACK_LIMIT=0` keeps everything —
+    /// affordable now that saves are incremental.
+    static var limit: Int {
+        guard let raw = ProcessInfo.processInfo.environment["CMUX_SCROLLBACK_LIMIT"],
+              let value = Int(raw), value >= 0 else { return TerminalScrollback.maxCharacters }
+        return value
+    }
+
+    /// Hashes of what was last written, so an unchanged pane is not
+    /// rewritten. In memory only: a cold start rewrites once, which is
+    /// cheap and self-correcting.
+    private static var lastWritten: [UUID: Int] = [:]
+
+    private static func url(for surfaceId: UUID) -> URL {
+        directory.appendingPathComponent("\(surfaceId.uuidString).txt")
+    }
+
+    /// Last time each surface's text was read. Reading full history is a
+    /// copy of the whole buffer, and `saveIfChanged` runs on *every* model
+    /// change — so the read is throttled even though the write is already
+    /// change-gated. Without this, raising the limit would move the cost
+    /// from writing to reading rather than removing it.
+    private static var lastRead: [UUID: Date] = [:]
+    private static let readInterval: TimeInterval = 2
+
+    /// Captures a surface's text and stores it, subject to the throttle.
+    /// Reads full history when a budget allows it, so raising the limit
+    /// actually keeps more — capturing only the visible screen would make
+    /// the setting meaningless.
+    static func capture(surfaceId: UUID) {
+        let now = Date()
+        if let previous = lastRead[surfaceId], now.timeIntervalSince(previous) < readInterval {
+            return
+        }
+        lastRead[surfaceId] = now
+        // Always read history and let the limit bound it. Gating history
+        // on the budget produced a cliff — 64k kept only the visible
+        // screen while 65537 kept thousands of lines — and "limit" should
+        // mean "how much do I keep", not "which capture mode am I in".
+        // The 2s throttle above is what keeps the read affordable.
+        write(
+            SurfaceRegistry.shared.ghosttyReadText(for: surfaceId, includeScrollback: true),
+            for: surfaceId
+        )
+    }
+
+    static func write(_ text: String?, for surfaceId: UUID) {
+        let budget = limit
+        let payload = text.flatMap {
+            budget == 0 ? TerminalScrollback.truncate($0, limit: Int.max)
+                        : TerminalScrollback.truncate($0, limit: budget)
+        }
+        guard let payload, !payload.isEmpty else {
+            // Nothing to keep: drop any stale file so a cleared pane does
+            // not come back showing yesterday's output.
+            if lastWritten.removeValue(forKey: surfaceId) != nil {
+                try? FileManager.default.removeItem(at: url(for: surfaceId))
+            }
+            return
+        }
+        let hash = payload.hashValue
+        guard lastWritten[surfaceId] != hash else { return }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        do {
+            try payload.write(to: url(for: surfaceId), atomically: true, encoding: .utf8)
+            lastWritten[surfaceId] = hash
+        } catch {
+            // A failed scrollback write must never cost the session itself.
+            FileHandle.standardError.write(Data("cmux: scrollback write failed: \(error)\n".utf8))
+        }
+    }
+
+    static func read(for surfaceId: UUID) -> String? {
+        try? String(contentsOf: url(for: surfaceId), encoding: .utf8)
+    }
+
+    /// Removes files for surfaces the session no longer contains.
+    static func prune(keeping live: Set<UUID>) {
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil
+        ) else { return }
+        for entry in entries where entry.pathExtension == "txt" {
+            let name = entry.deletingPathExtension().lastPathComponent
+            guard let id = UUID(uuidString: name), !live.contains(id) else { continue }
+            try? FileManager.default.removeItem(at: entry)
+            lastWritten.removeValue(forKey: id)
+        }
+    }
+}

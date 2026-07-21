@@ -2217,3 +2217,52 @@ holding the expectation forever.
 
 session-persistence-smoke is now 19 assertions; 8 suites, 82 total, 0
 failed.
+
+## 2026-07-21 — scrollback moved out of the session file; the limit is now a setting
+
+Asked for: a configurable cap, up to "keep everything". Measuring first
+showed why the cap existed, and that raising it naively would have been
+harmful.
+
+**The cap was compensating for where scrollback lived.** Inline in
+`session-linux.json`, which `saveIfChanged` rewrites on every model
+change — so *every line of terminal output* made the document dirty and
+triggered a full rewrite. The dev session file was already **327 KB** per
+save storing only the visible screen. Uncapped, with Ghostty's default
+10k-line buffer, that is megabytes rewritten many times a minute.
+
+Scrollback now lives in one file per surface next to the session
+(`<session dir>/scrollback/<uuid>.txt`), written only when that surface's
+text actually changed and pruned when the surface disappears. Measured:
+session JSON **327 KB → 1158 bytes**, with the text in a 15 KB sibling.
+A pane that is not scrolling now costs nothing per save, which is what
+makes a large limit affordable.
+
+`CMUX_SCROLLBACK_LIMIT` sets the budget; **0 keeps everything**. Measured
+against 3000 lines of output: 4k → 816 lines, 64k (default) and unlimited
+→ all 3023.
+
+Two things the implementation had to get right, neither obvious:
+
+- **The read, not just the write, needed bounding.** Change-gating the
+  write leaves a full-buffer copy happening on every model change.
+  Capture is throttled to once per 2s per surface; otherwise raising the
+  limit would move the cost from writing to reading rather than removing
+  it.
+- **"Limit" had a cliff.** The first version only read history when the
+  budget exceeded the default, so 64k kept the visible screen (30 lines)
+  while 65537 kept 3000. Fixed by always reading history and letting the
+  limit bound it — a limit should say *how much is kept*, not switch
+  capture modes.
+
+Sessions written earlier today still carry scrollback inline; restore
+prefers the file and falls back to the inline value, so the first upgrade
+loses nothing.
+
+Next for this feature: an XDG config file (so the setting is not
+env-var-only) and a preferences window — adwaita-swift already binds
+`PreferencesPage`/`SwitchRow`/`SpinRow`/`ComboRow`, so the UI needs no
+shim, and `CMUX_SEARCH_URL`, `CMUX_TERM` and this limit give it three
+real settings on day one.
+
+8 suites, 83 assertions, 0 failed.

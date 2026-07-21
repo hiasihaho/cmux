@@ -148,7 +148,10 @@ enum SessionStore {
     }
 
     private static func snapshot(tabs: [TerminalTab], selection: UUID, tabCounter: Int) -> Snapshot {
-        Snapshot(
+        // Drop scrollback files for surfaces that no longer exist, or a
+        // closed pane's text would outlive it indefinitely.
+        ScrollbackStore.prune(keeping: Set(tabs.flatMap { $0.allSurfaces.map(\.surface.surfaceId) }))
+        return Snapshot(
             version: schemaVersion,
             selectedIndex: tabs.firstIndex { $0.id == selection } ?? 0,
             tabCounter: tabCounter,
@@ -169,15 +172,13 @@ enum SessionStore {
                 // Live cwd via OSC 7 beats the spawn-time directory.
                 let cwd = SurfaceRegistry.shared.currentDirectory(for: surface.surfaceId)
                     ?? surface.workingDirectory
-                // Only what is on screen: the full history would bloat a
-                // file rewritten on every structural change.
-                let text = SurfaceRegistry.shared.ghosttyReadText(
-                    for: surface.surfaceId, includeScrollback: false
-                )
+                // Scrollback goes to its own file, not into this document:
+                // the session JSON is rewritten on every model change, so
+                // inline text made every line of output rewrite everything.
+                ScrollbackStore.capture(surfaceId: surface.surfaceId)
                 surfaces.append(SurfaceSnapshot(
                     id: surface.surfaceId.uuidString, type: "terminal",
-                    workingDirectory: cwd, browser: nil,
-                    scrollback: text.flatMap { TerminalScrollback.truncate($0) }
+                    workingDirectory: cwd, browser: nil, scrollback: nil
                 ))
             case .browser(let initialURL):
                 surfaces.append(SurfaceSnapshot(
@@ -278,7 +279,11 @@ enum SessionStore {
                     }
                 } else {
                     kind = .terminal
-                    if let text = entry.scrollback, !text.isEmpty {
+                    // Sessions written before scrollback moved out of band
+                    // still carry it inline; prefer the file, keep the
+                    // fallback so nothing is lost on the first upgrade.
+                    if let text = ScrollbackStore.read(for: id) ?? entry.scrollback,
+                       !text.isEmpty {
                         TerminalScrollbackStore.pending[id] = text
                     }
                 }
