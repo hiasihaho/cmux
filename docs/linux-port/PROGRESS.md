@@ -1440,3 +1440,67 @@ open-externally rules to choose new-tab vs new-window vs hand off to the
 system browser. The Linux path handles the plain cases only. Worth
 porting that decision logic later; the burst budget is the one piece
 Linux has that macOS does not.
+
+## 2026-07-21 — split-direction stopgap + `cmux search` across panes
+
+**Stopgap: splits follow the longer axis.** `adoptBrowserSplit` always
+split "right", so every popup halved the width — the human's screenshot
+showed four popups as unreadable vertical slivers. It now splits along
+the pane's longer axis (`preferredSplitDirection`, falling back to
+"right" for an unrealized pane). Measured with four popups by asking each
+browser pane for its own `window.innerWidth/innerHeight`: worst aspect
+ratio went from ~0.2 (143x700 slivers) to ~0.55 (97x176). **This fixes
+shape, not size** — five panes in half a window are still small, and the
+AdwTabView work is the real answer. Recorded as a stopgap, not a fix.
+
+**`cmux search <query>` — text search across every pane.** Chosen over
+`WebKitFindController` first because the two are different features
+wearing one name: interactive find (live highlight, next/prev, one pane)
+versus "which of my panes mentions this?". A shared engine would leak
+immediately — one side is a line buffer with scrollback, the other a DOM
+with frames — so they share a result shape and nothing else.
+
+This half needed **no new WebKit API**: terminal text already comes from
+the `surface.read_text` path (now factored into `terminalText(for:)` so
+the two can never disagree), and a browser pane's text is one
+`document.body.innerText` eval away. Terminal panes answer synchronously,
+browser panes are dispatched in parallel and the response waits for the
+last one.
+
+Flags: `--workspace`, `--kind terminal|browser`, `--regex`,
+`--case-sensitive` (insensitive by default), `--scrollback`,
+`--max-per-surface`. `--json` returns per-hit `surface_ref` /
+`workspace_ref` / `pane_ref`, which is the agentic payoff: find the pane
+showing the error, then focus or drive it.
+
+`innerText`, deliberately, not `textContent` — script bodies and
+`display:none` content would otherwise produce matches for text no human
+can see on screen. Both cases are asserted.
+
+**Results are a snapshot** (a browser repaints, a terminal scrolls) and
+terminal coverage is bounded by what the backend returns. Inspector panes
+are skipped: they host WebKit's own UI, and searching it would report
+matches the user never wrote.
+
+Three bugs found while testing, two of them mine rather than the code's —
+worth recording because both are easy to mistake for product bugs:
+
+- **Real bug:** the CLI case read `args` (full argv) instead of
+  `commandArgs`, so the query became
+  `"/path/to/cmux search Tadasana"`. Invisible in the human output ("No
+  matches"); obvious the moment `--json` echoed the query back. An
+  argument that is echoed in the response is worth having.
+- **Real bug:** terminal hits were captioned with `tab.title`, which
+  follows the *focused* surface — so a terminal match was labelled with
+  the browser pane's page title. Now labelled with the shell's live cwd.
+- **Test error, not a bug:** searching for "Tadasana" on the *Tree* pose
+  page found nothing, correctly (Tadasana is Mountain). And `send
+  --workspace` targets the FOCUSED surface, which was the browser, so the
+  marker never reached the terminal. Both looked like search failures.
+  The suite now uses a local fixture with unambiguous needles and targets
+  the terminal surface explicitly.
+
+New suite `linux/tests/pane-search-smoke.sh` (11 assertions, first-run
+green). webdriver-smoke 9/9, browser-navigation-smoke 8/8,
+browser-popup-smoke 6/6 — the last two matter because the split-direction
+change touches `adoptBrowserSplit`, which both use.

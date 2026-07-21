@@ -1488,6 +1488,55 @@ struct CMUXCLI {
             let response = try sendV1Command("simulate_app_active", client: client)
             print(response)
 
+        case "search":
+            let (workspaceOpt, r1) = parseOption(commandArgs, name: "--workspace")
+            let (kindOpt, r2) = parseOption(r1, name: "--kind")
+            let (maxOpt, r3) = parseOption(r2, name: "--max-per-surface")
+            let useRegex = hasFlag(r3, name: "--regex")
+            let caseSensitive = hasFlag(r3, name: "--case-sensitive")
+            let scrollback = hasFlag(r3, name: "--scrollback")
+            let query = r3.filter { !$0.hasPrefix("--") }
+                .joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !query.isEmpty else {
+                throw CLIError(message: "search requires a query")
+            }
+            var params: [String: Any] = ["query": query]
+            if let workspaceOpt {
+                params["workspace_id"] = try resolveWorkspaceId(workspaceOpt, client: client)
+            }
+            if let kindOpt { params["kind"] = kindOpt }
+            if let maxOpt, let value = Int(maxOpt) { params["max_per_surface"] = value }
+            if useRegex { params["regex"] = true }
+            if caseSensitive { params["ignore_case"] = false }
+            if scrollback { params["scrollback"] = true }
+
+            let payload = try client.sendV2(method: "search.panes", params: params)
+            if jsonOutput {
+                print(jsonString(formatIDs(payload, mode: idFormat)))
+            } else {
+                let results = (payload["results"] as? [[String: Any]]) ?? []
+                let searched = (payload["surfaces_searched"] as? Int) ?? 0
+                if results.isEmpty {
+                    print("No matches in \(searched) surface\(searched == 1 ? "" : "s")")
+                } else {
+                    for entry in results {
+                        let ref = formatHandle(entry, kind: "surface", idFormat: idFormat) ?? "?"
+                        let kind = (entry["kind"] as? String) ?? "?"
+                        let label = (entry["url"] as? String) ?? (entry["title"] as? String) ?? ""
+                        let count = (entry["match_count"] as? Int) ?? 0
+                        print("\(ref)  [\(kind)]  \(count) match\(count == 1 ? "" : "es")  \(label)")
+                        for hit in (entry["matches"] as? [[String: Any]]) ?? [] {
+                            let line = (hit["line"] as? Int) ?? 0
+                            let text = (hit["text"] as? String) ?? ""
+                            print("    \(line): \(text)")
+                        }
+                    }
+                    let total = (payload["total_matches"] as? Int) ?? 0
+                    print("\(total) match\(total == 1 ? "" : "es") in \(results.count) of \(searched) surfaces")
+                }
+            }
+
         case "capture-pane",
              "resize-pane",
              "pipe-pane",
@@ -6568,6 +6617,8 @@ struct CMUXCLI {
           simulate-app-active
 
           # tmux compatibility commands
+          search <query> [--workspace <id|ref>] [--kind terminal|browser] [--regex] [--case-sensitive] [--scrollback] [--max-per-surface <n>]
+            text search across every pane at once; --json gives structured hits
           capture-pane [--workspace <id|ref>] [--surface <id|ref>] [--scrollback] [--lines <n>]
           resize-pane --pane <id|ref> [--workspace <id|ref>] (-L|-R|-U|-D) [--amount <n>]
           pipe-pane --command <shell-command> [--workspace <id|ref>] [--surface <id|ref>]

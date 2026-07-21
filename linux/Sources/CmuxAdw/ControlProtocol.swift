@@ -282,6 +282,8 @@ struct ControlCommandHandler {
             return v2BrowserEval(id: id, params: params, respond: respond)
         case "browser.snapshot":
             return v2BrowserSnapshot(id: id, params: params, respond: respond)
+        case "search.panes":
+            return v2SearchPanes(id: id, params: params, respond: respond)
         case "browser.wait":
             return v2BrowserWait(id: id, params: params, respond: respond)
         case "browser.inspect":
@@ -867,6 +869,19 @@ struct ControlCommandHandler {
     /// before this function returns, so the pending view must already be
     /// registered or the factory builds its own blank view and the
     /// driver ends up driving an orphan (observed exactly that way).
+    /// Splits along the pane's longer axis, so repeated splits stay usable.
+    /// Always splitting "right" halves the width every time: two popups are
+    /// comfortable, five are unreadable slivers. Falls back to "right" for
+    /// a pane that has no allocation yet (not realized).
+    func preferredSplitDirection(for surfaceId: UUID) -> String {
+        guard let container = SurfaceRegistry.shared.containers[surfaceId] else { return "right" }
+        let widget = UnsafeMutableRawPointer(container).assumingMemoryBound(to: GtkWidget.self)
+        let width = gtk_widget_get_width(widget)
+        let height = gtk_widget_get_height(widget)
+        guard width > 0, height > 0 else { return "right" }
+        return width >= height ? "right" : "down"
+    }
+
     /// Adopts a pre-created web view into a new split.
     ///
     /// `nextTo` anchors the split to a specific surface — a popup must land
@@ -895,7 +910,7 @@ struct ControlCommandHandler {
 
         guard let layout = tabs.wrappedValue[index].layout.splitting(
             surfaceId: resolved.surfaceId,
-            direction: "right",
+            direction: preferredSplitDirection(for: resolved.surfaceId),
             newLeaf: newLeaf
         ) else { return nil }
         tabs.wrappedValue[index].layout = layout

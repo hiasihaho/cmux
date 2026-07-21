@@ -97,6 +97,15 @@ Small but real. These are genuine additions, not just different internals:
   text, console capture) address the very same surface — trusted input
   and rich inspection on one pane. macOS cmux has no automation opt-in at
   all.
+- ★ **`cmux search <query>` — text search across every pane at once.**
+  One query spans terminal panes (screen/scrollback text) and browser
+  panes (rendered `innerText`), returning per-hit `surface_ref` /
+  `workspace_ref` / `pane_ref` under `--json` so an agent can find the
+  pane showing an error and then act on it. Filters: `--workspace`,
+  `--kind`, `--regex`, `--case-sensitive`, `--scrollback`. macOS cmux has
+  per-pane find (`Sources/Find/`) but no cross-pane search verb.
+  Deliberately separate from interactive find-in-pane, which is a
+  different feature with a different engine.
 - ⚙ **Popups become panes.** `window.open()` and `target="_blank"` open a
   browser pane beside their opener, sharing the opener's web process so
   `window.opener` keeps working — instead of being silently dropped (the
