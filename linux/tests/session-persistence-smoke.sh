@@ -177,4 +177,76 @@ urls=[(s.get('browser') or {}).get('url','') for w in d['workspaces'] for s in w
 print('yes' if any(u.endswith('/b.html') for u in urls) else 'no')" 2>/dev/null)
 expect "a navigation is persisted without the 15s timer" "yes" "$persisted"
 
+# ------------------------------------------------------- divider positions
+# Stored as a FRACTION, like macOS: a pixel offset restored into a
+# differently sized window is simply wrong.
+info "divider positions survive a restart"
+kill_instance
+rm -f "$SESSION"
+start_instance || exit 2
+WS3=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+cx browser open "http://127.0.0.1:$PAGE_PORT/a.html" --workspace "$WS3" >/dev/null
+cx select-workspace --workspace "$WS3" >/dev/null
+sleep 3
+BR=$(cx --json list-panes --workspace "$WS3" 2>/dev/null | python3 -c '
+import json,sys
+p=json.load(sys.stdin)["panes"]; print(p[1]["surface_refs"][0] if len(p)>1 else "")')
+width_half=$(cx browser --surface "$BR" eval 'window.innerWidth' 2>/dev/null)
+cx new-workspace --cwd /tmp --background >/dev/null 2>&1   # force a save
+sleep 2
+
+captured=$(python3 -c "
+import json
+d=json.load(open('$SESSION'))
+def walk(n):
+    if 'split' in n:
+        yield n['split'].get('dividerPosition')
+        yield from walk(n['split']['first']); yield from walk(n['split']['second'])
+vals=[v for w in d['workspaces'] for v in walk(w['layout']) if v is not None]
+print('yes' if vals else 'no')" 2>/dev/null)
+expect "a divider fraction is persisted" "yes" "$captured"
+
+# Move it well off centre and restart: the pane must come back wider.
+python3 -c "
+import json
+d=json.load(open('$SESSION'))
+def setdiv(n):
+    if 'split' in n:
+        n['split']['dividerPosition']=0.25
+        setdiv(n['split']['first']); setdiv(n['split']['second'])
+for w in d['workspaces']: setdiv(w['layout'])
+json.dump(d, open('$SESSION','w'))" 2>/dev/null
+kill_instance
+start_instance || exit 2
+sleep 3
+WS3B=$(cx list-workspaces | grep -oE 'workspace:[0-9]+' | sed -n '2p')
+cx select-workspace --workspace "$WS3B" >/dev/null
+sleep 3
+BR2=$(cx --json list-panes --workspace "$WS3B" 2>/dev/null | python3 -c '
+import json,sys
+p=json.load(sys.stdin)["panes"]; print(p[1]["surface_refs"][0] if len(p)>1 else "")')
+width_quarter=$(cx browser --surface "$BR2" eval 'window.innerWidth' 2>/dev/null)
+if [ -n "$width_half" ] && [ -n "$width_quarter" ] \
+   && [ "$width_quarter" -gt $(( width_half * 5 / 4 )) ]; then
+    ok "restored fraction moves the divider (${width_half}px at 0.5 → ${width_quarter}px at 0.25)"
+else
+    bad "divider restore" "0.5 gave '${width_half}px', 0.25 gave '${width_quarter}px'"
+fi
+
+# A v3 file written before dividers were persisted must still load.
+python3 -c "
+import json
+d=json.load(open('$SESSION'))
+def strip(n):
+    if 'split' in n:
+        n['split'].pop('dividerPosition', None)
+        strip(n['split']['first']); strip(n['split']['second'])
+for w in d['workspaces']: strip(w['layout'])
+json.dump(d, open('$SESSION','w'))" 2>/dev/null
+kill_instance
+start_instance || exit 2
+sleep 2
+expect "v3 files without dividerPosition still restore" "3" \
+    "$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')"
+
 finish

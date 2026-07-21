@@ -203,6 +203,7 @@ struct TerminalStackWidget: AdwaitaWidget {
 
     private func sync(_ storage: ViewStorage) {
         guard let stack = storage.opaquePointer else { return }
+        PaneDividers.stack = stack
         var shapes = storage.fields["tab-shapes"] as? [UUID: String] ?? [:]
 
         // Widgets for every leaf (new tabs and fresh splits alike).
@@ -309,7 +310,7 @@ struct TerminalStackWidget: AdwaitaWidget {
             if let root = buildNode(tab.layout, tabId: tab.id) {
                 gtk_stack_add_named(stack, root, tab.id.uuidString)
                 restoreDividerPositions(root, path: "", from: dividers)
-                balanceFreshDividers(root, path: "", restored: dividers)
+                balanceFreshDividers(root, path: "", restored: dividers, tabId: tab.id)
             }
             for (_, surface) in tab.allSurfaces {
                 if let container = SurfaceRegistry.shared.containers[surface.surfaceId] {
@@ -376,11 +377,20 @@ struct TerminalStackWidget: AdwaitaWidget {
     private func balanceFreshDividers(
         _ widget: UnsafeMutablePointer<GtkWidget>?,
         path: String,
-        restored positions: [String: Int32]
+        restored positions: [String: Int32],
+        tabId: UUID
     ) {
         guard let widget, isA(widget, gtk_paned_get_type()) else { return }
         let paned = OpaquePointer(widget)
-        if (positions[path] ?? 0) <= 0 {
+        if (positions[path] ?? 0) <= 0,
+           let fraction = PaneDividers.fraction(tabId: tabId, path: path) {
+            // Restored from the session: apply once the paned has a size.
+            _ = gtk_widget_add_tick_callback(
+                widget, dividerApplyFraction,
+                Unmanaged.passRetained(DividerFractionBox(fraction: fraction)).toOpaque(),
+                dividerFractionBoxDestroy
+            )
+        } else if (positions[path] ?? 0) <= 0 {
             _ = gtk_widget_add_tick_callback(widget, { widget, _, _ in
                 guard let widget else { return gboolean(0) }
                 let paned = OpaquePointer(widget)
@@ -394,8 +404,8 @@ struct TerminalStackWidget: AdwaitaWidget {
                 return gboolean(0)
             }, nil, nil)
         }
-        balanceFreshDividers(gtk_paned_get_start_child(paned), path: path + "0", restored: positions)
-        balanceFreshDividers(gtk_paned_get_end_child(paned), path: path + "1", restored: positions)
+        balanceFreshDividers(gtk_paned_get_start_child(paned), path: path + "0", restored: positions, tabId: tabId)
+        balanceFreshDividers(gtk_paned_get_end_child(paned), path: path + "1", restored: positions, tabId: tabId)
     }
 
     private func detachFromParent(_ widget: UnsafeMutablePointer<GtkWidget>) {

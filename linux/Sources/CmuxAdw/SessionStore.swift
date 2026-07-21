@@ -51,7 +51,12 @@ enum SessionStore {
     indirect enum LayoutSnapshot: Codable, Equatable {
         /// A pane and its tabs. `selectedId` is the one on top.
         case pane(surfaceIds: [String], selectedId: String?)
-        case split(orientation: String, first: LayoutSnapshot, second: LayoutSnapshot)
+        /// Fraction of the paned's extent, matching macOS. Optional so v3
+        /// files written before dividers were persisted still decode.
+        case split(
+            orientation: String, first: LayoutSnapshot, second: LayoutSnapshot,
+            dividerPosition: Double? = nil
+        )
     }
 
     // MARK: v2 (read-only — migrated on load, never written)
@@ -183,8 +188,9 @@ enum SessionStore {
             // A workspace of nothing but inspector panes collapses to nil;
             // restore it as a plain terminal rather than losing the
             // workspace itself.
-            layout: layoutSnapshot(tab.layout, kept: kept)
-                ?? .pane(surfaceIds: [], selectedId: nil),
+            layout: layoutSnapshot(
+                tab.layout, kept: kept, dividers: PaneDividers.capture(tabId: tab.id)
+            ) ?? .pane(surfaceIds: [], selectedId: nil),
             focusedSurfaceId: kept.contains(tab.focusedSurfaceId.uuidString)
                 ? tab.focusedSurfaceId.uuidString : surfaces.first?.id
         )
@@ -192,7 +198,10 @@ enum SessionStore {
 
     /// Returns nil for a node whose surfaces were all dropped. A split with
     /// one pruned side collapses to the surviving side.
-    private static func layoutSnapshot(_ node: PaneNode, kept: Set<String>) -> LayoutSnapshot? {
+    private static func layoutSnapshot(
+        _ node: PaneNode, kept: Set<String>,
+        path: String = "", dividers: [String: Double] = [:]
+    ) -> LayoutSnapshot? {
         switch node {
         case .leaf(let pane):
             let ids = pane.surfaces
@@ -205,13 +214,20 @@ enum SessionStore {
                 selectedId: ids.contains(selected) ? selected : ids.first
             )
         case .split(let orientation, let first, let second):
-            switch (layoutSnapshot(first, kept: kept), layoutSnapshot(second, kept: kept)) {
+            let f = layoutSnapshot(first, kept: kept, path: path + "0", dividers: dividers)
+            let s = layoutSnapshot(second, kept: kept, path: path + "1", dividers: dividers)
+            switch (f, s) {
             case (nil, nil):
                 return nil
             case (let only?, nil), (nil, let only?):
+                // A collapsed split takes the survivor's own divider with
+                // it; this node's fraction no longer describes anything.
                 return only
             case (let a?, let b?):
-                return .split(orientation: orientation.rawValue, first: a, second: b)
+                return .split(
+                    orientation: orientation.rawValue, first: a, second: b,
+                    dividerPosition: dividers[path]
+                )
             }
         }
     }
@@ -261,8 +277,10 @@ enum SessionStore {
             }
             var tab = TerminalTab(title: workspace.title, workingDirectory: workspace.workingDirectory)
             tab.customTitle = workspace.customTitle
-            tab.layout = layoutNode(workspace.layout, byId: byId)
+            var dividers: [String: Double] = [:]
+            tab.layout = layoutNode(workspace.layout, byId: byId, dividers: &dividers)
                 ?? .leaf(PaneLeaf(workingDirectory: workspace.workingDirectory))
+            PaneDividers.persisted[tab.id] = dividers
             let live = tab.allSurfaces.map(\.surface.surfaceId)
             tab.focusedSurfaceId = workspace.focusedSurfaceId
                 .flatMap { UUID(uuidString: $0) }
@@ -274,7 +292,10 @@ enum SessionStore {
         return (tabs, selected.id, max(snapshot.tabCounter, tabs.count))
     }
 
-    private static func layoutNode(_ snapshot: LayoutSnapshot, byId: [String: PaneSurface]) -> PaneNode? {
+    private static func layoutNode(
+        _ snapshot: LayoutSnapshot, byId: [String: PaneSurface],
+        path: String = "", dividers: inout [String: Double]
+    ) -> PaneNode? {
         switch snapshot {
         case .pane(let surfaceIds, let selectedId):
             let surfaces = surfaceIds.compactMap { byId[$0] }
@@ -283,8 +304,12 @@ enum SessionStore {
                 surfaces.firstIndex { $0.surfaceId.uuidString == id }
             } ?? 0
             return .leaf(PaneLeaf(surfaces: surfaces, selectedIndex: index))
-        case .split(let orientation, let first, let second):
-            switch (layoutNode(first, byId: byId), layoutNode(second, byId: byId)) {
+        case .split(let orientation, let first, let second, let dividerPosition):
+            if let dividerPosition { dividers[path] = dividerPosition }
+            switch (
+                layoutNode(first, byId: byId, path: path + "0", dividers: &dividers),
+                layoutNode(second, byId: byId, path: path + "1", dividers: &dividers)
+            ) {
             case (nil, nil):
                 return nil
             case (let only?, nil), (nil, let only?):

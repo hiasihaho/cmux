@@ -1914,3 +1914,34 @@ are the *same* mistake in different clothes:
 
 Both were caught because the suites are run after every change, which is
 the point of having them.
+
+## 2026-07-21 — divider positions persist (fraction, like macOS)
+
+First of the four remaining gaps, taken first because it was the smallest
+and because it proves the v3 schema extends without another migration.
+
+Stored as a **fraction** of the paned's extent rather than pixels — the
+same choice macOS makes (`SessionSplitLayoutSnapshot.dividerPosition`,
+read back as `min(max(…, 0), 1)`). A pixel offset restored into a
+differently sized window is simply wrong, and the window is routinely a
+different size next launch.
+
+Two pieces of existing machinery made this small: the in-session rebuild
+already keys divider positions by tree path (`""`, `"0"`, `"01"`…), so
+the persisted map reuses that scheme and the two cannot drift; and
+`balanceFreshDividers` already solved the awkward part — a fresh paned
+reports extent 0, so the position cannot be set at build time — with a
+tick callback that retries until allocation. The restored fraction rides
+the same callback instead of its hardcoded `total / 2`.
+
+`dividerPosition` is **optional**, so v3 files written before this still
+decode; asserted, because silently discarding a session over a new field
+would be a bad trade for a cosmetic feature.
+
+Verified end to end: 0.5 → browser pane 404px, 0.25 → 609px, on the same
+window. `resize-pane` is not implemented on Linux (PARITY ❌), so the
+drag could not be simulated through the socket — the test edits the
+persisted fraction and measures the result instead, which exercises the
+restore path that is actually new.
+
+Suites: 65 assertions, 0 failed (session-persistence now 14).
