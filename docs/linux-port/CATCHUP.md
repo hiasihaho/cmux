@@ -69,6 +69,13 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    `load-changed` with a debounce, divider positions as fractions, and
    the browser URL bar + pane zoom + `browser.tab.*`.
 
+   **Planned (2026-07-21): browser profiles** — per-profile
+   cookie/storage/cache isolation plus ephemeral panes. Full design in
+   roadmap/07-browser-profiles.md. Upstream macOS already ships this
+   (BrowserProfileStore, profile popover, `browser profiles` verbs), so
+   it is parity work and deliberately waits until after the upstream
+   catch-up merge, which defines the exact surface to mirror.
+
    **Next (decided 2026-07-21): VTE backend parity for scrollback.**
    Only Ghostty panes capture/replay today — `ghosttyReadText` returns
    nil for VTE surfaces, so under `CMUX_TERM=vte` the feature is absent
