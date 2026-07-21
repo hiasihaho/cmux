@@ -42,10 +42,14 @@ picks it up at its next (human-approved) restart.
 2. Ghostty-embed hardening (deferred, security-flavored): the fast-churn
    resource leak — see roadmap/05-ghostty-embed-hardening.md (agent-
    drivable local DoS + ReleaseFast memory-unsafety smell; not blocking).
-3. Flatpak packaging.
-4. Parity long tail: PARITY.md ❌ rows (system.tree, surface.focus,
+3. WebKit-native automation (decided 2026-07-21, no CDP/Chromium):
+   roadmap/06-webkit-native-automation.md. First increment: console
+   capture v2 via document-start user script + script message handler
+   (fixes the strict-CSP blind spot of the wrap-based console verbs).
+4. Flatpak packaging.
+5. Parity long tail: PARITY.md ❌ rows (system.tree, surface.focus,
    pane.resize, terminal find overlay, sidebar metadata pills…).
-5. Upstreaming to manaflow: everything is PRE-PREPARED in
+6. Upstreaming to manaflow: everything is PRE-PREPARED in
    [UPSTREAM.md](UPSTREAM.md) — a clean single-commit PR branch
    (`fix-stale-frame-replay-gtk` on hiasihaho/ghostty), a drafted PR
    body, and the optional talking points (embed branch, submodule

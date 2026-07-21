@@ -913,6 +913,32 @@ on ghostty.org. Residual deviation: on strict-CSP pages `browser eval`
 runs in the isolated world, so page JS globals are invisible there
 (macOS sees them everywhere) — noted in PARITY.md.
 
+## 2026-07-21 — Direction decided: WebKit-native automation, no CDP
+
+Follow-up questions from the CSP session ("do we want CDP? what about the
+console? why did dev say vte?") settled the architecture question. Full
+reasoning + increment list: `roadmap/06-webkit-native-automation.md`.
+Summary of record:
+
+- Our JS-injection verbs are the content-script/WebDriver-classic subset —
+  the same mechanism Playwright uses for element interaction. Kept as the
+  workhorse.
+- What page-JS can never reach (trusted input, network interception,
+  debugger, cross-origin frames, CSP-proof console capture) we take from
+  the **native WebKitGTK API**, not from a CDP engine: WebKit doesn't
+  speak CDP, and Chromium/CEF embedding is rejected (dependency swap,
+  loses GTK integration). Fedora ships `/usr/bin/WebKitWebDriver`
+  (webkitgtk6.0 2.52.4); WebKitAutomationSession is in our headers.
+- Console verbs verified working live (wrap-based, main world) on normal
+  sites; strict-CSP blind spot documented — the lazy-armed wrap lands in
+  the isolated world there and captures nothing the page logs. Fix is
+  roadmap/06 increment 1 (document-start user script + script message
+  handler; user scripts are CSP-exempt user-agent scripts).
+- Sighting explained: `start.sh status` reported the ghostty daily as
+  `terminals=vte` — an artifact of `ldd` on a "(deleted)" `/proc/pid/exe`
+  after a rebuild, plus my plain `swift build` really had produced a
+  VTE-only binary (both fixed/documented above and in the gotchas).
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

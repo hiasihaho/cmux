@@ -16,6 +16,7 @@ commit it or keep it local as you prefer.
 | [03-towel-prework.md](03-towel-prework.md) | Fixes/hardening towel itself needs before (or alongside) integration |
 | [04-ecosystem-yazi-opencode-vibe.md](04-ecosystem-yazi-opencode-vibe.md) | Ecosystem additions: yazi file-manager panes, OpenCode agent parity via plugins, vibe voice control |
 | [05-ghostty-embed-hardening.md](05-ghostty-embed-hardening.md) | Deferred deep-dive: the fast-churn resource leak + its security angle (agent-drivable local DoS, ReleaseFast memory-unsafety smell) and an investigation plan |
+| [06-webkit-native-automation.md](06-webkit-native-automation.md) | Decided direction: stay on system WebKitGTK, no CDP/Chromium — adopt the native API surface (user-script console capture, WebDriver/BiDi opt-in, Inspector pane, find/download/permissions/data-manager long tail) |
 
 ## TL;DR
 
