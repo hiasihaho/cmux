@@ -67,7 +67,7 @@ the full useful WebKitGTK feature set.**
    navigation come from the driver side. Revisit **WebDriver BiDi** as
    WebKitGTK's support matures (event streams: console, network — the
    real CDP-alternative).
-3. **Web Inspector pane.** `webkit_settings_set_enable_developer_extras`
+3. **Web Inspector pane** (noted for later — see decision below; not scheduled yet). `webkit_settings_set_enable_developer_extras`
    + `webkit_web_view_get_inspector()`; present the inspector (it is a
    GTK widget via `WebKitWebInspector`) in a cmux split next to its page.
    Full DevTools — elements, network, debugger, console — for the human;
@@ -94,3 +94,133 @@ the full useful WebKitGTK feature set.**
   system WebKitGTK).
 - Speaking the private Inspector wire protocol programmatically — we get
   its value through the Inspector UI (3) and WebDriver/BiDi (2).
+
+---
+
+# WebDriver: operating model, findings, and the split-adoption decision
+
+Everything below was established empirically on 2026-07-21 against
+Fedora's `/usr/bin/WebKitWebDriver` (webkitgtk6.0 2.52.4) driving
+cmux-adw. Increment 2 shipped the opt-in; this section is the reference
+for what the model actually is, so nobody re-derives it.
+
+## 1. How a session is established (two modes, both verified)
+
+**Mode A — driver launches the browser (the default W3C model).**
+Capabilities carry `webkitgtk:browserOptions.binary`; the driver spawns
+that binary and waits for it to allow automation.
+
+```jsonc
+{"capabilities": {"alwaysMatch": {
+  "webkitgtk:browserOptions": {"binary": "/path/to/wrapper.sh", "args": ["--automation"]}
+}}}
+```
+
+Two traps, both hit and both real:
+- **Omit `browserName`.** We report `browserName: "cmux"` (from our
+  `webkit_application_info_set_name`), so a request asking for
+  `"webkitgtk"`/`"MiniBrowser"` fails with *"Failed to match
+  capabilities"*. Omitting it matches anything.
+- **Point `binary` at a wrapper**, not at `cmux-adw` directly. The
+  launched instance must get its own `CMUX_APP_ID` / `CMUX_SOCKET_PATH` /
+  `CMUX_SESSION_PATH`, or it collides with the human's daily instance.
+
+**Mode B — driver attaches to an ALREADY-RUNNING instance.** Start cmux
+with a WebKit inspector server, then point the driver at it:
+
+```sh
+WEBKIT_INSPECTOR_SERVER=127.0.0.1:5555 CMUX_WEBDRIVER=1 cmux-adw   # running instance
+WebKitWebDriver --port=4446 --target=127.0.0.1:5555                # attach
+curl -X POST localhost:4446/session -d '{"capabilities":{"alwaysMatch":{}}}'
+```
+
+Verified: the session is created against the running process (returns
+`browserName: cmux`) with **no browser launch at all** and no `binary`
+capability. This is the mode that matters for cmux, because it can target
+the human's live instance.
+
+## 2. The session limit — and how to actually parallelize
+
+**One session per driver *process*.** A second `POST /session` to the
+same driver returns *"Maximum number of active sessions"*. `/status`
+reports `ready:false, "A session already exists"`. `--replace-on-new-session`
+swaps the existing one rather than running two.
+
+**Parallelism = multiple driver processes on different ports.** Verified:
+drivers on `:4444` and `:4445` held two concurrent sessions, each with its
+own isolated cmux instance. That is also how Selenium Grid scales
+WebKitGTK nodes.
+
+**tmux does not help here** — it multiplexes *terminals*, not browsing
+contexts; a WebDriver session is a protocol object owned by one driver
+process. The equivalent "multiplexer" is either N drivers on N ports or a
+Grid in front of them. (If the goal is many *pages* rather than many
+sessions, one session can open multiple windows/tabs and switch between
+them with `POST /session/{id}/window` — cheaper than N drivers.)
+
+## 3. What the driver drives (the decisive finding)
+
+**WebDriver never adopts an existing browsing context.** In *both* modes,
+session creation fires our `WebKitAutomationSession::create-web-view`
+handler and drives whatever view we return. Measured in attach mode
+against a running instance that already had a browser pane open on a
+real URL: the session reported an **empty url/title and exactly one
+window handle** — i.e. the fresh view we handed it, not the human's pane.
+
+Two consequences:
+- The driver cannot wander into the human's other panes. That is a
+  **safety property**, not a limitation.
+- Which view the driver gets is **entirely our choice**, because
+  `create-web-view` is our hook. Today we return a view in a standalone
+  window; nothing stops us returning a view that lives in a cmux split.
+
+## 4. Recommendation: yes, adopt a cmux split (in attach mode)
+
+Combining §1 Mode B with §3: with the driver attached to the human's
+running instance, `create-web-view` can create a **browser pane in the
+live workspace** and hand the driver that pane's web view. The result:
+
+- Automation appears **as a normal cmux pane**, visible to the human,
+  splittable, with a terminal alongside — instead of an orphan window.
+- **Both automation layers address the same surface**: WebDriver drives
+  it with trusted input, while cmux's socket verbs (`browser snapshot`,
+  `get text`, console capture v2, screenshot) read/act on the very same
+  web view. That combination is strictly more than either layer alone,
+  and is exactly what the JS-injection limits table above asks for.
+- Session lifecycle maps onto pane lifecycle: driver session ends →
+  close the pane (and vice versa: pane closed → session invalidated).
+
+**Why it isn't done yet (the actual work).** cmux creates web views
+itself: `BrowserSurfaceFactory.create` calls `webkit_web_view_new()`
+while `TerminalStackWidget.sync()` materializes widgets from the model.
+Adoption inverts that — the web view exists *first*, and the surface must
+wrap it. The change is:
+
+1. A pending-adoption registry: `surfaceId → WebKitWebView*`.
+2. `BrowserSurfaceFactory.create` consults it and adopts instead of
+   constructing when an entry exists.
+3. `create-web-view` (main thread already) builds the view with the
+   construct-only automation properties, appends a `.browser` leaf to the
+   target workspace's model, registers it for adoption, and returns the
+   view — the widget lands in the pane on the next `sync()`.
+4. Lifecycle: close-pane → invalidate the session's view; session end →
+   close the pane. Plus a policy for *which* workspace receives it
+   (suggest: the selected one, or a dedicated "automation" workspace so
+   agents never disturb the human's layout).
+
+Effort: moderate, and it touches the surface-creation path that the
+mid-init leak (roadmap/05) also lives in — worth doing carefully, ideally
+after or alongside that hardening.
+
+**Interim recommendation:** keep the standalone-window behavior as the
+default (it is honest and zero-risk), and treat split adoption as the
+next WebDriver increment, gated on the same `CMUX_WEBDRIVER=1`.
+
+## 5. Security posture (unchanged, restated)
+
+`CMUX_WEBDRIVER=1` is required; never default. Attach mode additionally
+requires the human to set `WEBKIT_INSPECTOR_SERVER`, which opens a local
+port — bind it to `127.0.0.1` only. The automation view uses the
+**automation network session** (ephemeral): the driver does not inherit
+the human's cookies. Any local process that can reach the driver port or
+the inspector port can drive the browser, which is why both are opt-in.
