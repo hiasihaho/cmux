@@ -71,6 +71,9 @@ enum BrowserSurfaceFactory {
                     onTitleChanged(tabId, surfaceId, string)
                 }
             }
+            // The workspace title only follows the FOCUSED surface; a tab
+            // label has to update whoever it belongs to.
+            PaneTabs.refreshTitle(surfaceId: surfaceId)
         }
         if let controller = gtk_event_controller_focus_new() {
             gtk_widget_add_controller(widget, controller)

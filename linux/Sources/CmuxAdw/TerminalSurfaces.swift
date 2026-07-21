@@ -255,6 +255,9 @@ struct TerminalStackWidget: AdwaitaWidget {
         for surfaceId in SurfaceRegistry.shared.containers.keys where !liveSurfaces.contains(surfaceId) {
             SurfaceRegistry.shared.unregister(surfaceId)
         }
+        // Same for tab views whose pane is gone, or a closed pane keeps its
+        // AdwTabView (and the containers inside it) alive forever.
+        PaneTabs.prune(livePaneIds: Set(tabs.flatMap { $0.panes.map(\.paneId) }))
 
         // Remove stack children of closed tabs.
         let liveTabs = Set(tabs.map(\.id))
@@ -279,6 +282,16 @@ struct TerminalStackWidget: AdwaitaWidget {
                 if let container = SurfaceRegistry.shared.containers[surface.surfaceId] {
                     g_object_ref_sink(UnsafeMutableRawPointer(container))
                     detachFromParent(UnsafeMutablePointer<GtkWidget>(container))
+                }
+            }
+            // A tabbed pane's wrapper is what actually sits in the split
+            // tree — its surface containers live inside the persistent
+            // AdwTabView and must NOT be pulled out (see PaneTabs). Detach
+            // the wrapper instead, or destroying the old skeleton takes the
+            // tab view and every page with it.
+            for pane in tab.panes {
+                if let wrapper = PaneTabs.wrapper(for: pane.paneId) {
+                    detachFromParent(wrapper)
                 }
             }
             // Preserve dragged divider positions across the rebuild (keyed
@@ -306,6 +319,9 @@ struct TerminalStackWidget: AdwaitaWidget {
             shapes[tab.id] = signature
         }
         storage.fields["tab-shapes"] = shapes
+        // Titles arrive after the page does (a freshly adopted popup has
+        // neither title nor URL yet), so refresh them on every sync.
+        PaneTabs.refreshAllTitles(tabs: tabs)
 
         if let tab = tabs.first(where: { $0.id == selection }) {
             gtk_stack_set_visible_child_name(stack, tab.id.uuidString)

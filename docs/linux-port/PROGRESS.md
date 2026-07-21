@@ -1821,3 +1821,50 @@ that updates the page title, mirroring the workspace-title path.
 Recorded rather than fixed in the same breath because the honest fix
 changes how panes are rebuilt, and that is the machinery every other
 browser feature sits on.
+
+## 2026-07-21 — one-tab strip fixed: the tab view is now persistent
+
+Verified by screenshot, which is also how the bug was found. Before: four
+surfaces, one tab labelled "Browser". After: three surfaces, three tabs
+labelled "opener" / "popup-target" / "popup-target", and the view reports
+`n_pages == pane.surfaces.count` exactly.
+
+**The fix is architectural, not a patch to `detachFromParent`.** The tab
+view is no longer rebuilt with the layout; it is cached per pane
+(`PaneTabs.views`) and its pages are *reconciled* against the model —
+close what is gone, append what is new, reorder, retitle, select. What
+gets reparented across a layout rebuild is therefore the wrapper box,
+whose parent genuinely is a GtkPaned or the GtkStack, which
+`detachFromParent` already handles. The surface containers never leave the
+tab view at all.
+
+Adding an AdwTabView branch to `detachFromParent` was the tempting
+one-liner and would have been a worse bug: libadwaita's only public page
+removal is `adw_tab_view_close_page`, which emits `close-page`, and our
+handler for that closes the **surface** — a rebuild would have deleted the
+user's tabs. Programmatic removal now sets `PaneTabs.isReconciling`, which
+both the close-page and selection handlers check, so model-driven page
+changes are never mistaken for user actions.
+
+Second bug, independent: tab titles were computed once at creation, when a
+freshly adopted popup has neither title nor URL, so they read the literal
+"Browser" forever. Titles now refresh on every sync *and* from the browser
+view's own `notify::title` — the workspace title only follows the focused
+surface, but a tab label has to update whichever surface it belongs to.
+
+Two things worth keeping from the diagnosis:
+
+- The trail ran through three wrong guesses before instrumenting.
+  Logging the append (`parent=`, append-failed, and `n_pages` vs
+  `surfaces.count`) settled it in one run. **Instrument earlier when a
+  widget and a model disagree** — neither side's logs alone can show it.
+- The final "still missing one tab" was not a bug at all: AdwTabBar keeps
+  a minimum tab width and *scrolls*, so a ~405px pane shows three of four.
+  `n_pages` is the authoritative check; pixel-counting tabs is not.
+
+Also: `pkill -f "Xvfb :99"` killed the running shell — `pkill -f` matches
+the agent's own command line, which INSIDE-CMUX.md already warns about and
+which bit again here. Kill by exact name (`pgrep -x`) instead.
+
+All six suites green: webdriver 9/9, navigation 8/8, popup 12/12,
+search 11/11, find 11/11, session 11/11.
