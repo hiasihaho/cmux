@@ -28,6 +28,11 @@ at G_PRIORITY_DEFAULT + ReleaseSafe shim — Debug shim scrolls
 sluggishly; ReleaseFast SEGVs, see build cheat sheet). Human-confirmed
 "supersmooth" 2026-07-20.
 
+Browser automation now survives strict-CSP sites (GitHub et al.):
+isolated-world fallback in `BrowserJS.run`, landed 2026-07-21 (see
+PROGRESS). The fix is in the debug binary on disk — the daily instance
+picks it up at its next (human-approved) restart.
+
 ## Next milestones
 
 1. ✅ Default flip DONE (2026-07-17): shim-linked builds default to

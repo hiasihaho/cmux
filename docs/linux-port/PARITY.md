@@ -41,7 +41,7 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | browser.open_split / navigate / back / forward / reload | ✅ | |
 | browser.url.get / get.title | ✅ | |
 | browser.identify | ✅ | Linux extension (not on macOS) |
-| browser.eval | ✅ | async via WebKitGTK `call_async_javascript_function`; promises awaited, undefined sentinel |
+| browser.eval | ✅ | async via WebKitGTK `call_async_javascript_function`; promises awaited, undefined sentinel. All automation verbs share the envelope: main world first, isolated-world (`cmuxAutomation`) retry on CSP eval-refusal — strict-CSP sites (GitHub) work since 2026-07-21. Deviation: on such sites eval runs in the isolated world, so page JS globals are invisible (WKWebView is CSP-exempt and sees them everywhere) |
 | browser.snapshot | ✅ | role/name tree + `@eN` element refs, same script as macOS |
 | browser.wait | ✅ | selector / url_contains / text_contains / load_state / function; ⚠ socket transport caps effective timeout at ~14s |
 | browser.click / dblclick / hover / focus | ✅ | 3× retry + not-found diagnostics like macOS |

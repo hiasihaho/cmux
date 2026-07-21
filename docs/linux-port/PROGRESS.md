@@ -885,6 +885,34 @@ header-bar magnifier button bound to Ctrl+Shift+F
 on dev2: Ctrl+Shift+F opens the bar, typing highlights matches, Enter
 cycles, Esc closes. Ghostty-only (VTE panes no-op).
 
+## 2026-07-21 — Strict-CSP sites: automation un-broken via isolated-world fallback
+
+Found while dogfooding browser verbs from inside the port: on GitHub every
+DOM-level verb (snapshot, get.text, find, click, eval) failed with
+`js_error: EvalError: Refused to evaluate a string as JavaScript…` — only
+the WebKit-native reads (title, URL) worked. Root cause: WKWebView exempts
+user-agent scripts from page CSP, but WebKitGTK main-world evaluation is
+subject to it, and our eval envelope string-evals the verb script
+(`eval(...)` in `BrowserJS.run`), which strict `script-src` policies
+(GitHub: `script-src github.githubassets.com`, no `unsafe-eval`) refuse.
+So the whole automation surface silently degraded on strict-CSP sites —
+GitHub, most banks, many SPAs.
+
+Fix (`BrowserAutomation.swift`): `BrowserJS.run` still evaluates in the
+main world first (exact previous behavior; `browser eval` keeps seeing
+page globals, macOS parity), and on a CSP eval-refusal (`"Refused to
+evaluate a string as JavaScript"`) retries once in the named isolated
+script world `cmuxAutomation` via the `world_name` parameter of
+`webkit_web_view_call_async_javascript_function`. Isolated worlds share
+the DOM but bypass main-world CSP, so DOM verbs behave identically there.
+Verified on the dev instance against github.com: snapshot returns the full
+role/name tree, `get text h1` reads, `eval` counts 721 anchors, and
+`click` on the Releases link performs a real navigation (isolated-world
+event dispatch reaches page handlers). Regression-checked main-world eval
+on ghostty.org. Residual deviation: on strict-CSP pages `browser eval`
+runs in the isolated world, so page JS globals are invisible there
+(macOS sees them everywhere) — noted in PARITY.md.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge
@@ -915,3 +943,10 @@ cycles, Esc closes. Ghostty-only (VTE panes no-op).
   SELECTED workspace (the flag value gets eaten by the adjacent arg).
   Parse the `OK <ref>` line, and verify the target workspace in the
   reply of whatever you create next.
+- WebKitGTK main-world JS evaluation is subject to the PAGE's CSP (unlike
+  WKWebView, which exempts user-agent scripts). Anything injected with
+  `call_async_javascript_function`/`evaluate_javascript` that string-evals
+  will throw `EvalError: Refused to evaluate…` on strict-CSP sites unless
+  it runs in a named isolated world (which shares the DOM but bypasses
+  main-world CSP). `BrowserJS.run` handles this; new injection paths must
+  too.

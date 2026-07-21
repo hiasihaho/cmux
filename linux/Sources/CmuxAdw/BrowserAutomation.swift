@@ -108,6 +108,19 @@ enum BrowserJSOutcome {
 
 enum BrowserJS {
 
+    /// Isolated script world used to retry automation scripts when the page
+    /// CSP forbids string eval in the main world (GitHub: `script-src
+    /// github.githubassets.com`). WKWebView exempts user-agent scripts from
+    /// page CSP; WebKitGTK main-world evaluation is subject to it, but
+    /// isolated worlds share the DOM while bypassing main-world CSP.
+    /// Main world stays the first attempt so `browser eval` keeps seeing
+    /// page globals wherever the page allows it (macOS parity).
+    static let cspFallbackWorld = "cmuxAutomation"
+
+    static func isCSPEvalRefusal(_ message: String) -> Bool {
+        message.contains("Refused to evaluate a string as JavaScript")
+    }
+
     /// Runs `script` inside the same envelope the macOS port uses: promises
     /// are awaited, exceptions surface as `.failure`, and `undefined` is
     /// distinguished from `null` via the `__cmux_t` marker. When
@@ -118,6 +131,25 @@ enum BrowserJS {
         _ webView: UnsafeMutablePointer<WebKitWebView>,
         script: String,
         frameSelector: String? = nil,
+        completion: @escaping (BrowserJSOutcome) -> Void
+    ) {
+        runInWorld(webView, script: script, frameSelector: frameSelector, worldName: nil) { outcome in
+            if case .failure(let message) = outcome, isCSPEvalRefusal(message) {
+                runInWorld(
+                    webView, script: script, frameSelector: frameSelector,
+                    worldName: cspFallbackWorld, completion: completion
+                )
+                return
+            }
+            completion(outcome)
+        }
+    }
+
+    private static func runInWorld(
+        _ webView: UnsafeMutablePointer<WebKitWebView>,
+        script: String,
+        frameSelector: String?,
+        worldName: String?,
         completion: @escaping (BrowserJSOutcome) -> Void
     ) {
         let scriptLiteral = jsonLiteral(script)
@@ -163,15 +195,23 @@ enum BrowserJS {
             JSCallbackBox(webView: webView, completion: completion)
         ).toOpaque()
 
-        webkit_web_view_call_async_javascript_function(
-            webView, body, -1, nil, nil, nil, nil,
-            { _, result, userData in
-                guard let userData else { return }
-                let box = Unmanaged<JSCallbackBox>.fromOpaque(userData).takeRetainedValue()
-                finishBrowserJSCall(box: box, result: result)
-            },
-            box
-        )
+        let callback: GAsyncReadyCallback = { _, result, userData in
+            guard let userData else { return }
+            let box = Unmanaged<JSCallbackBox>.fromOpaque(userData).takeRetainedValue()
+            finishBrowserJSCall(box: box, result: result)
+        }
+        if let worldName {
+            // WebKit copies the world name during the call; withCString is safe.
+            worldName.withCString { world in
+                webkit_web_view_call_async_javascript_function(
+                    webView, body, -1, nil, world, nil, nil, callback, box
+                )
+            }
+        } else {
+            webkit_web_view_call_async_javascript_function(
+                webView, body, -1, nil, nil, nil, nil, callback, box
+            )
+        }
     }
 
     /// `{__cmux_t, __cmux_v}` envelope → plain value. `undefined` keeps the
