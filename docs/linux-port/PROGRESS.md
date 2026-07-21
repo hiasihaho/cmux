@@ -1790,3 +1790,34 @@ socket query makes cheap and neither makes alone.
 New: [DEPENDENCIES.md](DEPENDENCIES.md) — build, Ghostty, GNOME 49/50,
 test and runtime dependencies with the versions developed against and
 why each is needed, aimed at a future podman image for other developers.
+
+## 2026-07-21 — root cause of the one-tab strip (found by screenshot)
+
+`surface_count: 4`, one tab rendered. Two independent bugs, both invisible
+to model-level assertions because the model is correct:
+
+1. **`detachFromParent` (TerminalSurfaces.swift:385) only knows GtkStack
+   and GtkPaned parents.** When a pane has tabs, its surface containers
+   live inside the AdwTabView, so on a skeleton rebuild they are *not*
+   detached — and the following `adw_tab_view_append` is handed widgets
+   that still have a parent, which GTK refuses. Only the one container
+   that happened to be unparented becomes a tab.
+2. **Tab titles are computed once, at build time.** `PaneTabs.tabTitle`
+   runs before a freshly adopted popup has loaded, so both the title and
+   URL lookups are empty and it falls back to the literal "Browser" —
+   then nothing ever updates it.
+
+Fix direction (deliberately not rushed): the clean answer to (1) is to
+stop destroying the AdwTabView on rebuild. Cache it per pane and update
+its pages incrementally, so the *tab view* is what gets reparented — and
+reparenting a tab view is something `detachFromParent` already handles,
+because its parent really is a GtkPaned or GtkStack. Adding an AdwTabView
+branch to `detachFromParent` instead is the tempting one-liner and is
+wrong: libadwaita's only public page removal is `adw_tab_view_close_page`,
+which emits `close-page` — our handler for that closes the *surface*, so
+a rebuild would delete the user's tabs. (2) wants a `notify::title` hook
+that updates the page title, mirroring the workspace-title path.
+
+Recorded rather than fixed in the same breath because the honest fix
+changes how panes are rebuilt, and that is the machinery every other
+browser feature sits on.

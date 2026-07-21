@@ -1,6 +1,6 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-21 ~09:30** (navigation barrier + quadratic CLI
+Last updated: **2026-07-21 ~11:40** (navigation barrier + quadratic CLI
 transfer fixed, both found by the SPA-extraction dogfood). Update this
 file at the end of every significant session; it is the fastest path
 from cold start to productive work. Deep history lives in
@@ -82,7 +82,36 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    demonstrably more flexible — as with session state, where WebKitGTK's
    native blob beats macOS's shadow-stack emulation.
 
-5. Flatpak packaging.
+5. **Deferred: merge `linux-port` into the fork's `main`.** Not urgent —
+   the work is pushed to `origin/linux-port` and the upstream PR flows
+   from there, so nothing is stranded. But it is real work that gets
+   harder the longer it waits, and it has a trap:
+
+   - local `main` is a **stale shallow snapshot** (`552a9364`), while
+     `origin/main` has moved to `25dc9139` — **172 commits ahead** of the
+     point `linux-port` was cut from;
+   - the clone is **shallow**, so git reports *"refusing to merge
+     unrelated histories"* — it cannot compute a merge base at all;
+   - therefore a naive `main` fast-forward + push would try to **discard
+     those 172 commits**. Never force-push `main`.
+
+   The procedure when the time comes:
+
+   ```sh
+   git fetch --unshallow origin          # large; restores the real history
+   git checkout linux-port
+   git merge origin/main                 # INTO linux-port, so main stays intact
+   # resolve — both sides edited CLAUDE.md, CLI/cmux.swift and docs
+   cd linux && CMUX_GHOSTTY=1 swift build
+   for t in linux/tests/*-smoke.sh; do "$t"; done   # all six must pass
+   git checkout main && git merge --ff-only linux-port
+   git push origin main                  # never --force
+   ```
+
+   Merge *into* `linux-port` first is the point: `main` is never left
+   broken, and a bad resolution costs a branch rather than the fork.
+
+6. Flatpak packaging.
 5. Parity long tail: PARITY.md ❌ rows (system.tree, surface.focus,
    pane.resize, terminal find overlay, sidebar metadata pills…).
 6. Upstreaming to manaflow: everything is PRE-PREPARED in
