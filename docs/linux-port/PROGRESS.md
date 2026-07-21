@@ -1945,3 +1945,40 @@ persisted fraction and measures the result instead, which exercises the
 restore path that is actually new.
 
 Suites: 65 assertions, 0 failed (session-persistence now 14).
+
+## 2026-07-21 — the dev launcher was deleting its own session every start
+
+Reported by the human: launching "cmux (dev)" from the desktop forgets all
+panes. Not a session-restore bug — `start.sh` did this on every start:
+
+```sh
+rm -f "/tmp/cmux-$slot.sock" "/tmp/cmux-$slot-session.json"
+```
+
+The session file was wiped by construction, so the instance could never
+restore anything. That was defensible while `dev` was a throwaway
+verification instance where a clean slate is the point; it became wrong
+the moment the desktop launcher turned it into somebody's environment.
+Only the stale socket is removed now, the session lives in
+`~/.local/state/cmux/dev-session.json` (out of `/tmp`, which is cleared on
+reboot), and `start.sh dev --fresh` restores the clean-slate behaviour for
+a test run. The existing `/tmp` session was copied over rather than
+dropped.
+
+Two related things the report surfaced, worth stating because both look
+like the same symptom:
+
+- **The dev instance never shares the daily's session.** Separate
+  `CMUX_APP_ID`, socket and session file — that is the isolation the whole
+  dev-instance pattern depends on. Launching dev will never show the
+  daily's panes, by design.
+- **Session restore does not restore processes.** It restores layout,
+  working directories and browser state (URL, history, zoom). A restored
+  shell is a *new* shell; the previous tty and whatever was running in it
+  are gone. macOS is the same, and additionally persists scrollback *text*
+  — the gap tracked in PARITY, and the reason a restored macOS pane at
+  least still shows what was on screen. Nothing restores a live process.
+
+Also confirmed while checking: the human's daily session file is intact
+and still schema v2, because the daily runs the pre-v3 binary. It migrates
+on their next restart — the migration path is asserted.

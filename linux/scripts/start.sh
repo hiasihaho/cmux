@@ -25,9 +25,11 @@ cmd="${1:-daily}"
 shift || true
 ghostty=false
 vte=false
+fresh=false
 for arg in "$@"; do
     [ "$arg" = "--ghostty" ] && ghostty=true
     [ "$arg" = "--vte" ] && vte=true
+    [ "$arg" = "--fresh" ] && fresh=true
 done
 
 linked_ghostty() { ldd "$BIN" 2>/dev/null | grep -q libghostty-gtk; }
@@ -111,18 +113,26 @@ dev | dev2)
         echo "$slot instance already running on /tmp/cmux-$slot.sock" >&2
         exit 1
     fi
-    rm -f "/tmp/cmux-$slot.sock" "/tmp/cmux-$slot-session.json"
+    # The stale socket always goes; the SESSION does not. This used to be
+    # deleted on every start, which made the instance forget its panes and
+    # working directories every launch — fine when dev was a throwaway
+    # verification instance, wrong once it is somebody's environment.
+    # `--fresh` restores the old clean-slate behaviour for a test run.
+    rm -f "/tmp/cmux-$slot.sock"
+    session="$LOG_DIR/$slot-session.json"
+    $fresh && rm -f "$session"
     log="$LOG_DIR/$slot.log"
     mapfile -t term_env < <(ghostty_env)
     env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID \
         CMUX_APP_ID="com.manaflow.cmux.$slot" \
         CMUX_SOCKET_PATH="/tmp/cmux-$slot.sock" \
-        CMUX_SESSION_PATH="/tmp/cmux-$slot-session.json" \
+        CMUX_SESSION_PATH="$session" \
         "${term_env[@]}" \
         setsid nohup "$BIN" >>"$log" 2>&1 &
     disown
     echo "$slot instance started (pid $!, terminals: $(term_label))"
     echo "log: $log"
+    echo "session: $session"
     echo "talk to it: CMUX_SOCKET_PATH=/tmp/cmux-$slot.sock cmux ping"
     ;;
 stop-dev | stop-dev2)
@@ -163,7 +173,7 @@ status)
     if ping_dev dev2; then echo "dev2 socket:  responding (/tmp/cmux-dev2.sock)"; fi
     ;;
 *)
-    echo "usage: start.sh [daily|dev|dev2|stop-dev|stop-dev2|status] [--vte|--ghostty]" >&2
+    echo "usage: start.sh [daily|dev|dev2|stop-dev|stop-dev2|status] [--vte|--ghostty] [--fresh]" >&2
     exit 2
     ;;
 esac
