@@ -1276,3 +1276,45 @@ upstream.
 
 New suite: `linux/tests/browser-navigation-smoke.sh` — 8 assertions,
 4 clean runs, and `webdriver-smoke.sh` still 9/9.
+
+## 2026-07-21 — screenshot papercuts (found by a second session using the app)
+
+A parallel Claude session driving a browser pane from a fresh workspace
+reported that `browser screenshot` is undocumented and discards the image
+without `--out`. Both true, with a nuance worth recording: the verb *is*
+in `cmux browser --help`, and was missing only from the global
+`cmux --help` browser list — which is where anyone looks first.
+
+Three fixes:
+
+- **Global `cmux --help` now lists `browser screenshot`.** A verb
+  documented in only one of two help surfaces is undiscoverable in
+  practice.
+- **The no-`--out` case no longer lies.** The PNG was captured,
+  base64'd across the socket, and dropped on the floor while printing a
+  bare `OK` — which reads as "screenshot taken" and sends the caller
+  hunting for a file that was never written. It now says the image was
+  not saved and names both ways to keep it (`--out`, `--json`). Same
+  class as the quadratic transfer and the 15s cap: *no error, no
+  truncation, just behavior that looks like something else.*
+- **New `--full-page`.** We asked WebKit for
+  `WEBKIT_SNAPSHOT_REGION_VISIBLE`, so a page laid out wider or taller
+  than the pane was silently cut off — the reporting session's screenshot
+  had every description line severed mid-word, and nothing in the image
+  says so. `--full-page` uses `WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT`:
+  measured 408x704 (viewport) vs 980x1202 (full document) on the same
+  pane, with the clipped text, the second transition section and the
+  footer all restored. Viewport stays the default — it is what the human
+  sees, and it matches macOS.
+
+Not a bug, checked: the page rendered "Mountain with Prayer Hands" for
+`/pose/Mountain`. Straight after shipping a navigation barrier that is
+exactly the right shape to cause that, it had to be ruled out — the
+site's own data file gives `name: "Mountain"` the display name "Mountain
+with Prayer Hands" (tadasana + pranamasana), so the render was correct
+and the oracle agreed.
+
+macOS parity note: `BrowserPanel.takeSnapshot` uses a default
+`WKSnapshotConfiguration`, i.e. the visible viewport too — so the
+clipping is shared behavior, and `--full-page` is a Linux-side addition
+rather than a port fix.

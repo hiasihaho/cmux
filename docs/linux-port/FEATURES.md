@@ -97,6 +97,13 @@ Small but real. These are genuine additions, not just different internals:
   text, console capture) address the very same surface — trusted input
   and rich inspection on one pane. macOS cmux has no automation opt-in at
   all.
+- ★ **`browser screenshot --full-page`.** Captures the whole document
+  (`WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT`) instead of just the visible
+  viewport, so content laid out wider or taller than the pane is not
+  silently cut off — measured 408x704 vs 980x1202 on the same pane.
+  macOS's `BrowserPanel.takeSnapshot` uses a default
+  `WKSnapshotConfiguration` (visible viewport) and exposes no equivalent
+  flag. Viewport remains the default on both.
 - ★ **Navigation barrier on `goto`/`back`/`forward`/`reload`.** The verb
   holds its response until the new document is committed, so a following
   `eval`/`wait`/`snapshot` cannot read the page you just navigated away

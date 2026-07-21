@@ -1430,9 +1430,17 @@ extension ControlCommandHandler {
             payload["png_base64"] = png
             respond(self.baOk(id: id, result: payload))
         }).toOpaque()
+        // Default is the visible viewport (what the human sees, and what
+        // macOS's WKSnapshotConfiguration does). `full_page` captures the
+        // whole document instead — on a page laid out wider or taller than
+        // the pane, the viewport shot silently cuts content off mid-word,
+        // which is invisible in the result unless you knew to expect it.
+        let region = boolParam(params, "full_page") == true
+            ? WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT
+            : WEBKIT_SNAPSHOT_REGION_VISIBLE
         webkit_web_view_get_snapshot(
             target.webView,
-            WEBKIT_SNAPSHOT_REGION_VISIBLE,
+            region,
             WEBKIT_SNAPSHOT_OPTIONS_NONE,
             nil,
             { _, result, userData in

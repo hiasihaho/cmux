@@ -2832,8 +2832,12 @@ struct CMUXCLI {
 
         if subcommand == "screenshot" {
             let sid = try requireSurface()
-            let (outPathOpt, _) = parseOption(subArgs, name: "--out")
-            let payload = try client.sendV2(method: "browser.screenshot", params: ["surface_id": sid])
+            let (outPathOpt, rest) = parseOption(subArgs, name: "--out")
+            var params: [String: Any] = ["surface_id": sid]
+            if hasFlag(rest, name: "--full-page") {
+                params["full_page"] = true
+            }
+            let payload = try client.sendV2(method: "browser.screenshot", params: params)
             if let outPathOpt,
                let b64 = payload["png_base64"] as? String,
                let data = Data(base64Encoded: b64) {
@@ -2845,7 +2849,11 @@ struct CMUXCLI {
             } else if let outPathOpt {
                 print("OK \(outPathOpt)")
             } else {
-                print("OK")
+                // The PNG was captured and transferred, and without --out it
+                // is about to be dropped. A bare "OK" reads as "screenshot
+                // taken" and leaves the caller hunting for a file that was
+                // never written.
+                print("OK (image not saved — pass --out <path> to write the PNG, or --json for base64)")
             }
             return
         }
@@ -4583,7 +4591,9 @@ struct CMUXCLI {
               press|key|keydown|keyup [--key <key> | <key>] [--snapshot-after]
               select [--selector <css> | <css>] [--value <value> | <value>] [--snapshot-after]
               scroll [--selector <css>] [--dx <n>] [--dy <n>] [--snapshot-after]
-              screenshot [--out <path>]
+              screenshot [--out <path>] [--full-page]
+                without --out the PNG is discarded; --full-page captures the whole
+                document instead of just the visible viewport
               get <url|title|text|html|value|attr|count|box|styles> [...]
                 text|html|value|count|box|styles|attr: [--selector <css> | <css>]
                 attr: [--attr <name> | <name>]
@@ -6587,6 +6597,7 @@ struct CMUXCLI {
           browser find nth <index> <selector>   (0-based; negative counts from end)
           browser frame <selector|main>
           browser dialog <accept|dismiss> [text]
+          browser screenshot [--out <path>] [--full-page]
           browser download [wait] [--path <path>] [--timeout-ms <ms>]
           browser cookies <get|set|clear> [...]
           browser storage <local|session> <get|set|clear> [...]
