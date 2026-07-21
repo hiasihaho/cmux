@@ -2401,6 +2401,31 @@ struct CMUXCLI {
         var surfaceRaw = surfaceOpt
         var args = argsWithoutSurfaceFlag
 
+        // The global output flags are also accepted after the browser
+        // subcommand (`browser open <url> --json`); strip them here like
+        // --surface above so they never leak into free-text arguments
+        // such as the URL.
+        var jsonOutput = jsonOutput
+        var idFormat = idFormat
+        do {
+            var remaining: [String] = []
+            var pastTerminator = false
+            for arg in args {
+                if arg == "--" { pastTerminator = true }
+                if !pastTerminator, arg == "--json" {
+                    jsonOutput = true
+                    continue
+                }
+                remaining.append(arg)
+            }
+            args = remaining
+        }
+        let (idFormatRaw, argsWithoutIDFormat) = parseOption(args, name: "--id-format")
+        if let idFormatRaw {
+            args = argsWithoutIDFormat
+            idFormat = try resolvedIDFormat(jsonOutput: jsonOutput, raw: idFormatRaw)
+        }
+
         let verbsWithoutSurface: Set<String> = ["open", "open-split", "new", "identify"]
         if surfaceRaw == nil, let first = args.first {
             // Only consume the optional positional surface when it actually
@@ -2660,7 +2685,11 @@ struct CMUXCLI {
             // Parse routing flags before URL assembly so they never leak into the URL string.
             let (workspaceOpt, argsAfterWorkspace) = parseOption(subArgs, name: "--workspace")
             let (windowOpt, urlArgs) = parseOption(argsAfterWorkspace, name: "--window")
-            let url = urlArgs.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            if let stray = urlArgs.first(where: { $0.hasPrefix("--") && $0 != "--" }) {
+                throw CLIError(message: "browser \(subcommand): unknown flag '\(stray)' (known: --workspace <handle> --window <handle> --json --id-format <refs|uuids|both>)")
+            }
+            let url = urlArgs.filter { $0 != "--" }
+                .joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
 
             if surfaceRaw != nil, subcommand == "open" {
                 // Treat `browser <surface> open <url>` as navigate for agent-browser ergonomics.
@@ -2702,7 +2731,11 @@ struct CMUXCLI {
         if subcommand == "goto" || subcommand == "navigate" {
             let sid = try requireSurface()
             let (navParams, rest) = navigationParams(subArgs)
-            let url = rest.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            if let stray = rest.first(where: { $0.hasPrefix("--") && $0 != "--" }) {
+                throw CLIError(message: "browser \(subcommand): unknown flag '\(stray)' (known: --wait-selector --wait-function --wait-load-state --timeout-ms --timeout --no-wait --snapshot-after --json --id-format <refs|uuids|both>)")
+            }
+            let url = rest.filter { $0 != "--" }
+                .joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !url.isEmpty else {
                 throw CLIError(message: "browser \(subcommand) requires a URL")
             }

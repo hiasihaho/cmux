@@ -2357,3 +2357,31 @@ firings logged); without it, the run that had nothing on disk stayed
 empty, which is precisely the reported bug. Suite: 8 suites green,
 session-persistence now 25 assertions including the polite-close round
 trip and a column-0 (un-staircased) check.
+
+## 2026-07-21 — trailing `--json` leaked into the browser URL
+
+`cmux browser open https://news.ycombinator.com --json` navigated to the
+literal URL `https://news.ycombinator.com --json` — WebKit showed "Die
+Adresse kann nicht angezeigt werden" and the flag was silently eaten.
+Found live while dogfooding article summarization.
+
+Root cause: global flags (`--json`, `--id-format`) are only parsed
+*before* the command word; anything after lands in `commandArgs`, and
+`browser open`/`goto` join their leftover args into the URL string with
+spaces. The skill docs (`skills/cmux-browser/SKILL.md`) show trailing
+`--json` as the canonical form, so this was a real usage path, not abuse.
+
+Fix in `CLI/cmux.swift` (shared source, builds on both platforms):
+
+- `runBrowserCommand` now strips `--json` and `--id-format <v>` from its
+  args the same way it already stripped `--surface`, honoring the `--`
+  terminator, so every browser subcommand accepts trailing output flags.
+- `open`/`open-split`/`new` and `goto`/`navigate` reject any leftover
+  `--…` token with "unknown flag" instead of joining it into the URL —
+  a typo now errors instead of navigating somewhere broken.
+
+Verified against the live instance: trailing `--json` returns JSON with a
+clean URL, `--jsn` and `--snapshot-after-typo` error out client-side
+(no split created), leading-flag form unchanged. Also confirmed
+"multiple browser surfaces" disambiguation still works — the second
+browser pane in the workspace was the human's, not a stray.
