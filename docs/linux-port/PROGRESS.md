@@ -1868,3 +1868,49 @@ which bit again here. Kill by exact name (`pgrep -x`) instead.
 
 All six suites green: webdriver 9/9, navigation 8/8, popup 12/12,
 search 11/11, find 11/11, session 11/11.
+
+## 2026-07-21 — test harness refactor: lib.sh, run-all.sh, Xvfb everywhere
+
+Six suites each carried ~50 lines of duplicated setup, teardown and
+port-freeing, and every lesson learned had to be applied six times (or,
+in practice, to whichever copy was being edited). They now share
+[`lib.sh`](../../linux/tests/lib.sh):
+
+- `start_instance` / `kill_instance` (by `CMUX_APP_ID` in
+  `/proc/<pid>/environ`, never `pkill -f`), `start_fixture_server`
+  (`--directory`, no wrapper subshell), `free_port`, `cx`, `expect`,
+  `wait_for_shell`, `first_surface_ref`, `screenshot`.
+- **Every suite runs on its own Xvfb display**, derived from its fixture
+  port. This is the substantive change: a Ghostty surface spawns its shell
+  on first *map*, so terminal assertions previously depended on whether
+  the test window happened to be visible on the human's desktop.
+  `pane-search-smoke` now passes 11/11 with **no skips**, where on the
+  real desktop its two terminal assertions had to be skipped.
+- `skip` counts separately from pass and fail, so a missing precondition
+  can masquerade as neither.
+
+`run-all.sh` runs all six sequentially (parallel is how the
+"shell never spawned" flake appears on a loaded machine) and separates
+assertion failures from setup errors. One command, one summary:
+**62 assertions passed, 0 failed, 2m34s.**
+
+Sizes: `browser-find-smoke.sh` went 121 → 66 lines; the boilerplate is
+gone from all six.
+
+Two self-inflicted bugs while doing it, both worth recording because they
+are the *same* mistake in different clothes:
+
+- A regex written to delete the suite's old `cleanup() {` matched
+  `cleanup() {` inside the **`suite_cleanup() {`** I had just added, and
+  ate the file from there. Identical in shape to the earlier
+  `s.index()` truncation of BrowserSurfaces.swift: a pattern that matches
+  more than the one place you pictured. Restored from git and redone with
+  an anchor that could not match the new text.
+- `local extra=("${INSTANCE_ENV[@]:-}")` expands an *unset* array to one
+  **empty word**, so every suite that did not set it ran
+  `env "" nohup cmux-adw` and died with `env: '': No such file or
+  directory`. It looked like four suites breaking at once; it was one
+  character of bash semantics. `[ -n "${INSTANCE_ENV+x}" ]` guards it.
+
+Both were caught because the suites are run after every change, which is
+the point of having them.

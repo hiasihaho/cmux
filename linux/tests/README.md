@@ -1,13 +1,38 @@
 # linux/tests
 
-Manual, on-demand test harnesses for the Linux port. None of these run in
-CI yet; all of them are safe to run beside the human's daily instance
-(each starts its own isolated cmux with a distinct `CMUX_APP_ID`,
-socket and session file).
+Manual, on-demand test harnesses for the Linux port. None run in CI yet;
+all are safe to run beside the human's daily instance — each starts its own
+cmux with a distinct `CMUX_APP_ID`, socket, session file **and X display**.
+
+```sh
+linux/tests/run-all.sh            # every suite, one summary
+linux/tests/run-all.sh find popup # only suites matching those words
+linux/tests/browser-find-smoke.sh --keep   # one suite, leave it up to poke
+```
+
+Suites share [`lib.sh`](lib.sh), which holds the setup, teardown and every
+lesson that cost a debugging round — pre-flight port cleanup, killing by
+exact name rather than `pkill -f`, backgrounding servers without a wrapper
+subshell, polling instead of sleeping. Fixing one of those now fixes it
+everywhere instead of in six copies.
+
+**Suites run on a private X display (Xvfb).** That is not cosmetic: a
+Ghostty surface spawns its shell on first *map*, so on a real desktop the
+terminal assertions depend on whether the window happens to be visible,
+which produced a stretch of unexplained failures on 2026-07-21. A virtual
+display removes the variable and makes `screenshot` work, so UI can be
+asserted rather than eyeballed. `CMUX_TEST_XVFB=0` disables it.
+
+**Skips are not passes.** When a precondition is missing a suite calls
+`skip`, which prints, counts separately, and never fails the run — so a
+missing precondition can never masquerade as a product failure, nor as
+success.
 
 | Script | What it covers |
 |---|---|
 | [`browser-navigation-smoke.sh`](browser-navigation-smoke.sh) | The navigation barrier: goto/back/forward/reload must never let a following eval read the previous document; plus load_state, wait-flag chaining, honest timeouts |
+| [`run-all.sh`](run-all.sh) | Runs every suite sequentially and summarizes; separates failures from setup errors |
+| [`lib.sh`](lib.sh) | Shared setup/teardown, Xvfb, assertions, `screenshot`, `wait_for_shell` |
 | [`webdriver-smoke.sh`](webdriver-smoke.sh) | The whole WebDriver stack: automation opt-in, attach mode, split adoption, trusted input, and cmux+WebDriver sharing one surface — plus a live strict-CSP run against github.com |
 | [`session-persistence-smoke.sh`](session-persistence-smoke.sh) | Schema v3: v2 migration, multi-tab panes round-tripping as tabs, selected tab, browser URLs, navigable restored history |
 | [`browser-find-smoke.sh`](browser-find-smoke.sh) | Find-in-page: counts, next/previous wrap, case sensitivity, no-match recovery |

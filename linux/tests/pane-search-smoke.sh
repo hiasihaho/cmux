@@ -9,52 +9,10 @@
 # Uses a LOCAL fixture page (no network) so the browser side is
 # deterministic: an earlier manual run "failed" only because the test
 # string was on a different page than the one loaded.
-set -uo pipefail
-
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CLI="$ROOT/.build/debug/cmux"
-APP="$ROOT/.build/debug/cmux-adw"
-APP_ID="com.manaflow.cmux.searchtest"
-SOCK="/tmp/cmux-searchtest.sock"
-SESSION="/tmp/cmux-searchtest-session.json"
-LOG="/tmp/cmux-searchtest.log"
+SUITE_NAME="pane-search-smoke"
+APP_ID_SUFFIX="searchtest"
 PAGE_PORT=8414
-KEEP=0
-[ "${1:-}" = "--keep" ] && KEEP=1
-
-PASS=0; FAIL=0
-ok()   { echo "  PASS  $1"; PASS=$((PASS+1)); }
-bad()  { echo "  FAIL  $1 — $2"; FAIL=$((FAIL+1)); }
-info() { echo "== $1"; }
-
-free_port() {
-    local pids
-    pids=$(ss -lptnH "sport = :$1" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)
-    [ -n "$pids" ] && kill $pids 2>/dev/null
-    return 0
-}
-kill_instance() {
-    for pid in $(pgrep -x cmux-adw 2>/dev/null); do
-        tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null \
-            | grep -q "CMUX_APP_ID=$APP_ID" && kill "$pid" 2>/dev/null
-    done
-    return 0
-}
-cleanup() {
-    [ "$KEEP" = "1" ] && { echo "== --keep: instance on $SOCK, fixture on $PAGE_PORT"; return; }
-    [ -n "${PAGE_PID:-}" ] && kill "$PAGE_PID" 2>/dev/null
-    free_port $PAGE_PORT
-    kill_instance
-    rm -f "$SESSION"
-}
-trap cleanup EXIT
-
-free_port $PAGE_PORT
-kill_instance
-sleep 0.5
-
-[ -x "$CLI" ] || { echo "missing $CLI — build with: cd linux && CMUX_GHOSTTY=1 swift build" >&2; exit 2; }
-[ -x "$APP" ] || { echo "missing $APP" >&2; exit 2; }
+source "$(dirname "$0")/lib.sh"
 
 WORK=$(mktemp -d)
 cat > "$WORK/index.html" <<'HTML'
@@ -66,22 +24,11 @@ cat > "$WORK/index.html" <<'HTML'
 <div style="display:none">HIDDENNEEDLE</div>
 </body>
 HTML
-python3 -m http.server $PAGE_PORT --directory "$WORK" >/dev/null 2>&1 &
-PAGE_PID=$!
-for _ in $(seq 1 20); do
-    curl -s -m 1 "http://127.0.0.1:$PAGE_PORT/index.html" >/dev/null 2>&1 && break
-    sleep 0.3
-done
+start_fixture_server "$WORK"
 
 info "starting isolated cmux"
-CMUX_APP_ID=$APP_ID CMUX_SOCKET_PATH=$SOCK CMUX_SESSION_PATH=$SESSION \
-    nohup "$APP" >"$LOG" 2>&1 &
-for _ in $(seq 1 40); do
-    CMUX_SOCKET_PATH=$SOCK "$CLI" ping >/dev/null 2>&1 && break
-    sleep 0.5
-done
-cx() { env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID CMUX_SOCKET_PATH=$SOCK "$CLI" "$@"; }
-cx ping >/dev/null 2>&1 || { echo "instance did not come up (see $LOG)" >&2; exit 2; }
+start_xvfb
+start_instance || exit 2
 
 WS=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
 cx browser open "http://127.0.0.1:$PAGE_PORT/index.html" --workspace "$WS" >/dev/null
@@ -170,6 +117,4 @@ print(",".join(sorted(need - set(r))))')
     || bad "JSON shape" "missing keys: $missing"
 
 cx close-workspace --workspace "$WS" >/dev/null 2>&1
-echo
-echo "== pane-search-smoke: $PASS passed, $FAIL failed"
-[ "$FAIL" = "0" ] || exit 1
+finish

@@ -10,62 +10,10 @@
 #   session-persistence-smoke.sh --keep   # leave the instance up
 #
 # Exit: 0 all passed, 1 an assertion failed, 2 setup problem.
-set -uo pipefail
-
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CLI="$ROOT/.build/debug/cmux"
-APP="$ROOT/.build/debug/cmux-adw"
-APP_ID="com.manaflow.cmux.sesstest"
-SOCK="/tmp/cmux-sesstest.sock"
-SESSION="/tmp/cmux-sesstest-session.json"
-LOG="/tmp/cmux-sesstest.log"
+SUITE_NAME="session-persistence-smoke"
+APP_ID_SUFFIX="sesstest"
 PAGE_PORT=8417
-KEEP=0
-[ "${1:-}" = "--keep" ] && KEEP=1
-
-PASS=0; FAIL=0
-ok()   { echo "  PASS  $1"; PASS=$((PASS+1)); }
-bad()  { echo "  FAIL  $1 — $2"; FAIL=$((FAIL+1)); }
-info() { echo "== $1"; }
-expect() { [ "$3" = "$2" ] && ok "$1" || bad "$1" "expected '$2', got '$3'"; }
-
-free_port() {
-    local pids
-    pids=$(ss -lptnH "sport = :$1" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)
-    [ -n "$pids" ] && kill $pids 2>/dev/null
-    return 0
-}
-kill_instance() {
-    for pid in $(pgrep -x cmux-adw 2>/dev/null); do
-        tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null \
-            | grep -q "CMUX_APP_ID=$APP_ID" && kill "$pid" 2>/dev/null
-    done
-    sleep 1
-    return 0
-}
-start_instance() {
-    CMUX_APP_ID=$APP_ID CMUX_SOCKET_PATH=$SOCK CMUX_SESSION_PATH=$SESSION \
-        nohup "$APP" >"$LOG" 2>&1 &
-    for _ in $(seq 1 40); do
-        CMUX_SOCKET_PATH=$SOCK "$CLI" ping >/dev/null 2>&1 && break
-        sleep 0.5
-    done
-}
-cleanup() {
-    [ "$KEEP" = "1" ] && { echo "== --keep: instance on $SOCK, session $SESSION"; return; }
-    [ -n "${PAGE_PID:-}" ] && kill "$PAGE_PID" 2>/dev/null
-    free_port $PAGE_PORT
-    kill_instance
-    rm -f "$SESSION"
-}
-trap cleanup EXIT
-
-free_port $PAGE_PORT
-kill_instance
-rm -f "$SESSION"
-
-[ -x "$CLI" ] || { echo "missing $CLI — build with: cd linux && CMUX_GHOSTTY=1 swift build" >&2; exit 2; }
-[ -x "$APP" ] || { echo "missing $APP" >&2; exit 2; }
+source "$(dirname "$0")/lib.sh"
 
 WORK=$(mktemp -d)
 echo '<!doctype html><title>page A</title><h1>A</h1>' > "$WORK/a.html"
@@ -75,14 +23,8 @@ cat > "$WORK/index.html" <<HTML
 <button id="btn" onclick="window.open('/a.html','_blank')">open</button>
 </body>
 HTML
-python3 -m http.server $PAGE_PORT --directory "$WORK" >/dev/null 2>&1 &
-PAGE_PID=$!
-for _ in $(seq 1 20); do
-    curl -s -m 1 "http://127.0.0.1:$PAGE_PORT/index.html" >/dev/null 2>&1 && break
-    sleep 0.3
-done
+start_fixture_server "$WORK"
 
-cx() { env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID CMUX_SOCKET_PATH=$SOCK "$CLI" "$@"; }
 
 # ---------------------------------------------------------------- v2 migration
 # A v2 file must still load: refusing it would silently discard a real
@@ -111,8 +53,8 @@ cat > "$SESSION" <<'JSON'
   ]
 }
 JSON
-start_instance
-cx ping >/dev/null 2>&1 || { echo "instance did not come up (see $LOG)" >&2; exit 2; }
+start_xvfb
+start_instance || exit 2
 count=$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')
 expect "v2 session still restores (both workspaces)" "2" "$count"
 
@@ -130,7 +72,7 @@ expect "v3 shape has a flat surfaces array" "ok" "$shape"
 info "multi-tab pane round-trip"
 kill_instance
 rm -f "$SESSION"
-start_instance
+start_instance || exit 2
 WS=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
 S=$(cx browser open "http://127.0.0.1:$PAGE_PORT/index.html" --workspace "$WS" | grep -oE 'surface:[0-9]+')
 cx select-workspace --workspace "$WS" >/dev/null
@@ -170,7 +112,7 @@ for w in d['workspaces']:
         if len(p['surfaceIds'])>1: print(p['selectedId']); raise SystemExit" 2>/dev/null)
 
 kill_instance
-start_instance
+start_instance || exit 2
 sleep 3
 
 tabs_after=$(cx --json list-panes --workspace workspace:2 2>/dev/null | python3 -c '
@@ -220,7 +162,7 @@ expect "forward returns to the restored entry" "$before_back" "$(cx browser --su
 info "navigation is captured without waiting for the session timer"
 kill_instance
 rm -f "$SESSION"
-start_instance
+start_instance || exit 2
 WS2=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
 S2=$(cx browser open "http://127.0.0.1:$PAGE_PORT/a.html" --workspace "$WS2" | grep -oE 'surface:[0-9]+')
 cx select-workspace --workspace "$WS2" >/dev/null
@@ -235,6 +177,4 @@ urls=[(s.get('browser') or {}).get('url','') for w in d['workspaces'] for s in w
 print('yes' if any(u.endswith('/b.html') for u in urls) else 'no')" 2>/dev/null)
 expect "a navigation is persisted without the 15s timer" "yes" "$persisted"
 
-echo
-echo "== session-persistence-smoke: $PASS passed, $FAIL failed"
-[ "$FAIL" = "0" ] || exit 1
+finish

@@ -10,17 +10,29 @@
 #
 # Everything runs on an ISOLATED cmux instance (own app id/socket/session)
 # — the human's daily instance is never touched.
-set -uo pipefail
-
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-BIN="$ROOT/linux/.build/debug/cmux-adw"
-CLI="$ROOT/linux/.build/debug/cmux"
-APP_ID=com.manaflow.cmux.wdtest
-SOCK=/tmp/cmux-wdtest.sock
-SESSION_FILE=/tmp/cmux-wdtest-session.json
+SUITE_NAME="webdriver-smoke"
+APP_ID_SUFFIX="wdtest"
+PAGE_PORT=8402
 INSPECTOR=127.0.0.1:5599
 WD_PORT=4499
-PAGE_PORT=8402
+source "$(dirname "$0")/lib.sh"
+
+BIN="$APP"   # lib.sh names it APP; kept for the assertions below
+
+# The driver and its ports belong to this suite; lib.sh runs this
+# before the shared teardown.
+suite_cleanup() {
+    [ -n "${SID:-}" ] && curl -s -m 10 -X DELETE "http://127.0.0.1:$WD_PORT/session/$SID" >/dev/null 2>&1
+    # By saved pid, never `pkill -f`: that pattern also matches the
+    # calling shell own command line.
+    [ -n "${WD_PID:-}" ] && kill "$WD_PID" 2>/dev/null
+    free_port "$WD_PORT"
+    free_port "${INSPECTOR##*:}"
+}
+free_port "$WD_PORT"
+free_port "${INSPECTOR##*:}"
+require_tools WebKitWebDriver
+
 WORK=$(mktemp -d)
 KEEP=false
 [ "${1:-}" = "--keep" ] && KEEP=true
@@ -30,22 +42,7 @@ ok()   { echo "  PASS  $1"; PASS=$((PASS+1)); }
 bad()  { echo "  FAIL  $1 — $2"; FAIL=$((FAIL+1)); }
 info() { echo "== $1"; }
 
-cleanup() {
-    $KEEP && { echo "--keep: leaving instance ($SOCK) and driver (:$WD_PORT) up"; return; }
-    [ -n "${SID:-}" ] && curl -s -m 10 -X DELETE "http://127.0.0.1:$WD_PORT/session/$SID" >/dev/null 2>&1
-    pkill -f "WebKitWebDriver --port=$WD_PORT" 2>/dev/null
-    for pid in $(pgrep -x cmux-adw 2>/dev/null); do
-        app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
-        [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
-    done
-    [ -n "${PAGE_PID:-}" ] && kill "$PAGE_PID" 2>/dev/null
-    free_port $PAGE_PORT 2>/dev/null
-    rm -rf "$WORK" "$SOCK" "$SESSION_FILE"
-}
-trap cleanup EXIT
 
-command -v WebKitWebDriver >/dev/null || { echo "WebKitWebDriver not installed"; exit 2; }
-[ -x "$BIN" ] || { echo "build first: cd linux && CMUX_GHOSTTY=1 swift build"; exit 2; }
 
 # Pre-flight: make the run idempotent. A previous --keep run (or a crash)
 # can leave the fixture server holding PAGE_PORT, the driver holding
@@ -57,7 +54,6 @@ free_port() {
         kill "$pid" 2>/dev/null
     done
 }
-free_port $PAGE_PORT; free_port $WD_PORT; free_port "${INSPECTOR##*:}"
 pkill -f "WebKitWebDriver --port=$WD_PORT" 2>/dev/null
 for pid in $(pgrep -x cmux-adw 2>/dev/null); do
     app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
@@ -86,17 +82,15 @@ sleep 1
 
 # ------------------------------------------------------------- instance
 info "starting isolated cmux (automation + inspector server)"
-rm -f "$SOCK" "$SESSION_FILE"
-env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID \
-    CMUX_APP_ID=$APP_ID CMUX_SOCKET_PATH=$SOCK CMUX_SESSION_PATH=$SESSION_FILE \
-    CMUX_WEBDRIVER=1 WEBKIT_INSPECTOR_SERVER=$INSPECTOR \
-    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty" \
-    setsid nohup "$BIN" >"$WORK/cmux.log" 2>&1 &
-for _ in $(seq 1 40); do [ -S "$SOCK" ] && break; sleep 0.5; done
-[ -S "$SOCK" ] || { echo "instance never came up"; sed -n '1,20p' "$WORK/cmux.log"; exit 2; }
+INSTANCE_ENV=(
+    CMUX_WEBDRIVER=1
+    WEBKIT_INSPECTOR_SERVER=$INSPECTOR
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_xvfb
+start_instance || exit 2
 sleep 2
-cx() { env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID CMUX_SOCKET_PATH=$SOCK "$CLI" "$@"; }
-grep -q 'WebDriver automation ENABLED' "$WORK/cmux.log" \
+grep -q 'WebDriver automation ENABLED' "$LOG" \
     && ok "automation opt-in active" || bad "automation opt-in" "banner missing"
 
 PANES_BEFORE=$(cx --json list-panes | python3 -c "import json,sys;print(len(json.load(sys.stdin)['panes']))")
@@ -104,6 +98,7 @@ PANES_BEFORE=$(cx --json list-panes | python3 -c "import json,sys;print(len(json
 # --------------------------------------------------------------- driver
 info "attaching WebKitWebDriver to the running instance"
 WebKitWebDriver --port=$WD_PORT --target=$INSPECTOR >"$WORK/wd.log" 2>&1 &
+WD_PID=$!
 sleep 3
 SID=$(curl -s -m 45 -X POST "http://127.0.0.1:$WD_PORT/session" \
       -H 'Content-Type: application/json' -d '{"capabilities":{"alwaysMatch":{}}}' \

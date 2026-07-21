@@ -12,58 +12,11 @@
 #   browser-navigation-smoke.sh --keep   # leave the instance up for poking
 #
 # Exit: 0 all passed, 1 an assertion failed, 2 setup problem.
-set -uo pipefail
-
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CLI="$ROOT/.build/debug/cmux"
-APP="$ROOT/.build/debug/cmux-adw"
-APP_ID="com.manaflow.cmux.navtest"
-SOCK="/tmp/cmux-navtest.sock"
-SESSION="/tmp/cmux-navtest-session.json"
-LOG="/tmp/cmux-navtest.log"
+SUITE_NAME="browser-navigation-smoke"
+APP_ID_SUFFIX="navtest"
 PAGE_PORT=8409
-KEEP=0
-[ "${1:-}" = "--keep" ] && KEEP=1
+source "$(dirname "$0")/lib.sh"
 
-PASS=0; FAIL=0
-ok()   { echo "  PASS  $1"; PASS=$((PASS+1)); }
-bad()  { echo "  FAIL  $1 — $2"; FAIL=$((FAIL+1)); }
-info() { echo "== $1"; }
-
-free_port() {
-    local pids
-    pids=$(ss -lptnH "sport = :$1" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)
-    [ -n "$pids" ] && kill $pids 2>/dev/null
-    return 0
-}
-
-kill_instance() {
-    for pid in $(pgrep -x cmux-adw 2>/dev/null); do
-        tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null \
-            | grep -q "CMUX_APP_ID=$APP_ID" && kill "$pid" 2>/dev/null
-    done
-    return 0
-}
-
-cleanup() {
-    [ "$KEEP" = "1" ] && { echo "== --keep: instance on $SOCK, fixture on $PAGE_PORT"; return; }
-    [ -n "${PAGE_PID:-}" ] && kill "$PAGE_PID" 2>/dev/null
-    free_port $PAGE_PORT
-    kill_instance
-    rm -f "$SESSION"
-}
-trap cleanup EXIT
-
-# Pre-flight: a previous --keep run leaves the port and instance held, which
-# would otherwise fail this run for unrelated-looking reasons.
-free_port $PAGE_PORT
-kill_instance
-sleep 0.5
-
-[ -x "$CLI" ] || { echo "missing $CLI — build with: cd linux && CMUX_GHOSTTY=1 swift build" >&2; exit 2; }
-[ -x "$APP" ] || { echo "missing $APP" >&2; exit 2; }
-
-# --- fixture: every page waits before responding, widening the race window.
 WORK=$(mktemp -d)
 cat > "$WORK/server.py" <<'PY'
 import sys, time
@@ -200,6 +153,4 @@ else
 fi
 
 cx close-workspace --workspace "$WS" >/dev/null 2>&1
-echo
-echo "== browser-navigation-smoke: $PASS passed, $FAIL failed"
-[ "$FAIL" = "0" ] || exit 1
+finish
