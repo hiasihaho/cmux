@@ -175,6 +175,11 @@ struct TerminalStackWidget: AdwaitaWidget {
     /// Surface asks to be closed (ghostty close-request: clean shell
     /// exit, Ctrl+D, …). VTE surfaces never call this (they linger).
     var onCloseRequest: (UUID, UUID) -> Void
+    /// A pane's tab strip changed selection / a tab was closed. Mirrored
+    /// into the model so the widget and the socket verbs never disagree
+    /// about which surface a pane is showing.
+    var onTabSelected: (UUID, UUID, UUID) -> Void = { _, _, _ in }
+    var onTabClosed: (UUID, UUID, UUID) -> Void = { _, _, _ in }
 
     func container<Data>(data: WidgetData, type: Data.Type) -> ViewStorage where Data: ViewRenderData {
         let stack = gtk_stack_new()
@@ -202,7 +207,10 @@ struct TerminalStackWidget: AdwaitaWidget {
 
         // Widgets for every leaf (new tabs and fresh splits alike).
         for tab in tabs {
-            for leaf in tab.surfaces where SurfaceRegistry.shared.containers[leaf.surfaceId] == nil {
+            for (paneId, surface) in tab.allSurfaces
+            where SurfaceRegistry.shared.containers[surface.surfaceId] == nil {
+                _ = paneId
+                let leaf = surface
                 switch leaf.kind {
                 case .terminal:
                     #if canImport(CGhosttyEmbed)
@@ -242,7 +250,8 @@ struct TerminalStackWidget: AdwaitaWidget {
         }
 
         // Drop registry entries for surfaces that no longer exist anywhere.
-        let liveSurfaces = Set(tabs.flatMap { $0.surfaces.map(\.surfaceId) })
+        // allSurfaces, not surfaces: a pane's background tabs are live too.
+        let liveSurfaces = Set(tabs.flatMap { $0.allSurfaces.map(\.surface.surfaceId) })
         for surfaceId in SurfaceRegistry.shared.containers.keys where !liveSurfaces.contains(surfaceId) {
             SurfaceRegistry.shared.unregister(surfaceId)
         }
@@ -266,8 +275,8 @@ struct TerminalStackWidget: AdwaitaWidget {
             // detach them from their old parents — GtkPaned refuses children
             // that are still parented elsewhere, and a silently rejected
             // child dies with the old skeleton (dangling registry pointers).
-            for leaf in tab.surfaces {
-                if let container = SurfaceRegistry.shared.containers[leaf.surfaceId] {
+            for (_, surface) in tab.allSurfaces {
+                if let container = SurfaceRegistry.shared.containers[surface.surfaceId] {
                     g_object_ref_sink(UnsafeMutableRawPointer(container))
                     detachFromParent(UnsafeMutablePointer<GtkWidget>(container))
                 }
@@ -284,13 +293,13 @@ struct TerminalStackWidget: AdwaitaWidget {
                OpaquePointer(parent) == stack {
                 gtk_stack_remove(stack, existing)
             }
-            if let root = buildNode(tab.layout) {
+            if let root = buildNode(tab.layout, tabId: tab.id) {
                 gtk_stack_add_named(stack, root, tab.id.uuidString)
                 restoreDividerPositions(root, path: "", from: dividers)
                 balanceFreshDividers(root, path: "", restored: dividers)
             }
-            for leaf in tab.surfaces {
-                if let container = SurfaceRegistry.shared.containers[leaf.surfaceId] {
+            for (_, surface) in tab.allSurfaces {
+                if let container = SurfaceRegistry.shared.containers[surface.surfaceId] {
                     g_object_unref(UnsafeMutableRawPointer(container))
                 }
             }
@@ -394,18 +403,22 @@ struct TerminalStackWidget: AdwaitaWidget {
         ) != 0
     }
 
-    private func buildNode(_ node: PaneNode) -> UnsafeMutablePointer<GtkWidget>? {
+    private func buildNode(_ node: PaneNode, tabId: UUID) -> UnsafeMutablePointer<GtkWidget>? {
         switch node {
         case .leaf(let leaf):
-            return SurfaceRegistry.shared.containers[leaf.surfaceId]
-                .map { UnsafeMutablePointer<GtkWidget>($0) }
+            return PaneTabs.build(
+                pane: leaf,
+                tabId: tabId,
+                onSelected: onTabSelected,
+                onClosed: onTabClosed
+            )
         case .split(let orientation, let first, let second):
             let paned = gtk_paned_new(
                 orientation == .horizontal ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL
             )
             let handle = OpaquePointer(paned)
-            gtk_paned_set_start_child(handle, buildNode(first))
-            gtk_paned_set_end_child(handle, buildNode(second))
+            gtk_paned_set_start_child(handle, buildNode(first, tabId: tabId))
+            gtk_paned_set_end_child(handle, buildNode(second, tabId: tabId))
             gtk_paned_set_wide_handle(handle, 1)
             gtk_widget_set_hexpand(paned, 1)
             gtk_widget_set_vexpand(paned, 1)
@@ -413,7 +426,7 @@ struct TerminalStackWidget: AdwaitaWidget {
         }
     }
 
-    private func createTerminal(for leaf: PaneLeaf, in tab: TerminalTab, storage: ViewStorage) {
+    private func createTerminal(for leaf: PaneSurface, in tab: TerminalTab, storage: ViewStorage) {
         guard let widget = vte_terminal_new() else { return }
         let terminal = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: VteTerminal.self)
         gtk_widget_set_hexpand(widget, 1)
@@ -435,7 +448,7 @@ struct TerminalStackWidget: AdwaitaWidget {
     }
 
     private func connectSignals(
-        for leaf: PaneLeaf,
+        for leaf: PaneSurface,
         in tab: TerminalTab,
         terminal: UnsafeMutablePointer<VteTerminal>,
         widget: UnsafeMutablePointer<GtkWidget>,
@@ -480,7 +493,7 @@ struct TerminalStackWidget: AdwaitaWidget {
     /// identity + socket path), mirroring the macOS terminal environment.
     private func spawnShell(
         in terminal: UnsafeMutablePointer<VteTerminal>,
-        leaf: PaneLeaf,
+        leaf: PaneSurface,
         tab: TerminalTab
     ) {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/bash"

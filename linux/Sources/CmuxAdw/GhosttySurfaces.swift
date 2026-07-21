@@ -61,7 +61,7 @@ enum GhosttyRuntime {
 enum GhosttySurfaceFactory {
 
     static func create(
-        for leaf: PaneLeaf,
+        for leaf: PaneSurface,
         in tab: TerminalTab,
         storage: ViewStorage,
         onTitleChanged: @escaping (UUID, UUID, String) -> Void,

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=cmux (dev)
+Comment=Isolated cmux dev instance — own app id, socket and session; safe beside the daily
+Exec=/home/hias/cmux/linux/scripts/start.sh dev
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;Development;
+StartupNotify=true

@@ -1556,3 +1556,66 @@ New suite `linux/tests/browser-find-smoke.sh` (11 assertions). One of its
 assertions was wrong on the first run — after `--previous` lands on match
 3, `--next` correctly wraps to 1, so the intended mid-sequence check had
 to step off the boundary first. Test error, not a product bug.
+
+## 2026-07-21 — per-pane tab strips (AdwTabView); popups become tabs
+
+A pane now holds several surfaces behind an AdwTabView tab strip, and
+popups land there as tabs instead of forcing another split. Measured with
+three popups: **5 panes → 2**, and the opener pane keeps its full
+408x704 instead of collapsing to ~100x176.
+
+**Cheaper than it looked, for two reasons.** `adw_tab_view_new()` is
+reachable straight from Swift through adwaita-swift's `CAdw` module — the
+earlier claim that this needed a C shim was wrong. And the design was
+already half-built: `PaneLeaf` always carried both `paneId` and
+`surfaceId`, and the *protocol* was already plural (`surface_count`,
+`surface_refs`, `selected_surface_ref` — `list-panes` was hardcoding 1).
+Only the model was capped at one surface. This finished an intended
+design rather than inventing one.
+
+`PaneLeaf` now holds `[PaneSurface]` + a selected index, with
+back-compat accessors (`surfaceId`, `kind`, `workingDirectory`) meaning
+"the surface this pane is showing". **All 144 `.surfaceId` call sites
+compiled unchanged.**
+
+**That clean build is the hazard, and it deserves stating plainly:** the
+compiler cannot flag a site that ought to enumerate *every* surface but
+still sees only the selected one. Those were audited by hand —
+widget construction, registry cleanup, session save, pane search and
+`list-panes` all use `allSurfaces` now. The registry-cleanup one is the
+dangerous one: leaving it would have destroyed the widgets of every
+background tab.
+
+`adw_tab_bar_set_autohide` keeps this free for the common case — a
+one-surface pane shows no bar and looks exactly as before.
+
+**Closing semantics** (the human asked for these specifically, and they
+are the part that can strand state): closing one tab of a multi-tab pane
+removes only that tab; the pane survives until its last tab goes, and
+then the pane goes with it. Four assertions, all passing.
+
+**Known gap:** the session snapshot format stores one surface per leaf,
+so a restored multi-tab pane comes back as sibling *panes*, not tabs.
+Chosen deliberately over silently dropping the extra tabs — a shell's cwd
+is worth more than the tab grouping — but a proper fix needs a schema
+version bump.
+
+**The popup suite failed 4 assertions after this change and was updated,
+not silently repaired**: it asserted *pane count increases*, which is
+exactly the behaviour this change reverses. It now asserts on surface
+counts, plus two new checks that pin the actual goal (popups must NOT add
+splits; the tabbed pane must keep full width). Two test-only findings: a
+pane's surface refs no longer track its pane ref once it has tabs (ask
+the protocol, don't derive), and a background tab reports **0px** — right
+for tabs, impossible with splits, and it made the first version of the
+width assertion measure the wrong surface.
+
+Also added: `~/.local/share/applications/com.manaflow.cmux.dev.desktop`,
+a GNOME launcher for the isolated dev instance (runs `start.sh dev`, so
+it inherits the double-daily refusal and app-id isolation). Pre-flighted
+the promotion path by restoring the human's real 5-workspace session file
+(a copy) under the new binary in a throwaway instance: all five restored,
+no errors.
+
+Suites after the refactor: webdriver 9/9, navigation 8/8, popup 12/12,
+search 11/11, find 11/11.

@@ -25,7 +25,7 @@ import Foundation
 enum InspectorSurfaceFactory {
 
     static func create(
-        for leaf: PaneLeaf,
+        for leaf: PaneSurface,
         in tab: TerminalTab,
         storage: ViewStorage,
         onSurfaceFocused: @escaping (UUID, UUID) -> Void

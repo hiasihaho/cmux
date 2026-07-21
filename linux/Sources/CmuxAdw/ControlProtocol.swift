@@ -653,7 +653,7 @@ struct ControlCommandHandler {
                 "id": leaf.surfaceId.uuidString,
                 "ref": registry.ref(kind: "surface", uuid: leaf.surfaceId),
                 "index": index,
-                "focused": leaf.surfaceId == focusedId,
+                "focused": focusedId.map { leaf.contains(surfaceId: $0) } ?? false,
                 "type": leaf.kind.typeName,
                 "title": tab.title
             ]
@@ -678,11 +678,15 @@ struct ControlCommandHandler {
                 "ref": registry.ref(kind: "pane", uuid: leaf.paneId),
                 "index": index,
                 "focused": leaf.surfaceId == focusedId,
-                "surface_ids": [leaf.surfaceId.uuidString],
-                "surface_refs": [registry.ref(kind: "surface", uuid: leaf.surfaceId)],
+                // Real lists now that a pane can hold tabs. These fields
+                // were always plural in the protocol; only the model was
+                // limited to one, and hardcoding 1 here would hide tabs
+                // from every client.
+                "surface_ids": leaf.surfaces.map(\.surfaceId.uuidString),
+                "surface_refs": leaf.surfaces.map { registry.ref(kind: "surface", uuid: $0.surfaceId) },
                 "selected_surface_id": leaf.surfaceId.uuidString,
                 "selected_surface_ref": registry.ref(kind: "surface", uuid: leaf.surfaceId),
-                "surface_count": 1
+                "surface_count": leaf.surfaces.count
             ]
         }
         return v2Ok(id: id, result: [
@@ -882,6 +886,33 @@ struct ControlCommandHandler {
         let height = gtk_widget_get_height(widget)
         guard width > 0, height > 0 else { return "right" }
         return width >= height ? "right" : "down"
+    }
+
+    /// Adopts a pre-created web view as a new TAB in the pane hosting the
+    /// anchor. This is what popups use: a second page is a tab, not another
+    /// split, so opening five of them no longer shreds the layout.
+    func adoptBrowserTab(nextTo anchor: UUID, register: (UUID) -> Void) -> UUID? {
+        guard let tab = tabs.wrappedValue.first(where: { $0.contains(surfaceId: anchor) }),
+              let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id })
+        else { return nil }
+        let cwd = SurfaceRegistry.shared.currentDirectory(for: anchor) ?? tab.workingDirectory
+        let surface = PaneSurface(kind: .browser(initialURL: ""), workingDirectory: cwd)
+        register(surface.surfaceId)
+        guard let layout = tabs.wrappedValue[index].layout.addingTab(surface, nextTo: anchor) else {
+            return nil
+        }
+        tabs.wrappedValue[index].layout = layout
+        if tab.id == selection.wrappedValue {
+            tabs.wrappedValue[index].focusedSurfaceId = surface.surfaceId
+        }
+        return surface.surfaceId
+    }
+
+    /// A tab strip changed selection.
+    func selectSurfaceTab(tabId: UUID, surfaceId: UUID) {
+        guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }) else { return }
+        tabs.wrappedValue[index].layout = tabs.wrappedValue[index].layout.selecting(surfaceId: surfaceId)
+        tabs.wrappedValue[index].focusedSurfaceId = surfaceId
     }
 
     /// Adopts a pre-created web view into a new split.

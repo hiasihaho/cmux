@@ -64,7 +64,10 @@ struct CmuxApp: App {
         PopupRouting.adopt = { view, openerSurfaceId in
             SocketDispatchGuard.active = true
             defer { SocketDispatchGuard.active = false }
-            let surfaceId = handler.adoptBrowserSplit(nextTo: openerSurfaceId) { pendingId in
+            // A popup becomes a TAB in the opener's pane. Splitting was the
+            // stopgap; this is the fix — the layout stops degrading with
+            // each popup.
+            let surfaceId = handler.adoptBrowserTab(nextTo: openerSurfaceId) { pendingId in
                 BrowserAdoption.pending[pendingId] = view
             }
             return surfaceId != nil
@@ -142,6 +145,12 @@ struct CmuxApp: App {
                             // exit, Ctrl+D). Same path as the close-pane
                             // shortcut; closing the last pane closes the
                             // workspace.
+                            controlHandler.closeSurface(tabId: tabId, surfaceId: surfaceId)
+                        },
+                        onTabSelected: { tabId, _, surfaceId in
+                            controlHandler.selectSurfaceTab(tabId: tabId, surfaceId: surfaceId)
+                        },
+                        onTabClosed: { tabId, _, surfaceId in
                             controlHandler.closeSurface(tabId: tabId, surfaceId: surfaceId)
                         }
                     )

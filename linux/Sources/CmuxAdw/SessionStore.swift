@@ -98,19 +98,30 @@ enum SessionStore {
     /// pane. A split with one pruned side collapses to the surviving side.
     private static func layoutSnapshot(_ node: PaneNode) -> LayoutSnapshot? {
         switch node {
-        case .leaf(let leaf):
-            switch leaf.kind {
-            case .terminal:
-                // Live cwd via OSC 7 beats the spawn-time directory.
-                let cwd = SurfaceRegistry.shared.currentDirectory(for: leaf.surfaceId)
-                    ?? leaf.workingDirectory
-                return .leaf(kind: "terminal", workingDirectory: cwd, url: "")
-            case .browser(let initialURL):
-                // Live page URL beats the initial one.
-                let url = SurfaceRegistry.shared.currentURL(for: leaf.surfaceId) ?? initialURL
-                return .leaf(kind: "browser", workingDirectory: "", url: url)
-            case .inspector:
-                return nil
+        case .leaf(let pane):
+            // A pane can hold several tabs. The snapshot format predates
+            // that and stores one surface per leaf, so the extra tabs are
+            // recorded as siblings — losing them silently would be worse
+            // than restoring them as panes, and the tab grouping is cheap
+            // to rebuild by hand compared to losing a shell's cwd.
+            let entries = pane.surfaces.compactMap { surface -> LayoutSnapshot? in
+                switch surface.kind {
+                case .terminal:
+                    // Live cwd via OSC 7 beats the spawn-time directory.
+                    let cwd = SurfaceRegistry.shared.currentDirectory(for: surface.surfaceId)
+                        ?? surface.workingDirectory
+                    return .leaf(kind: "terminal", workingDirectory: cwd, url: "")
+                case .browser(let initialURL):
+                    // Live page URL beats the initial one.
+                    let url = SurfaceRegistry.shared.currentURL(for: surface.surfaceId) ?? initialURL
+                    return .leaf(kind: "browser", workingDirectory: "", url: url)
+                case .inspector:
+                    return nil
+                }
+            }
+            guard let first = entries.first else { return nil }
+            return entries.dropFirst().reduce(first) { acc, next in
+                .split(orientation: "horizontal", first: acc, second: next)
             }
         case .split(let orientation, let first, let second):
             switch (layoutSnapshot(first), layoutSnapshot(second)) {

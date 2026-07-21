@@ -112,8 +112,14 @@ Small but real. These are genuine additions, not just different internals:
   per-pane find (`Sources/Find/`) but no cross-pane search verb.
   Deliberately separate from interactive find-in-pane, which is a
   different feature with a different engine.
+- ⚙ **Per-pane tab strips (AdwTabView).** A pane holds several surfaces
+  behind a tab bar that auto-hides when there is only one, and popups open
+  as tabs rather than splits — three popups leave the pane at full size
+  instead of shredding it into slivers. Parity with macOS, where Bonsplit
+  panes carry their own tabs; the Linux model was MVP'd at one surface per
+  pane until now.
 - ⚙ **Popups become panes.** `window.open()` and `target="_blank"` open a
-  browser pane beside their opener, sharing the opener's web process so
+  browser tab in their opener's pane, sharing the opener's web process so
   `window.opener` keeps working — instead of being silently dropped (the
   WebKitGTK default emits no `create` signal at all, so nothing happened).
   **Parity, and macOS's version is currently richer**: its

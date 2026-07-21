@@ -23,15 +23,38 @@ enum SurfaceKind: Equatable {
     }
 }
 
-/// One surface inside a workspace's pane tree. MVP: one surface per
-/// pane (macOS Bonsplit panes carry their own tab strips — later phase).
-struct PaneLeaf: Equatable {
-    let paneId: UUID
+/// One surface hosted in a pane.
+struct PaneSurface: Equatable {
     let surfaceId: UUID
     var kind: SurfaceKind
     /// Working directory the surface's shell was (or will be) spawned in
     /// (terminals only).
     var workingDirectory: String
+
+    init(
+        surfaceId: UUID = UUID(),
+        kind: SurfaceKind = .terminal,
+        workingDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path
+    ) {
+        self.surfaceId = surfaceId
+        self.kind = kind
+        self.workingDirectory = workingDirectory
+    }
+}
+
+/// One pane in a workspace's split tree. A pane holds one or more surfaces
+/// behind a tab strip (AdwTabView) — matching macOS, where Bonsplit panes
+/// carry their own tabs. Popups land here as tabs instead of forcing yet
+/// another split, which is what made five popups unreadable slivers.
+///
+/// The single-surface accessors below (`surfaceId`, `kind`,
+/// `workingDirectory`) mean "the surface this pane is currently showing".
+/// Most call sites want exactly that, which is why they still read as if a
+/// pane were a surface.
+struct PaneLeaf: Equatable {
+    let paneId: UUID
+    var surfaces: [PaneSurface]
+    var selectedIndex: Int
 
     init(
         paneId: UUID = UUID(),
@@ -40,9 +63,46 @@ struct PaneLeaf: Equatable {
         workingDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path
     ) {
         self.paneId = paneId
-        self.surfaceId = surfaceId
-        self.kind = kind
-        self.workingDirectory = workingDirectory
+        self.surfaces = [PaneSurface(
+            surfaceId: surfaceId, kind: kind, workingDirectory: workingDirectory
+        )]
+        self.selectedIndex = 0
+    }
+
+    init(paneId: UUID = UUID(), surfaces: [PaneSurface], selectedIndex: Int = 0) {
+        self.paneId = paneId
+        self.surfaces = surfaces.isEmpty ? [PaneSurface()] : surfaces
+        self.selectedIndex = selectedIndex
+    }
+
+    /// Clamped: a pane must always have a valid selection, and closing the
+    /// last tab is the caller's job, not something to crash on here.
+    var safeIndex: Int {
+        surfaces.isEmpty ? 0 : min(max(0, selectedIndex), surfaces.count - 1)
+    }
+
+    var selected: PaneSurface { surfaces[safeIndex] }
+
+    var surfaceId: UUID { selected.surfaceId }
+
+    var kind: SurfaceKind {
+        get { selected.kind }
+        set { surfaces[safeIndex].kind = newValue }
+    }
+
+    var workingDirectory: String {
+        get { selected.workingDirectory }
+        set { surfaces[safeIndex].workingDirectory = newValue }
+    }
+
+    func contains(surfaceId: UUID) -> Bool {
+        surfaces.contains { $0.surfaceId == surfaceId }
+    }
+
+    mutating func select(surfaceId: UUID) {
+        if let index = surfaces.firstIndex(where: { $0.surfaceId == surfaceId }) {
+            selectedIndex = index
+        }
     }
 }
 
@@ -71,7 +131,7 @@ indirect enum PaneNode: Equatable {
     var shapeSignature: String {
         switch self {
         case .leaf(let leaf):
-            return leaf.surfaceId.uuidString
+            return leaf.surfaces.map(\.surfaceId.uuidString).joined(separator: "+")
         case .split(let orientation, let first, let second):
             return "(\(orientation.rawValue) \(first.shapeSignature) \(second.shapeSignature))"
         }
@@ -117,12 +177,58 @@ indirect enum PaneNode: Equatable {
         }
     }
 
+    /// Selects a surface within its pane (a tab click), leaving the split
+    /// structure untouched.
+    func selecting(surfaceId: UUID) -> PaneNode {
+        switch self {
+        case .leaf(var leaf):
+            guard leaf.contains(surfaceId: surfaceId) else { return self }
+            leaf.select(surfaceId: surfaceId)
+            return .leaf(leaf)
+        case .split(let orientation, let first, let second):
+            return .split(
+                orientation: orientation,
+                first: first.selecting(surfaceId: surfaceId),
+                second: second.selecting(surfaceId: surfaceId)
+            )
+        }
+    }
+
+    /// Appends a surface as a new tab in the pane hosting `anchor`.
+    func addingTab(_ surface: PaneSurface, nextTo anchor: UUID) -> PaneNode? {
+        switch self {
+        case .leaf(var leaf):
+            guard leaf.contains(surfaceId: anchor) else { return nil }
+            leaf.surfaces.append(surface)
+            leaf.selectedIndex = leaf.surfaces.count - 1
+            return .leaf(leaf)
+        case .split(let orientation, let first, let second):
+            if let replaced = first.addingTab(surface, nextTo: anchor) {
+                return .split(orientation: orientation, first: replaced, second: second)
+            }
+            if let replaced = second.addingTab(surface, nextTo: anchor) {
+                return .split(orientation: orientation, first: first, second: replaced)
+            }
+            return nil
+        }
+    }
+
     /// Removes the leaf holding `surfaceId`; the sibling subtree takes the
     /// removed node's place. Returns nil when this node itself disappears.
+    ///
+    /// A pane with several tabs loses only the one tab — dropping the whole
+    /// pane because one of its tabs closed would take the others with it.
     func removing(surfaceId: UUID) -> PaneNode? {
         switch self {
-        case .leaf(let leaf):
-            return leaf.surfaceId == surfaceId ? nil : self
+        case .leaf(var leaf):
+            guard leaf.contains(surfaceId: surfaceId) else { return self }
+            if leaf.surfaces.count > 1 {
+                let index = leaf.surfaces.firstIndex { $0.surfaceId == surfaceId }
+                leaf.surfaces.removeAll { $0.surfaceId == surfaceId }
+                if let index { leaf.selectedIndex = max(0, min(index, leaf.surfaces.count - 1)) }
+                return .leaf(leaf)
+            }
+            return nil
         case .split(let orientation, let first, let second):
             let newFirst = first.removing(surfaceId: surfaceId)
             let newSecond = second.removing(surfaceId: surfaceId)
@@ -169,15 +275,29 @@ struct TerminalTab: Identifiable, Equatable {
         self.needsAttention = needsAttention
     }
 
+    /// The workspace's panes. Named `surfaces` historically, when a pane
+    /// could only hold one; kept because most callers want "the pane and
+    /// the surface it is showing".
     var surfaces: [PaneLeaf] { layout.leaves }
 
-    /// The focused surface, falling back to the first leaf.
+    var panes: [PaneLeaf] { layout.leaves }
+
+    /// Every surface in the workspace, including tabs that are not on top.
+    /// Anything that must not miss a background tab — session save, pane
+    /// search, widget construction, registry cleanup — uses this.
+    var allSurfaces: [(paneId: UUID, surface: PaneSurface)] {
+        layout.leaves.flatMap { pane in
+            pane.surfaces.map { (pane.paneId, $0) }
+        }
+    }
+
+    /// The pane showing the focused surface, falling back to the first.
     var focusedSurface: PaneLeaf? {
-        surfaces.first { $0.surfaceId == focusedSurfaceId } ?? surfaces.first
+        surfaces.first { $0.contains(surfaceId: focusedSurfaceId) } ?? surfaces.first
     }
 
     func contains(surfaceId: UUID) -> Bool {
-        surfaces.contains { $0.surfaceId == surfaceId }
+        surfaces.contains { $0.contains(surfaceId: surfaceId) }
     }
 }
 

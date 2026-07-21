@@ -118,10 +118,13 @@ extension ControlCommandHandler {
         // Terminal panes answer synchronously; browser panes need a JS round
         // trip each, so they are dispatched and counted, and the response
         // waits for the last one.
-        var pendingBrowsers: [(tab: TerminalTab, leaf: PaneLeaf, webView: UnsafeMutablePointer<WebKitWebView>)] = []
+        var pendingBrowsers: [(tab: TerminalTab, paneId: UUID, leaf: PaneSurface, webView: UnsafeMutablePointer<WebKitWebView>)] = []
 
         for tab in scopedTabs {
-            for leaf in tab.surfaces {
+            // Every surface, including background tabs: a pane's hidden tab
+            // is exactly the thing you are trying to locate.
+            for pane in tab.panes {
+                for leaf in pane.surfaces {
                 let kind = leaf.kind.typeName
                 if let kindFilter, kindFilter != kind { continue }
                 collector.searched += 1
@@ -139,17 +142,18 @@ extension ControlCommandHandler {
                     let cwd = SurfaceRegistry.shared.currentDirectory(for: leaf.surfaceId)
                         ?? leaf.workingDirectory
                     collector.results.append(
-                        Self.resultEntry(tab: tab, leaf: leaf, kind: kind, hits: hits,
+                        Self.resultEntry(tab: tab, paneId: pane.paneId, leaf: leaf, kind: kind, hits: hits,
                                          title: cwd, url: "", registry: registry)
                     )
                 case .browser:
                     guard let raw = SurfaceRegistry.shared.browser(for: leaf.surfaceId) else { continue }
-                    pendingBrowsers.append((tab, leaf, UnsafeMutablePointer<WebKitWebView>(raw)))
+                    pendingBrowsers.append((tab, pane.paneId, leaf, UnsafeMutablePointer<WebKitWebView>(raw)))
                 case .inspector:
                     // DevTools panes host WebKit's own UI; searching it would
                     // report matches the user never wrote.
                     collector.searched -= 1
                     continue
+                }
                 }
             }
         }
@@ -185,7 +189,7 @@ extension ControlCommandHandler {
                         let title = webkit_web_view_get_title(entry.webView)
                             .map { String(cString: $0) } ?? ""
                         collector.results.append(
-                            Self.resultEntry(tab: entry.tab, leaf: entry.leaf, kind: "browser",
+                            Self.resultEntry(tab: entry.tab, paneId: entry.paneId, leaf: entry.leaf, kind: "browser",
                                              hits: hits, title: title, url: url, registry: registry)
                         )
                     }
@@ -197,7 +201,7 @@ extension ControlCommandHandler {
     }
 
     private static func resultEntry(
-        tab: TerminalTab, leaf: PaneLeaf, kind: String,
+        tab: TerminalTab, paneId: UUID, leaf: PaneSurface, kind: String,
         hits: [[String: Any]], title: String, url: String, registry: RefRegistry
     ) -> [String: Any] {
         var entry: [String: Any] = [
@@ -205,8 +209,8 @@ extension ControlCommandHandler {
             "workspace_ref": registry.ref(kind: "workspace", uuid: tab.id),
             "surface_id": leaf.surfaceId.uuidString,
             "surface_ref": registry.ref(kind: "surface", uuid: leaf.surfaceId),
-            "pane_id": leaf.paneId.uuidString,
-            "pane_ref": registry.ref(kind: "pane", uuid: leaf.paneId),
+            "pane_id": paneId.uuidString,
+            "pane_ref": registry.ref(kind: "pane", uuid: paneId),
             "kind": kind,
             "title": title,
             "match_count": hits.count,
