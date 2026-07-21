@@ -146,7 +146,10 @@ status)
             | sed -n 's/^CMUX_TERM=//p')
         if [ -z "$term" ]; then
             # No explicit override: shim-linked binaries default to ghostty.
-            if ldd "$(readlink /proc/$pid/exe)" 2>/dev/null | grep -q libghostty-gtk; then
+            # Check the live process image, not /proc/pid/exe — after a
+            # rebuild replaces the on-disk binary, exe reads "(deleted)"
+            # and ldd on it fails, misreporting a ghostty daily as vte.
+            if grep -q libghostty-gtk "/proc/$pid/maps" 2>/dev/null; then
                 term="ghostty(default)"
             else
                 term=vte

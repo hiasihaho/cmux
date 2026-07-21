@@ -943,6 +943,14 @@ runs in the isolated world, so page JS globals are invisible there
   SELECTED workspace (the flag value gets eaten by the adjacent arg).
   Parse the `OK <ref>` line, and verify the target workspace in the
   reply of whatever you create next.
+- A plain `swift build` produces a VTE-ONLY binary and silently overwrites
+  the shim-linked one on disk (`Package.swift` gates the shim on the
+  `CMUX_GHOSTTY=1` env var at manifest evaluation time). Promotion trap:
+  the next daily restart would demote the human's terminals to VTE. Always
+  `CMUX_GHOSTTY=1 swift build` before promoting; verify with
+  `ldd .build/debug/cmux-adw | grep libghostty-gtk`. (`start.sh status`
+  now reads `/proc/<pid>/maps`, so a post-rebuild "(deleted)" exe no
+  longer misreports the running backend as vte.)
 - WebKitGTK main-world JS evaluation is subject to the PAGE's CSP (unlike
   WKWebView, which exempts user-agent scripts). Anything injected with
   `call_async_javascript_function`/`evaluate_javascript` that string-evals
