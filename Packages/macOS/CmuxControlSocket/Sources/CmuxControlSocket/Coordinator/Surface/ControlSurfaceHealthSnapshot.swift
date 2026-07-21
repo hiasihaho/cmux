@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only render-health snapshot of a workspace's surfaces for the
@@ -30,3 +31,5 @@ public struct ControlSurfaceHealthSnapshot: Sendable, Equatable {
         self.surfaces = surfaces
     }
 }
+
+#endif // whole-file canImport(Darwin)

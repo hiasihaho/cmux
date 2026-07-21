@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// One workspace row of the `system.tree` snapshot (the legacy
@@ -46,3 +47,5 @@ public struct ControlSystemTreeWorkspaceNode: Sendable, Equatable {
         self.panes = panes
     }
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,7 +1,11 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 public import CmuxSettings
 internal import Dispatch
 public import Foundation
+#if canImport(os)
 internal import os
+#endif
 
 /// The cmux control-socket listener: path reservation, bind/listen lifecycle,
 /// the accept source with failure backoff/rearm, the socket-path monitor, and
@@ -452,3 +456,7 @@ public final class SocketControlServer {
         events.failure(message, stage, errnoCode, data)
     }
 }
+
+#endif // canImport(Darwin)
+
+#endif // whole-file canImport(Darwin)

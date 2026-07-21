@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The outcome of marking a single notification read by id (`notification.mark_read`
 /// with an `id` selector).
 ///
@@ -12,3 +13,5 @@ public enum ControlNotificationMarkReadResolution: Sendable, Equatable {
     /// from unread to read (the legacy `marked_read`).
     case marked(count: Int)
 }
+
+#endif // whole-file canImport(Darwin)

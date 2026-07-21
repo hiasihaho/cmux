@@ -1,9 +1,14 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 import CmuxSettings
 
 enum CLIExecutableLocator {
     static func currentExecutableURL() -> URL? {
+        #if canImport(Darwin)
         var size: UInt32 = 0
         _ = _NSGetExecutablePath(nil, &size)
         if size > 0 {
@@ -14,6 +19,12 @@ enum CLIExecutableLocator {
                     .standardizedFileURL
             }
         }
+        #else
+        if let path = try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/exe"),
+           !path.isEmpty {
+            return URL(fileURLWithPath: path).standardizedFileURL
+        }
+        #endif
 
         return Bundle.main.executableURL?
             .resolvingSymlinksInPath()
@@ -285,7 +296,12 @@ enum CLISocketPathResolver {
                 if isKnownDefaultSocketPath(path) {
                     continue
                 }
-                let modified = TimeInterval(st.st_mtimespec.tv_sec) + TimeInterval(st.st_mtimespec.tv_nsec) / 1_000_000_000
+                #if canImport(Darwin)
+                let mtim = st.st_mtimespec
+                #else
+                let mtim = st.st_mtim
+                #endif
+                let modified = TimeInterval(mtim.tv_sec) + TimeInterval(mtim.tv_nsec) / 1_000_000_000
                 discovered.append((path: path, mtime: modified))
             }
         }

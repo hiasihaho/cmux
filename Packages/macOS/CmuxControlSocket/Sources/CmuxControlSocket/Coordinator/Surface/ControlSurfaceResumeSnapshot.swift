@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of a successful resume operation for the
@@ -46,3 +47,5 @@ public struct ControlSurfaceResumeSnapshot: Sendable, Equatable {
         self.binding = binding
     }
 }
+
+#endif // whole-file canImport(Darwin)

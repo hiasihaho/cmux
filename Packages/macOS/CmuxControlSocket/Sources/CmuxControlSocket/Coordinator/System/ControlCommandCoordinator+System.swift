@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The system/misc domain (`system.identify`, `system.tree`, `auth.login`,
@@ -326,3 +327,5 @@ extension ControlCommandCoordinator {
         return .object(item)
     }
 }
+
+#endif // whole-file canImport(Darwin)

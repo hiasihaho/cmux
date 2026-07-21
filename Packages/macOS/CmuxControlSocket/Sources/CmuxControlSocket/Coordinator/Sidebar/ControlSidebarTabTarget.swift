@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The tab addressed by a v1 sidebar mutation command (the typed twin of the
@@ -13,3 +14,5 @@ public enum ControlSidebarTabTarget: Sendable, Equatable {
     /// manager.
     case index(Int)
 }
+
+#endif // whole-file canImport(Darwin)

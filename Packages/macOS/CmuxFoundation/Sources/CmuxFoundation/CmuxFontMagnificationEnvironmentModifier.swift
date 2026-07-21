@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 public import SwiftUI
 
 /// Injects the stored cmux font magnification percent into a SwiftUI subtree.
@@ -8,3 +9,5 @@ struct CmuxFontMagnificationEnvironmentModifier: ViewModifier {
         content.environment(\.cmuxGlobalFontMagnificationPercent, percent)
     }
 }
+
+#endif // canImport(SwiftUI)

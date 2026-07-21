@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.trigger_flash`, preserving the legacy body's distinct
@@ -20,3 +21,5 @@ public enum ControlSurfaceTriggerFlashResolution: Sendable, Equatable {
     /// The flash was triggered. Carries the echoed identity.
     case flashed(windowID: UUID?, workspaceID: UUID, surfaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

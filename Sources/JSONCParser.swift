@@ -18,6 +18,17 @@ enum JSONCParser {
             return (source, .utf8)
         }
 
+        #if !canImport(Darwin)
+        // corelibs Foundation lacks NSString.stringEncoding(for:...); try the
+        // suggested encodings in the same order it would have.
+        for encoding in [String.Encoding.utf8, .utf16BigEndian, .utf16LittleEndian,
+                         .utf32BigEndian, .utf32LittleEndian] {
+            if let text = String(data: data, encoding: encoding) {
+                return (text, encoding)
+            }
+        }
+        throw JSONCError.invalidTextEncoding
+        #else
         var convertedString: NSString?
         var usedLossyConversion = ObjCBool(false)
         let encoding = NSString.stringEncoding(
@@ -48,6 +59,7 @@ enum JSONCParser {
             }
         }
         throw JSONCError.invalidTextEncoding
+        #endif
     }
 
     private static func sourceString(from data: Data) throws -> String {

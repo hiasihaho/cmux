@@ -1,5 +1,9 @@
 public import Foundation
+#if canImport(Darwin)
 internal import Darwin
+#else
+internal import Glibc
+#endif
 
 /// The syscall layer for the cmux control socket: path identity and liveness
 /// probing, advisory lock-file arbitration, listener binding, accepted-client

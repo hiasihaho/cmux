@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 struct CmuxFontModifier: ViewModifier {
@@ -23,3 +24,5 @@ struct CmuxFontModifier: ViewModifier {
         GlobalFontMagnification.scaledSize(baseSize, percent: percent)
     }
 }
+
+#endif // canImport(SwiftUI)

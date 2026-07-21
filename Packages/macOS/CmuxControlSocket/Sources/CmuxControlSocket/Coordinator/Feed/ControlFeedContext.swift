@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The feed-domain (workstream) slice of the control-command seam (a constituent
 /// of the ``ControlCommandContext`` umbrella).
 ///
@@ -33,3 +34,5 @@ public protocol ControlFeedContext: AnyObject {
     /// - Returns: The feed items as JSON values, in snapshot order.
     func controlFeedSnapshotItems(pendingOnly: Bool) -> [JSONValue]
 }
+
+#endif // whole-file canImport(Darwin)

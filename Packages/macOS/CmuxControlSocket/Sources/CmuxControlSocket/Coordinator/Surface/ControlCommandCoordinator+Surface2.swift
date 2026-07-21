@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The remaining surface-domain bodies (move/reorder/refresh/clear_history/
@@ -377,3 +378,5 @@ extension ControlCommandCoordinator {
     // MARK: - helpers
 
 }
+
+#endif // whole-file canImport(Darwin)

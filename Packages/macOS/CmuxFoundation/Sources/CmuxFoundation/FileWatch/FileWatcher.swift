@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 import Foundation
 
 /// Sendable ownership boundary around Dispatch's non-Sendable filesystem source.
@@ -254,3 +255,58 @@ public actor FileWatcher {
         fileSource = newFileSource
     }
 }
+
+#else
+// Linux twin: mtime polling instead of DispatchSource file-system objects
+// (corelibs Dispatch has no makeFileSystemObjectSource). Same public
+// surface; ~1s latency instead of instant, which settings hot-reload and
+// config watching tolerate.
+public import Foundation
+
+public actor FileWatcher {
+    public nonisolated let events: AsyncStream<Void>
+    private let continuation: AsyncStream<Void>.Continuation
+    private var pollTask: Task<Void, Never>?
+    private var isStopped = false
+
+    public init(
+        path: String,
+        throttle: Duration? = nil,
+        clock: any FileWatchClock = SystemFileWatchClock()
+    ) {
+        let (events, continuation) = AsyncStream<Void>.makeStream()
+        self.events = events
+        self.continuation = continuation
+        let interval: Duration = throttle ?? .seconds(1)
+        pollTask = Task { [continuation] in
+            func stamp() -> (Date?, Int)? {
+                let fm = FileManager.default
+                guard let attrs = try? fm.attributesOfItem(atPath: path) else { return (nil, 0) }
+                return (attrs[.modificationDate] as? Date, (attrs[.size] as? Int) ?? 0)
+            }
+            var last = stamp()
+            while !Task.isCancelled {
+                try? await clock.sleep(for: max(interval, .seconds(1)))
+                let now = stamp()
+                if now?.0 != last?.0 || now?.1 != last?.1 {
+                    last = now
+                    continuation.yield()
+                }
+            }
+        }
+    }
+
+    public func stop() {
+        guard !isStopped else { return }
+        isStopped = true
+        pollTask?.cancel()
+        pollTask = nil
+        continuation.finish()
+    }
+
+    deinit {
+        pollTask?.cancel()
+        continuation.finish()
+    }
+}
+#endif // canImport(Darwin)

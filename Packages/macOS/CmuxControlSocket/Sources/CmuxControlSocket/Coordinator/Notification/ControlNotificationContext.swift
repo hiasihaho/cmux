@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The notification-domain slice of the control-command seam (a constituent of
@@ -152,3 +153,5 @@ public protocol ControlNotificationContext: AnyObject {
     /// the identical keys and default values the legacy bodies used.
     var notificationStrings: ControlNotificationStrings { get }
 }
+
+#endif // whole-file canImport(Darwin)

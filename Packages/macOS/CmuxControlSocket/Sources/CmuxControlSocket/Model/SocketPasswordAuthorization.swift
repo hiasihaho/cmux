@@ -1,5 +1,9 @@
 public import CmuxSettings
+#if canImport(CryptoKit)
 internal import CryptoKit
+#else
+internal import Crypto
+#endif
 internal import Foundation
 
 /// Tracks the credential revision proved by a socket connection.

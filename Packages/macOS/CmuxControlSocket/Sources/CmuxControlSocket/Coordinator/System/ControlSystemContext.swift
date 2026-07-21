@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The system/misc-domain slice of the control-command seam (a constituent of
@@ -121,3 +122,5 @@ public protocol ControlSystemContext: AnyObject {
     func controlMobileDevStackAuthSetToken(_ token: String?)
     #endif
 }
+
+#endif // whole-file canImport(Darwin)

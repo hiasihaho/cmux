@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The workspace-domain slice of the control-command seam (a constituent of the
@@ -289,3 +290,5 @@ public protocol ControlWorkspaceContext: AnyObject {
         lifecycleOnly: Bool
     ) -> ControlWorkspaceRemoteTerminalSessionEndResolution
 }
+
+#endif // whole-file canImport(Darwin)

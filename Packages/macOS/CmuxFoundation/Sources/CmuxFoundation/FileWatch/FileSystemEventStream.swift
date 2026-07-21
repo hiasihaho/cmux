@@ -1,3 +1,4 @@
+#if canImport(CoreServices)
 import CoreServices
 import Foundation
 
@@ -119,3 +120,5 @@ final class FileSystemEventStream: @unchecked Sendable {
         stop()
     }
 }
+
+#endif // canImport(CoreServices)

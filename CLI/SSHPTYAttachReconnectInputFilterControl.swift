@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 
 final class SSHPTYAttachReconnectInputFilterControl: Sendable {
     private let stopSignalWriteFD: Int32

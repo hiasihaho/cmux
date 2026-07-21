@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 #if DEBUG
 /// The command palette's query/mode/results snapshot for
 /// `debug.command_palette.results` (the Sendable twin of the app's
@@ -27,3 +28,5 @@ public struct ControlDebugCommandPaletteSnapshot: Sendable, Equatable {
     public static let empty = ControlDebugCommandPaletteSnapshot(query: "", mode: "commands", results: [])
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

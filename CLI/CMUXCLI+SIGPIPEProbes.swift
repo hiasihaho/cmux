@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 
 extension CMUXCLI {
@@ -49,7 +53,11 @@ extension CMUXCLI {
         if (Int32(current.sa_flags) & SA_SIGINFO) != 0 {
             return "custom"
         }
+        #if canImport(Darwin)
         let handlerBits = unsafeBitCast(current.__sigaction_u.__sa_handler, to: UInt.self)
+        #else
+        let handlerBits = unsafeBitCast(current.__sigaction_handler.sa_handler, to: UInt.self)
+        #endif
         let sigIgnBits = unsafeBitCast(SIG_IGN, to: UInt.self)
         let sigDflBits = unsafeBitCast(SIG_DFL, to: UInt.self)
         if handlerBits == sigIgnBits {
@@ -180,7 +188,8 @@ extension CMUXCLI {
 
             let code = cliExecFailureErrno {
                 _ = argv.withUnsafeMutableBufferPointer { buffer in
-                    execv(cliPath, buffer.baseAddress)
+                    // Glibc's execv takes a non-optional pointer.
+                    execv(cliPath, buffer.baseAddress!)
                 }
             }
             throw CLIError(message: "SIGPIPE exec probe failed: \(String(cString: strerror(code)))")

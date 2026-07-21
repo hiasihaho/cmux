@@ -1,5 +1,9 @@
 public import Foundation
+#if canImport(Darwin)
 internal import Darwin
+#else
+internal import Glibc
+#endif
 
 extension SocketTransport {
     /// Creates the listener socket (`AF_UNIX`/`SOCK_STREAM`) with `FD_CLOEXEC`
@@ -77,7 +81,8 @@ extension SocketTransport {
         // Rounding can land exactly on 1_000_000, which is not a valid
         // tv_usec; clamp to the last representable microsecond instead.
         let clamped = min(Int32(microseconds.rounded()), 999_999)
-        return timeval(tv_sec: Int(seconds), tv_usec: clamped)
+        // tv_usec is Int32 on Darwin and Int on Glibc.
+        return timeval(tv_sec: Int(seconds), tv_usec: __suseconds_t(clamped))
     }
 
     /// Applies `timeout` as both `SO_RCVTIMEO` and `SO_SNDTIMEO` (best effort).

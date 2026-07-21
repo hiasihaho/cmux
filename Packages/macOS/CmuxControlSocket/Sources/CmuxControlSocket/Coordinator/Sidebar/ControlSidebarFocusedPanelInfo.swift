@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The focused panel and its known directory for the `sidebar_state` listing
@@ -19,3 +20,5 @@ public struct ControlSidebarFocusedPanelInfo: Sendable, Equatable {
         self.directory = directory
     }
 }
+
+#endif // whole-file canImport(Darwin)

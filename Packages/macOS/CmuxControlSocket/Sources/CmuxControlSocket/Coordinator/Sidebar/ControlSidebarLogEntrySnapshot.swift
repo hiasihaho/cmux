@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// A Sendable snapshot of one sidebar log entry for the v1 `list_log` /
@@ -22,3 +23,5 @@ public struct ControlSidebarLogEntrySnapshot: Sendable, Equatable {
         self.source = source
     }
 }
+
+#endif // whole-file canImport(Darwin)

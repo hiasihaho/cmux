@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The v1 line-protocol debug/test command dispatch (`set_shortcut`,
@@ -128,3 +129,5 @@ extension ControlCommandCoordinator {
     }
 #endif
 }
+
+#endif // whole-file canImport(Darwin)

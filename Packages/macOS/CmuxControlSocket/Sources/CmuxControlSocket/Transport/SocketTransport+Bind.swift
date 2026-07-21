@@ -1,5 +1,9 @@
 internal import Foundation
+#if canImport(Darwin)
 internal import Darwin
+#else
+internal import Glibc
+#endif
 
 extension SocketTransport {
     /// Binds `socket` as the listener at `path`, preparing the path first.

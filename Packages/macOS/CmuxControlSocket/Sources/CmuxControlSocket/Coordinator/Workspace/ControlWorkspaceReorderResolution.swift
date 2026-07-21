@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.reorder`, after the coordinator has confirmed a
@@ -10,3 +11,5 @@ public enum ControlWorkspaceReorderResolution: Sendable, Equatable {
     /// id (may be absent) and the single plan item.
     case resolved(windowID: UUID?, plan: ControlWorkspaceReorderPlanItem)
 }
+
+#endif // whole-file canImport(Darwin)

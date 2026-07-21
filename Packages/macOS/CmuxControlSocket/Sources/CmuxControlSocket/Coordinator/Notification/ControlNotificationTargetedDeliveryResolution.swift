@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of a targeted notification delivery (`notification.create_for_surface`
@@ -24,3 +25,5 @@ public enum ControlNotificationTargetedDeliveryResolution: Sendable, Equatable {
     /// target surface id, and the resolved window id (which may be absent).
     case delivered(workspaceID: UUID, surfaceID: UUID, windowID: UUID?)
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,6 +1,10 @@
 import Foundation
 import CMUXAgentLaunch
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 
 final class SessionsListClaudeTranscriptLookupCache {
     private let homeDirectory: String

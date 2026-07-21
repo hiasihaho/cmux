@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.group.list`, preserving the legacy body's single
@@ -14,3 +15,5 @@ public enum ControlWorkspaceGroupListResolution: Sendable, Equatable {
     /// the legacy `v2OrNull` case) and the group snapshots in sidebar order.
     case resolved(windowID: UUID?, groups: [ControlWorkspaceGroupSnapshot])
 }
+
+#endif // whole-file canImport(Darwin)

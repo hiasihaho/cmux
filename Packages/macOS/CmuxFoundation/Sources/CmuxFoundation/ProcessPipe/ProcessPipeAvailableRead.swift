@@ -1,4 +1,12 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
+#else
+import Glibc
+#endif
 public import Foundation
 
 /// The outcome of one non-blocking read attempt against a pipe or socket

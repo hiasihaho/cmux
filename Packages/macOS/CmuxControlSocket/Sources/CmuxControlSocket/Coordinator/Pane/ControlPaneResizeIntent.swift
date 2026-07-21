@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// One validated `pane.resize` operation with its coordinate system encoded in
 /// the case, so providers never reinterpret points, cells, percentages, or tmux
 /// adjustment flags after the coordinator boundary.
@@ -13,3 +14,5 @@ public enum ControlPaneResizeIntent: Sendable, Equatable {
     /// Preserve a native tmux absolute size as a window percentage.
     case tmuxAbsolutePercentage(axis: String, percentage: Int, fallbackPoints: Double?)
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `pane.join`, preserving the legacy `v2PaneJoin` body's
@@ -22,3 +23,5 @@ public enum ControlPaneJoinResolution: Sendable, Equatable {
     /// coordinator returns unchanged.
     case moved(ControlCallResult)
 }
+
+#endif // whole-file canImport(Darwin)

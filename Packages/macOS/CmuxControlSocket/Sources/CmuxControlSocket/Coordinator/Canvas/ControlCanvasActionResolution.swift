@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// Outcome of a canvas-domain mutation, mapped by the coordinator onto the
@@ -18,3 +19,5 @@ public enum ControlCanvasActionResolution: Sendable, Equatable {
     /// the workspace has no focused panel.
     case noFocusedPane
 }
+
+#endif // whole-file canImport(Darwin)

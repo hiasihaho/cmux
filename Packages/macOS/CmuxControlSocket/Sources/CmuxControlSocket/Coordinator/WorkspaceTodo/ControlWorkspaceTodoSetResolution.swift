@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// One incoming item of a `workspace.todo.set` atomic replace, as parsed by
@@ -44,3 +45,5 @@ public enum ControlWorkspaceTodoSetResolution: Sendable {
     /// The replace succeeded; the checklist after the replace.
     case resolved(windowID: UUID?, checklist: ControlWorkspaceTodoChecklistSnapshot)
 }
+
+#endif // whole-file canImport(Darwin)

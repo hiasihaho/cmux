@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of one workspace's checklist, as the app target
@@ -48,3 +49,5 @@ public struct ControlWorkspaceTodoChecklistSnapshot: Sendable, Equatable {
         self.firstUncheckedText = firstUncheckedText
     }
 }
+
+#endif // whole-file canImport(Darwin)

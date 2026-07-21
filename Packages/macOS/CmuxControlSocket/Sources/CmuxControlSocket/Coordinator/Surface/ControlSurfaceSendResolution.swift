@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.send_text` / `surface.send_key`, preserving the legacy
@@ -37,3 +38,5 @@ public enum ControlSurfaceSendResolution: Sendable, Equatable {
     /// The input was sent. Carries the echoed identity and whether it was queued.
     case sent(windowID: UUID?, workspaceID: UUID, surfaceID: UUID, queued: Bool)
 }
+
+#endif // whole-file canImport(Darwin)

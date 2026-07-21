@@ -1,4 +1,7 @@
 internal import Foundation
+#if !canImport(Darwin)
+import CoreFoundation
+#endif
 
 /// A fully typed, `Sendable` JSON value used by the control-socket wire DTOs.
 ///

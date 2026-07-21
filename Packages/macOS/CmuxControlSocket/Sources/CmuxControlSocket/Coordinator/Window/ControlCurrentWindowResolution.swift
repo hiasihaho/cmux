@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of resolving the `window.current` target, preserving the two
@@ -14,3 +15,5 @@ public enum ControlCurrentWindowResolution: Sendable, Equatable {
     /// `not_found` / "Current window not found").
     case windowNotFound
 }
+
+#endif // whole-file canImport(Darwin)

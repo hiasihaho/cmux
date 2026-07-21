@@ -1,4 +1,8 @@
+#if canImport(CoreGraphics)
 public import CoreGraphics
+#else
+public import Foundation
+#endif
 public import Foundation
 
 /// A visible workspace sidebar row that can participate in reorder hit testing.

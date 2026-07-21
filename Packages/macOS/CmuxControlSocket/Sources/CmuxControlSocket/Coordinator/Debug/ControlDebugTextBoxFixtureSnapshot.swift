@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 #if DEBUG
 public import Foundation
 
@@ -64,3 +65,5 @@ public struct ControlDebugTextBoxFixtureSnapshot: Sendable, Equatable {
     }
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

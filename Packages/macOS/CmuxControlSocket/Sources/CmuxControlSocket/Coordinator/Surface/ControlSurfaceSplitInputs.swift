@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The pre-parsed inputs for `surface.split`, lifted from the legacy
@@ -67,3 +68,5 @@ public struct ControlSurfaceSplitInputs: Sendable, Equatable {
         self.initialDividerPosition = initialDividerPosition
     }
 }
+
+#endif // whole-file canImport(Darwin)

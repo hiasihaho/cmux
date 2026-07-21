@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The pre-resolved routing selectors a control command carries to pick the
@@ -55,3 +56,5 @@ public struct ControlRoutingSelectors: Sendable, Equatable {
         self.paneID = paneID
     }
 }
+
+#endif // whole-file canImport(Darwin)

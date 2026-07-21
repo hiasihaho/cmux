@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 
 // `cmux remotes` (alias `remote`): manage the team's device-registry routes so

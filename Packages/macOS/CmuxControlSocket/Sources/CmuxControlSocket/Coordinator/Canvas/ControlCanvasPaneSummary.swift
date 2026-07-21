@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// One canvas pane in a `canvas.info` snapshot, ordered back-to-front.
@@ -26,3 +27,5 @@ public struct ControlCanvasPaneSummary: Sendable, Equatable {
         self.selectedPanelID = selectedPanelID
     }
 }
+
+#endif // whole-file canImport(Darwin)

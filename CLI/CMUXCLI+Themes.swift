@@ -1,6 +1,10 @@
 import Foundation
 import CmuxFoundation
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 
 extension CMUXCLI {
     static let cmuxThemeOverrideBundleIdentifier = CmuxGhosttyConfigPathResolver.releaseBundleIdentifier

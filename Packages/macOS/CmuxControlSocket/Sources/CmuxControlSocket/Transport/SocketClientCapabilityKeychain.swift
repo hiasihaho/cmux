@@ -1,6 +1,8 @@
 internal import Foundation
 #if canImport(Security)
+#if canImport(Security)
 internal import Security
+#endif
 #endif
 
 /// Data Protection Keychain adapter for one capability-secret identity.

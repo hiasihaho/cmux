@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// One workspace's move in a reorder plan, mirroring the app's
@@ -25,3 +26,5 @@ public struct ControlWorkspaceReorderPlanItem: Sendable, Equatable {
         self.toIndex = toIndex
     }
 }
+
+#endif // whole-file canImport(Darwin)

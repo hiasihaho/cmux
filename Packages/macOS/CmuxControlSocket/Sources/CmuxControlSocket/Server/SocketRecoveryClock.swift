@@ -1,3 +1,5 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 /// Clock seam for the listener's recovery delays (today: the accept-source
 /// resume backoff), so tests can drive the delay with virtual time instead of
 /// waiting on the wall clock.
@@ -22,3 +24,7 @@ public struct SystemSocketRecoveryClock: SocketRecoveryClock {
         try await ContinuousClock().sleep(for: .milliseconds(milliseconds))
     }
 }
+
+#endif // canImport(Darwin)
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The outcome of the v1 `close_surface` command.
@@ -13,3 +14,5 @@ public enum ControlSidebarCloseSurfaceResolution: Sendable, Equatable {
     /// The close call returned failure.
     case closeFailed
 }
+
+#endif // whole-file canImport(Darwin)

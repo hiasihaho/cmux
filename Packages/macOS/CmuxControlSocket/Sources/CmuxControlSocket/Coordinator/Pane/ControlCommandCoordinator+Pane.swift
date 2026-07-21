@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The pane domain (`pane.*`), lifted byte-faithfully from the former
@@ -577,3 +578,5 @@ extension ControlCommandCoordinator {
         }
     }
 }
+
+#endif // whole-file canImport(Darwin)

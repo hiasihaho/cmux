@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The explicit workspace+panel scope shell integration passes to the v1
@@ -19,3 +20,5 @@ public struct ControlSidebarPanelScope: Sendable, Equatable {
         self.panelID = panelID
     }
 }
+
+#endif // whole-file canImport(Darwin)

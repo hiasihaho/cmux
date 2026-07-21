@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import CmuxSettings
 internal import Foundation
 
@@ -488,3 +489,5 @@ extension ControlCommandCoordinator {
         return false
     }
 }
+
+#endif // whole-file canImport(Darwin)

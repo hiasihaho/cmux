@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `project.open` (the legacy `v2ProjectOpen` main-actor
@@ -18,3 +19,5 @@ public enum ControlProjectOpenResolution: Sendable, Equatable {
     ///   - surfaceID: The created project panel.
     case opened(windowID: UUID?, workspaceID: UUID, paneID: UUID?, surfaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

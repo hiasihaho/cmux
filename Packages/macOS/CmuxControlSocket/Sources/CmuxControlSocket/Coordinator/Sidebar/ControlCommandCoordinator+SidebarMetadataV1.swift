@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The v1 sidebar metadata commands (`set_status` / `report_meta` /
@@ -547,3 +548,5 @@ extension ControlCommandCoordinator {
         return "OK"
     }
 }
+
+#endif // whole-file canImport(Darwin)

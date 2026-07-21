@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `pane.create`, preserving every distinct branch of the legacy
@@ -88,3 +89,5 @@ public enum ControlPaneCreateResolution: Sendable, Equatable {
         typeRawValue: String
     )
 }
+
+#endif // whole-file canImport(Darwin)

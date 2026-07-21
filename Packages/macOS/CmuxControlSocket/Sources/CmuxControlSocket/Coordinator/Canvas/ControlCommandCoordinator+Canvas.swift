@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The canvas domain (`canvas.*`): workspace canvas-layout introspection and
@@ -319,3 +320,5 @@ extension ControlCommandCoordinator {
         }
     }
 }
+
+#endif // whole-file canImport(Darwin)

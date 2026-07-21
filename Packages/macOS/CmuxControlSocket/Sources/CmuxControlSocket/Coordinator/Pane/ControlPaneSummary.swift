@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of one pane in a workspace, as the app target exposes
@@ -46,3 +47,5 @@ public struct ControlPaneSummary: Sendable, Equatable {
         self.gridSize = gridSize
     }
 }
+
+#endif // whole-file canImport(Darwin)

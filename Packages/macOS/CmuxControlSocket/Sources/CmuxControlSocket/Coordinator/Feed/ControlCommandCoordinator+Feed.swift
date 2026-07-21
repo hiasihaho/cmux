@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The main-actor feed domain (`feed.jump`, `feed.list`), lifted byte-faithfully
@@ -61,3 +62,5 @@ extension ControlCommandCoordinator {
         return .ok(.object(["items": .array(items)]))
     }
 }
+
+#endif // whole-file canImport(Darwin)

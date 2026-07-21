@@ -1,3 +1,5 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 internal import CmuxSettings
 internal import Foundation
 
@@ -11,3 +13,7 @@ struct SocketConnectionAuthorizationSnapshot: Sendable {
         revocationSignal: SocketAuthorizationRevocationSignal()
     )
 }
+
+#endif // canImport(Darwin)
+
+#endif // whole-file canImport(Darwin)

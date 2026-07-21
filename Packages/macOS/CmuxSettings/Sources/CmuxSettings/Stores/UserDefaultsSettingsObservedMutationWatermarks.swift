@@ -1,4 +1,6 @@
+#if canImport(os)
 import os
+#endif
 
 /// Publishes UserDefaults notification ordering before actor turns run.
 ///

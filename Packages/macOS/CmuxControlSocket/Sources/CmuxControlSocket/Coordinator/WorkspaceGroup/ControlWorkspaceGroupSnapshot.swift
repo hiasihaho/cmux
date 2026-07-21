@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of one workspace group, as the app target exposes it to
@@ -57,3 +58,5 @@ public struct ControlWorkspaceGroupSnapshot: Sendable, Equatable {
         self.memberWorkspaceIDs = memberWorkspaceIDs
     }
 }
+
+#endif // whole-file canImport(Darwin)

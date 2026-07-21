@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// Workspace-todo set/open verbs extracted from the primary workspace-todo coordinator file, which sits at its file-length budget.
@@ -138,3 +139,5 @@ extension ControlCommandCoordinator {
         }
     }
 }
+
+#endif // whole-file canImport(Darwin)

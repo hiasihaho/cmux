@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The reported git branch state for the `sidebar_state` listing.
@@ -17,3 +18,5 @@ public struct ControlSidebarGitBranchInfo: Sendable, Equatable {
         self.isDirty = isDirty
     }
 }
+
+#endif // whole-file canImport(Darwin)

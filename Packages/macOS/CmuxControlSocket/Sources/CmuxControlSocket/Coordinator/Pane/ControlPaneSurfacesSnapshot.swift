@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of one pane's surfaces for `pane.surfaces`, as the app
@@ -35,3 +36,5 @@ public struct ControlPaneSurfacesSnapshot: Sendable, Equatable {
         self.surfaces = surfaces
     }
 }
+
+#endif // whole-file canImport(Darwin)

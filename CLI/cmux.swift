@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 #if canImport(Darwin)
 import Darwin
 #else
@@ -20,6 +23,39 @@ enum Darwin {
     static func write(_ fd: Int32, _ buf: UnsafeRawPointer?, _ count: Int) -> Int {
         Glibc.write(fd, buf, count)
     }
+    // The rest of the surface upstream's CLI qualifies with `Darwin.`.
+    static func _exit(_ status: Int32) -> Never { Glibc._exit(status) }
+    static func bind(_ fd: Int32, _ addr: UnsafePointer<sockaddr>?, _ len: socklen_t) -> Int32 {
+        Glibc.bind(fd, addr, len)
+    }
+    static func fchmod(_ fd: Int32, _ mode: mode_t) -> Int32 { Glibc.fchmod(fd, mode) }
+    static func kill(_ pid: pid_t, _ sig: Int32) -> Int32 { Glibc.kill(pid, sig) }
+    static func open(_ path: UnsafePointer<CChar>, _ oflag: Int32) -> Int32 { Glibc.open(path, oflag) }
+    static func open(_ path: UnsafePointer<CChar>, _ oflag: Int32, _ mode: mode_t) -> Int32 {
+        Glibc.open(path, oflag, mode)
+    }
+    static func pipe(_ fds: UnsafeMutablePointer<Int32>?) -> Int32 { Glibc.pipe(fds) }
+    static func poll(_ fds: UnsafeMutablePointer<pollfd>?, _ nfds: nfds_t, _ timeout: Int32) -> Int32 {
+        Glibc.poll(fds, nfds, timeout)
+    }
+    static func rename(_ old: UnsafePointer<CChar>, _ new: UnsafePointer<CChar>) -> Int32 {
+        Glibc.rename(old, new)
+    }
+    static func send(_ fd: Int32, _ buf: UnsafeRawPointer?, _ count: Int, _ flags: Int32) -> Int {
+        Glibc.send(fd, buf, count, flags)
+    }
+}
+
+// os_unfair_lock for call sites that use the raw Darwin API directly.
+// pthread mutex behind the same names; the CLI's uses are short critical
+// sections, exactly what this maps to.
+struct os_unfair_lock_s { var mutex = pthread_mutex_t() }
+typealias os_unfair_lock = os_unfair_lock_s
+func os_unfair_lock_lock(_ lock: UnsafeMutablePointer<os_unfair_lock_s>) {
+    pthread_mutex_lock(&lock.pointee.mutex)
+}
+func os_unfair_lock_unlock(_ lock: UnsafeMutablePointer<os_unfair_lock_s>) {
+    pthread_mutex_unlock(&lock.pointee.mutex)
 }
 #endif
 import CMUXAgentLaunch
@@ -1523,7 +1559,9 @@ final class ClaudeHookSessionStore {
 
     private func withLockedState<T>(_ body: (inout ClaudeHookSessionStoreFile) throws -> T) throws -> T {
         let lockPath = statePath + ".lock"
-        let fd = open(lockPath, O_CREAT | O_RDWR, mode_t(S_IRUSR | S_IWUSR))
+        // 0o600 spelt out: S_IRUSR is ambiguous on Linux (Glibc and
+        // Foundation both export it).
+        let fd = open(lockPath, O_CREAT | O_RDWR, mode_t(0o600))
         if fd < 0 {
             throw CLIError(message: "Failed to open Claude hook state lock: \(lockPath)")
         }
@@ -1763,6 +1801,11 @@ enum SocketPasswordResolver {
     }
 
     private static func loadFromKeychain(socketPath: String) -> String? {
+        #if !canImport(Darwin)
+        // No Security.framework: passwords come from CMUX_SOCKET_PASSWORD or
+        // the settings file on Linux. A keyring integration is future work.
+        return nil
+        #else
         for service in keychainServices(socketPath: socketPath) {
             let authContext = LAContext()
             authContext.interactionNotAllowed = true
@@ -1790,6 +1833,7 @@ enum SocketPasswordResolver {
             return password
         }
         return nil
+        #endif
     }
 }
 
@@ -1922,7 +1966,7 @@ final class SocketClient {
         )
         return timeval(
             tv_sec: Int(seconds),
-            tv_usec: __darwin_suseconds_t(microseconds)
+            tv_usec: __suseconds_t(microseconds)
         )
     }
 
@@ -2107,7 +2151,9 @@ final class SocketClient {
         guard stat(path, &st) == 0 else {
             throw CLIError(message: "Socket not found at \(path)")
         }
-        guard (st.st_mode & mode_t(S_IFMT)) == mode_t(S_IFSOCK) else {
+        // 0o170000/0o140000: S_IFMT/S_IFSOCK are ambiguous on Linux (Glibc
+        // and Foundation both export them).
+        guard (st.st_mode & mode_t(0o170000)) == mode_t(0o140000) else {
             throw CLIError(message: "Path exists at \(path) but is not a Unix socket")
         }
         guard st.st_uid == getuid() else {
@@ -2245,7 +2291,9 @@ final class SocketClient {
         }
 
         var address = sockaddr_in()
+        #if canImport(Darwin)
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.stride)
+        #endif
         address.sin_family = sa_family_t(AF_INET)
         address.sin_port = endpoint.port.bigEndian
         let parsedAddress = withUnsafeMutablePointer(to: &address.sin_addr) { pointer in
@@ -2519,6 +2567,19 @@ final class SocketClient {
             return client
         }
 
+        #if !canImport(Darwin)
+        // Linux: retry the connect on a short interval instead of watching
+        // the directory (no makeFileSystemObjectSource in corelibs Dispatch).
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if (try? client.connect()) != nil {
+                return client
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        client.close()
+        throw CLIError(message: "cmux app did not start in time (socket not found at \(path))")
+        #else
         guard let watchDirectory = existingWatchDirectory(forPath: path) else {
             throw CLIError(message: "cmux app did not start in time (socket not found at \(path))")
         }
@@ -2563,6 +2624,7 @@ final class SocketClient {
 
         source.cancel()
         return client
+        #endif
     }
 
     static func waitForFilesystemPath(_ path: String, timeout: TimeInterval) throws {
@@ -2570,6 +2632,14 @@ final class SocketClient {
             return
         }
 
+        #if !canImport(Darwin)
+        let pollDeadline = Date().addingTimeInterval(timeout)
+        while Date() < pollDeadline {
+            if FileManager.default.fileExists(atPath: path) { return }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        throw CLIError(message: "Timed out waiting for \(path)")
+        #else
         guard let watchDirectory = existingWatchDirectory(forPath: path) else {
             throw CLIError(message: "Timed out waiting for \(path)")
         }
@@ -2612,6 +2682,7 @@ final class SocketClient {
         }
 
         source.cancel()
+        #endif
     }
 
     private static func existingWatchDirectory(forPath path: String) -> String? {
@@ -5838,6 +5909,19 @@ struct CMUXCLI {
             return true
         }
 
+        #if !canImport(Darwin)
+        // Linux: no kqueue; Process.isRunning polling. The 50ms interval is
+        // invisible next to the seconds-scale timeout this guards.
+        let linuxDeadline = Date().addingTimeInterval(timeout)
+        while Date() < linuxDeadline {
+            if !process.isRunning {
+                process.waitUntilExit()
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        return false
+        #else
         let queue = kqueue()
         guard queue >= 0 else {
             throw CLIError(message: String(localized: "cli.pathOpen.error.processMonitorFailed", defaultValue: "Failed to monitor process exit"))
@@ -5884,6 +5968,7 @@ struct CMUXCLI {
                 throw CLIError(message: String(localized: "cli.pathOpen.error.processMonitorFailed", defaultValue: "Failed to monitor process exit"))
             }
         }
+        #endif
     }
 
     private func localizedFormat(_ key: String, defaultValue: String, _ arguments: CVarArg...) -> String {
@@ -7545,7 +7630,13 @@ struct CMUXCLI {
         let (descriptionOpt, rem3) = parseOption(rem2, name: "--description")
         let (layoutOpt, rem4) = parseOption(rem3, name: "--layout")
         let (windowOpt, rem5) = parseOption(rem4, name: "--window")
-        let (focusOpt, rem6) = parseOption(rem5, name: "--focus")
+        var (focusOpt, rem6) = parseOption(rem5, name: "--focus")
+        // Compatibility: --background predates --focus and is what agents and
+        // the Linux-port test suites use ("create without stealing focus").
+        if rem6.contains("--background") {
+            rem6 = rem6.filter { $0 != "--background" }
+            if focusOpt == nil { focusOpt = "false" }
+        }
         let (groupOpt, rem7) = parseOption(rem6, name: "--group")
         let (groupPlacementOpt, rem8) = parseOption(rem7, name: "--group-placement")
         let (groupReferenceOpt, rem9) = parseOption(rem8, name: "--group-reference")
@@ -7574,7 +7665,7 @@ struct CMUXCLI {
             throw CLIError(message: String(
                 format: String(
                     localized: "cli.workspace.create.error.unknownFlag",
-                    defaultValue: "%@: unknown flag '%@'. Known flags: --name <title>, --description <text>, --command <text>, --cwd <path>, --env KEY=VALUE, --env-file <path>, --layout <json>, --window <id|ref|index>, --focus <true|false>, --group <id|ref>, --group-placement <afterCurrent|top|end>, --group-reference <workspace>"
+                    defaultValue: "%@: unknown flag '%@'. Known flags: --name <title>, --description <text>, --command <text>, --cwd <path>, --env KEY=VALUE, --env-file <path>, --layout <json>, --window <id|ref|index>, --focus <true|false>, --background, --group <id|ref>, --group-placement <afterCurrent|top|end>, --group-reference <workspace>"
                 ),
                 locale: .current,
                 commandName,
@@ -8794,10 +8885,18 @@ struct CMUXCLI {
 
     private func randomHex(byteCount: Int) throws -> String {
         var bytes = [UInt8](repeating: 0, count: byteCount)
+        #if canImport(Darwin)
         let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         guard status == errSecSuccess else {
             throw CLIError(message: "failed to generate SSH relay credential")
         }
+        #else
+        // getentropy: same CSPRNG the kernel gives arc4random; 256-byte max
+        // per call, far above any credential size used here.
+        guard bytes.withUnsafeMutableBytes({ getentropy($0.baseAddress, $0.count) }) == 0 else {
+            throw CLIError(message: "failed to generate SSH relay credential")
+        }
+        #endif
         return bytes.map { String(format: "%02x", $0) }.joined()
     }
 
@@ -11862,7 +11961,7 @@ struct CMUXCLI {
 
         private static func currentTerminalSize() -> TerminalSize {
             var size = winsize()
-            if ioctl(STDIN_FILENO, TIOCGWINSZ, &size) == 0,
+            if ioctl(STDIN_FILENO, UInt(TIOCGWINSZ), &size) == 0,
                size.ws_col > 0,
                size.ws_row > 0 {
                 return TerminalSize(cols: Int(size.ws_col), rows: Int(size.ws_row))
@@ -22051,6 +22150,24 @@ struct CMUXCLI {
         let ownerPid = ownerPidRaw.flatMap { Int32($0) } ?? 0
         let appServerPid = appServerPidRaw.flatMap { Int32($0) } ?? 0
 
+        #if !canImport(Darwin)
+        // Linux: no makeProcessSource; poll the owner pid. kill(pid, 0)
+        // is the portable liveness probe.
+        if ownerPid > 0 {
+            if !codexTeamsProcessExists(ownerPid) {
+                if appServerPid > 0 { kill(appServerPid, SIGTERM) }
+                return
+            }
+            DispatchQueue.global(qos: .utility).async {
+                while kill(ownerPid, 0) == 0 {
+                    Thread.sleep(forTimeInterval: 2)
+                }
+                if appServerPid > 0 { kill(appServerPid, SIGTERM) }
+                exit(0)
+            }
+        }
+        let ownerSource: Int? = nil
+        #else
         var ownerSource: DispatchSourceProcess?
         if ownerPid > 0 {
             if !codexTeamsProcessExists(ownerPid) {
@@ -22071,6 +22188,7 @@ struct CMUXCLI {
             source.resume()
             ownerSource = source
         }
+        #endif
 
         let watcher = CodexTeamsWatcher(
             appServerURL: appServerURL,
@@ -22340,7 +22458,9 @@ struct CMUXCLI {
         )
 
         var address = sockaddr_in()
+        #if canImport(Darwin)
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.stride)
+        #endif
         address.sin_family = sa_family_t(AF_INET)
         address.sin_port = port.bigEndian
         address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
@@ -27139,6 +27259,25 @@ struct CMUXCLI {
     private func waitForCodexTranscriptChange(path: String?, leasePath: String?, timeout: TimeInterval) {
         guard timeout > 0 else { return }
 
+        #if !canImport(Darwin)
+        // Linux: poll both files' mtimes instead of dispatch sources.
+        let watchPaths = [path, leasePath].compactMap { raw -> String? in
+            guard let raw, !raw.isEmpty else { return nil }
+            return NSString(string: raw).expandingTildeInPath
+        }
+        func transcriptStamp() -> [Date?] {
+            watchPaths.map {
+                (try? FileManager.default.attributesOfItem(atPath: $0))?[.modificationDate] as? Date
+            }
+        }
+        let initialStamp = transcriptStamp()
+        let codexDeadline = Date().addingTimeInterval(timeout)
+        while Date() < codexDeadline {
+            if transcriptStamp() != initialStamp { return }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        return
+        #else
         let semaphore = DispatchSemaphore(value: 0)
         var sources: [DispatchSourceFileSystemObject] = []
 
@@ -27172,6 +27311,7 @@ struct CMUXCLI {
 
         _ = semaphore.wait(timeout: .now() + timeout)
         sources.forEach { $0.cancel() }
+        #endif
     }
 
     private func extractMessageText(from message: [String: Any]) -> String? {
@@ -27795,6 +27935,7 @@ struct CMUXCLI {
     }
 
     private func parentPID(of pid: pid_t) -> pid_t {
+        #if canImport(Darwin)
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.size
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
@@ -27802,6 +27943,15 @@ struct CMUXCLI {
             return -1
         }
         return info.kp_eproc.e_ppid
+        #else
+        // Field 4 of /proc/<pid>/stat, parsed after the last ')' because the
+        // comm field can contain spaces and parens.
+        guard let stat = try? String(contentsOfFile: "/proc/\(pid)/stat", encoding: .utf8),
+              let close = stat.lastIndex(of: ")") else { return -1 }
+        let fields = stat[stat.index(after: close)...].split(separator: " ")
+        guard fields.count >= 2, let ppid = pid_t(fields[1]) else { return -1 }
+        return ppid
+        #endif
     }
 
     private func processName(for pid: pid_t) -> String? {
@@ -27830,6 +27980,13 @@ struct CMUXCLI {
     }
 
     private func processArguments(for pid: pid_t) -> [String]? {
+        #if !canImport(Darwin)
+        // /proc/<pid>/cmdline is NUL-separated argv with no argc prefix.
+        guard let data = FileManager.default.contents(atPath: "/proc/\(pid)/cmdline"),
+              !data.isEmpty else { return nil }
+        let args = data.split(separator: 0).compactMap { String(data: Data($0), encoding: .utf8) }
+        return args.isEmpty ? nil : args
+        #else
         var argMax: Int32 = 0
         var argMaxSize = MemoryLayout<Int32>.size
         var argMaxMib: [Int32] = [CTL_KERN, KERN_ARGMAX]
@@ -27881,6 +28038,7 @@ struct CMUXCLI {
         }
 
         return arguments.isEmpty ? nil : arguments
+        #endif
     }
 
     /// Whether the Claude process this hook fired from was launched with
@@ -33791,7 +33949,7 @@ export default CMUXSessionRestore;
 
     static func currentCLITerminalSize() -> (cols: Int, rows: Int) {
         var size = winsize()
-        if ioctl(STDOUT_FILENO, TIOCGWINSZ, &size) == 0,
+        if ioctl(STDOUT_FILENO, UInt(TIOCGWINSZ), &size) == 0,
            size.ws_col > 0,
            size.ws_row > 0 {
             return (Int(size.ws_col), Int(size.ws_row))

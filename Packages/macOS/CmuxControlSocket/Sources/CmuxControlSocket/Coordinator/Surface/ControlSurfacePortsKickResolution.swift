@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.ports_kick`, preserving the legacy body's distinct
@@ -22,3 +23,5 @@ public enum ControlSurfacePortsKickResolution: Sendable, Equatable {
     /// `.ok` echoes the resolved surface, not the requested one).
     case kicked(surfaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

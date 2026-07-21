@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.next` / `workspace.previous` / `workspace.last`,
@@ -18,3 +19,5 @@ public enum ControlWorkspaceNavigationResolution: Sendable, Equatable {
     /// the owning window id (may be absent).
     case resolved(workspaceID: UUID, windowID: UUID?)
 }
+
+#endif // whole-file canImport(Darwin)

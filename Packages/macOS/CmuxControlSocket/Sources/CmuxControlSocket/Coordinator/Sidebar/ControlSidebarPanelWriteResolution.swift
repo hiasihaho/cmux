@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of a synchronous v1 panel-targeted sidebar write (`report_ports`
@@ -20,3 +21,5 @@ public enum ControlSidebarPanelWriteResolution: Sendable, Equatable {
     /// The write was applied.
     case done
 }
+
+#endif // whole-file canImport(Darwin)

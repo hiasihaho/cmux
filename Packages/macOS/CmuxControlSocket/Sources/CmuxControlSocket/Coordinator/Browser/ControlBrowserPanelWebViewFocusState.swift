@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The outcome of the v1 line-protocol `is_webview_focused` query.
@@ -8,3 +9,5 @@ public enum ControlBrowserPanelWebViewFocusState: Sendable, Equatable {
     /// view, matching the legacy reply).
     case focused(Bool)
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.equalize_splits`, preserving the legacy body's
@@ -13,3 +14,5 @@ public enum ControlWorkspaceEqualizeResolution: Sendable, Equatable {
     /// the tree fully equalized.
     case resolved(workspaceID: UUID, equalized: Bool)
 }
+
+#endif // whole-file canImport(Darwin)

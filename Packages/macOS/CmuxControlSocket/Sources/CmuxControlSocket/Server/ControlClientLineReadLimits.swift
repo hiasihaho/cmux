@@ -1,3 +1,5 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 /// Resource limits applied while a socket client is not yet authorized.
 public struct ControlClientLineReadLimits: Sendable {
     /// Maximum raw bytes read during the limited phase.
@@ -17,3 +19,7 @@ public struct ControlClientLineReadLimits: Sendable {
         self.timeoutMilliseconds = timeoutMilliseconds
     }
 }
+
+#endif // canImport(Darwin)
+
+#endif // whole-file canImport(Darwin)

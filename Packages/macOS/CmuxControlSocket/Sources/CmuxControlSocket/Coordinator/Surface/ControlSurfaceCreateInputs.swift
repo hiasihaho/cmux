@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The pre-parsed inputs for `surface.create`, lifted from the legacy
@@ -69,3 +70,5 @@ public struct ControlSurfaceCreateInputs: Sendable, Equatable {
         self.placementRaw = placementRaw
     }
 }
+
+#endif // whole-file canImport(Darwin)

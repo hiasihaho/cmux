@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The outcome of `notification.open`, preserving the legacy body's two
 /// distinct `not_found` failures.
 ///
@@ -15,3 +16,5 @@ public enum ControlNotificationOpenResolution: Sendable, Equatable {
     /// The notification's target was opened. Carries the post-open snapshot.
     case opened(ControlNotificationSnapshot)
 }
+
+#endif // whole-file canImport(Darwin)

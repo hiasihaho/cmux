@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The workspace-todo domain (`workspace.status.*` + `workspace.todo.*`):
@@ -404,3 +405,5 @@ extension ControlCommandCoordinator {
     }
 
 }
+
+#endif // whole-file canImport(Darwin)

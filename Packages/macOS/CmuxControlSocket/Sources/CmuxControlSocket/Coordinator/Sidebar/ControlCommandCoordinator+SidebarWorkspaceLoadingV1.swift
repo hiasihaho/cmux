@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 extension ControlCommandCoordinator {
@@ -50,3 +51,5 @@ extension ControlCommandCoordinator {
         return "before=\(label(result.before));after=\(label(result.after))"
     }
 }
+
+#endif // whole-file canImport(Darwin)

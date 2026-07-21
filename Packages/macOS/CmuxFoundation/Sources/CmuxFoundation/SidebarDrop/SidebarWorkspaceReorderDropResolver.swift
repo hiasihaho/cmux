@@ -1,4 +1,12 @@
+#if canImport(CoreGraphics)
+#if canImport(CoreGraphics)
 import CoreGraphics
+#else
+public import Foundation
+#endif
+#else
+public import Foundation
+#endif
 import Foundation
 
 /// Resolves sidebar workspace drag/drop hit testing into one visual and commit plan.

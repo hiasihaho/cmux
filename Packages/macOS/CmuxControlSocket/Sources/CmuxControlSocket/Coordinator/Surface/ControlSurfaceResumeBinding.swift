@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of a surface's resume binding, as the app target exposes
@@ -74,3 +75,5 @@ public struct ControlSurfaceResumeBinding: Sendable, Equatable {
         self.updatedAt = updatedAt
     }
 }
+
+#endif // whole-file canImport(Darwin)

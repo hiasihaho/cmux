@@ -1,4 +1,9 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 internal import Darwin
+#else
+internal import Glibc
+#endif
 
 /// A one-shot, pollable signal shared by connections accepted under one
 /// authorization generation.
@@ -49,3 +54,5 @@ public final class SocketAuthorizationRevocationSignal: @unchecked Sendable {
         }
     }
 }
+
+#endif // whole-file canImport(Darwin)

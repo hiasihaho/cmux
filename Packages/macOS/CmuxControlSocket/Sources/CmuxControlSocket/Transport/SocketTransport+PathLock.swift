@@ -1,5 +1,9 @@
 internal import Foundation
+#if canImport(Darwin)
 internal import Darwin
+#else
+internal import Glibc
+#endif
 
 extension SocketTransport {
     /// The advisory lock-file path for a socket path.

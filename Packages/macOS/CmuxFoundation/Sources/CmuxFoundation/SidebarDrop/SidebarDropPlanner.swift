@@ -1,4 +1,8 @@
+#if canImport(CoreGraphics)
 public import CoreGraphics
+#else
+public import Foundation
+#endif
 public import Foundation
 
 /// Pure planner for sidebar tab/workspace drag-and-drop. Computes the drop

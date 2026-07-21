@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The v1 line-protocol browser-panel domain (`open_browser` … `is_webview_focused`),
@@ -191,3 +192,5 @@ extension ControlCommandCoordinator {
         }
     }
 }
+
+#endif // whole-file canImport(Darwin)

@@ -2,7 +2,9 @@
 .build-gnome50/
 # Flips between the GNOME 49 pin and GNOME 50 `main` depending on CMUX_GNOME —
 # not meaningful to track.
-Package.resolved
+# Package.resolved IS committed: adwaita-swift references its meta
+# dependency by branch, so an unpinned fresh resolve can break the build
+# (meta made blockUpdates internal). The lockfile is the pin.
 # Claude Code conversation exports — local notes, not for publishing.
 /2026-*.txt
 tmp-local/

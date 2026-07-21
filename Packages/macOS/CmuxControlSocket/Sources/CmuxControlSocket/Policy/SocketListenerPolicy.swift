@@ -1,5 +1,9 @@
 internal import CmuxSettings
+#if canImport(Darwin)
 public import Darwin
+#else
+public import Glibc
+#endif
 
 /// Pure decision logic for the control-socket listener: accept-failure
 /// recovery, socket-path unlink rules, and bind-failure path fallback.

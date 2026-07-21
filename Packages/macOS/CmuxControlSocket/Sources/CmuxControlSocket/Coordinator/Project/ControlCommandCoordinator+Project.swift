@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The project domain (`project.open` and the `project.set_*` /
@@ -240,3 +241,5 @@ extension ControlCommandCoordinator {
         .err(code: "not_found", message: "Project surface not found", data: nil)
     }
 }
+
+#endif // whole-file canImport(Darwin)

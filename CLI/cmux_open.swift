@@ -1,6 +1,17 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 struct CMUXAgentTurnDiffBaselineRecord: Codable {
     var workspaceId: String
@@ -5755,6 +5766,12 @@ extension CMUXCLI {
     }
 
     private func diffViewerHTTPServerExecutablePath(pid: Int32) -> String? {
+        #if !canImport(Darwin)
+        guard let linuxPath = try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/\(pid)/exe") else {
+            return nil
+        }
+        return URL(fileURLWithPath: linuxPath).standardizedFileURL.path
+        #else
         var buffer = [CChar](repeating: 0, count: 4096)
         let count = buffer.withUnsafeMutableBufferPointer { pointer -> Int32 in
             guard let baseAddress = pointer.baseAddress else { return 0 }
@@ -5770,6 +5787,7 @@ extension CMUXCLI {
             return URL(fileURLWithPath: String(cString: resolvedPath)).standardizedFileURL.path
         }
         return URL(fileURLWithPath: rawPath).standardizedFileURL.path
+        #endif
     }
 
     func readDiffViewerHTTPServerPort(from handle: FileHandle, process: Process) throws -> Int {
@@ -5946,7 +5964,9 @@ extension CMUXCLI {
         _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
 
         var address = sockaddr_in()
+        #if canImport(Darwin)
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        #endif
         address.sin_family = sa_family_t(AF_INET)
         address.sin_port = in_port_t(0).bigEndian
         address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
@@ -6605,6 +6625,22 @@ extension CMUXCLI {
         let fileURL = URL(fileURLWithPath: file.filePath, isDirectory: false)
         guard diffViewerHTTPFileIsPending(fileURL) else { return true }
 
+        #if !canImport(Darwin)
+        // Linux: corelibs Dispatch has no makeFileSystemObjectSource; poll
+        // the file's mtime. Replacement latency ~200ms, invisible here.
+        let event = DispatchSemaphore(value: 0)
+        let pollStop = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            func stamp() -> Date? {
+                (try? FileManager.default.attributesOfItem(atPath: fileURL.path))?[.modificationDate] as? Date
+            }
+            let initial = stamp()
+            while pollStop.wait(timeout: .now() + 0.2) == .timedOut {
+                if stamp() != initial { event.signal(); return }
+            }
+        }
+        defer { pollStop.signal() }
+        #else
         let fd = open(fileURL.path, O_EVTONLY)
         guard fd >= 0 else { return false }
 
@@ -6627,6 +6663,7 @@ extension CMUXCLI {
             source.cancel()
             _ = cleanup.wait(timeout: .now() + 1)
         }
+        #endif
         let deadline = Date().addingTimeInterval(diffViewerHTTPReplacementWaitTimeout())
         while diffViewerHTTPFileIsPending(fileURL) {
             let remaining = deadline.timeIntervalSinceNow

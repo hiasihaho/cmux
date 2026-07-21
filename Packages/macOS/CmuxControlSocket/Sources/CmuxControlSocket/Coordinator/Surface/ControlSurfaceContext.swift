@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The surface-domain slice of the control-command seam (a constituent of the
@@ -360,3 +361,5 @@ public protocol ControlSurfaceContext: AnyObject {
     /// - Returns: The bridged payload, or `nil` when unavailable.
     func controlDebugTerminals() -> JSONValue?
 }
+
+#endif // whole-file canImport(Darwin)

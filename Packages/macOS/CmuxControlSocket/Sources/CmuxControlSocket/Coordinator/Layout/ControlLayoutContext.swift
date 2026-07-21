@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// Summary row for one saved layout.
@@ -111,3 +112,5 @@ public protocol ControlLayoutContext: AnyObject {
     /// Deletes one saved layout.
     func controlLayoutDelete(name: String) -> ControlLayoutDeleteResolution
 }
+
+#endif // whole-file canImport(Darwin)

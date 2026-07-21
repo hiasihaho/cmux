@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The `canvas.info` snapshot: the resolved workspace's layout mode and, when
@@ -33,3 +34,5 @@ public struct ControlCanvasInfoSnapshot: Sendable, Equatable {
         self.centerY = centerY
     }
 }
+
+#endif // whole-file canImport(Darwin)

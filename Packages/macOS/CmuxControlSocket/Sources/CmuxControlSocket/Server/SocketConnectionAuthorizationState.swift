@@ -1,7 +1,15 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 internal import CmuxSettings
+#if canImport(CryptoKit)
 internal import CryptoKit
+#else
+internal import Crypto
+#endif
 internal import Foundation
+#if canImport(os)
 internal import os
+#endif
 
 /// Synchronous authorization-generation state shared by the main-actor
 /// listener lifecycle and dedicated blocking client threads.
@@ -104,3 +112,7 @@ final class SocketConnectionAuthorizationState: Sendable {
         password.map { Data(SHA256.hash(data: Data($0.utf8))) }
     }
 }
+
+#endif // canImport(Darwin)
+
+#endif // whole-file canImport(Darwin)

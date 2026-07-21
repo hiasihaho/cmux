@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The pre-parsed primitive inputs `pane.create` carries, as
@@ -87,3 +88,5 @@ public struct ControlPaneCreateInputs: Sendable, Equatable {
         self.placementRaw = placementRaw
     }
 }
+
+#endif // whole-file canImport(Darwin)

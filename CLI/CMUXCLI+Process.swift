@@ -1,5 +1,9 @@
 import CmuxFoundation
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 
 enum CLIBrokenPipeDisposition {
@@ -10,13 +14,20 @@ enum CLIBrokenPipeDisposition {
 private let cliStdioDispositionLock = NSLock()
 
 func currentCLINoSIGPIPEValue(for fd: Int32) -> Int32? {
+    #if canImport(Darwin)
     let value = fcntl(fd, F_GETNOSIGPIPE, 0)
     guard value >= 0 else { return nil }
     return value
+    #else
+    // No per-fd flag on Linux; SIGPIPE is handled process-wide.
+    return 0
+    #endif
 }
 
 private func setCLINoSIGPIPE(_ enabled: Bool, for fd: Int32) {
+    #if canImport(Darwin)
     _ = fcntl(fd, F_SETNOSIGPIPE, enabled ? 1 : 0)
+    #endif
 }
 
 func configureCLIWriteFDNoSIGPIPE(_ fd: Int32) {

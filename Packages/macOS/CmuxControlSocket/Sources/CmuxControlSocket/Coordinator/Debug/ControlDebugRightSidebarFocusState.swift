@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 #if DEBUG
 /// The right-sidebar reveal state `debug.right_sidebar.focus` reports back
 /// (the Sendable shape of `AppDelegate.debugRevealRightSidebarInActiveMainWindow`'s
@@ -47,3 +48,5 @@ public struct ControlDebugRightSidebarFocusState: Sendable, Equatable {
     }
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

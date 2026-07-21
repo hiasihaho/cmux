@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The outcome of `workspace.group.add`, preserving the legacy body's two
 /// distinct failures.
 ///
@@ -23,3 +24,5 @@ public enum ControlWorkspaceGroupAddResolution: Sendable, Equatable {
     /// `workspaceGroup.error.workspaceIsOtherGroupAnchor`).
     case workspaceIsOtherGroupAnchor
 }
+
+#endif // whole-file canImport(Darwin)

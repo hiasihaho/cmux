@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The project/file-opening-domain slice of the control-command seam (a
@@ -156,3 +157,5 @@ public protocol ControlProjectContext: AnyObject {
     /// - Returns: The bridged call result.
     func controlFileOpen(params: [String: JSONValue]) -> ControlCallResult
 }
+
+#endif // whole-file canImport(Darwin)

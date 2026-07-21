@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 public import AppKit
 
 /// Default offsets and feature flags for the keyboard shortcut-hint overlays
@@ -79,3 +80,5 @@ public struct ShortcutHintDebugSettings {
         Self.defaultShowHintsOnControlHold && modifierHoldHintsEnabled
     }
 }
+
+#endif // canImport(AppKit)

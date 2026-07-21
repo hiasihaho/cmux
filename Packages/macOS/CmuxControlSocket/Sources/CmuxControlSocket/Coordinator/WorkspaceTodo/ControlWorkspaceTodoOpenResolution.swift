@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The app-side resolution of `workspace.todo.open`.
@@ -18,3 +19,5 @@ public enum ControlWorkspaceTodoOpenResolution: Sendable, Equatable {
     ///   - surfaceID: The todo panel.
     case opened(windowID: UUID?, workspaceID: UUID, paneID: UUID?, surfaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

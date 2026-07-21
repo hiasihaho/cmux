@@ -1,4 +1,9 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 internal import Darwin
+#else
+internal import Glibc
+#endif
 internal import Foundation
 
 extension SocketControlServer {
@@ -380,3 +385,5 @@ extension SocketControlServer {
         return restartPath
     }
 }
+
+#endif // whole-file canImport(Darwin)

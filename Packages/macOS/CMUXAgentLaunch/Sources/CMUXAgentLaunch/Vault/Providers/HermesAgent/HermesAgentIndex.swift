@@ -1,3 +1,4 @@
+#if canImport(SQLite3)
 import Foundation
 import SQLite3
 
@@ -410,3 +411,5 @@ public enum HermesAgentIndex {
         return (home as NSString).appendingPathComponent(String(trimmed.dropFirst(2)))
     }
 }
+
+#endif // canImport(SQLite3)

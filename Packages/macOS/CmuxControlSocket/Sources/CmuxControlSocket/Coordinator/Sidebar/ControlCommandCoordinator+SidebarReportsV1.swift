@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The v1 sidebar telemetry/report commands (`report_git_branch` / `report_pr`
@@ -509,3 +510,5 @@ extension ControlCommandCoordinator {
         }
     }
 }
+
+#endif // whole-file canImport(Darwin)

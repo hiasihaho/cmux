@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The pre-parsed inputs for `surface.resume.set`, lifted from the legacy
@@ -57,3 +58,5 @@ public struct ControlSurfaceResumeSetInputs: Sendable, Equatable {
         self.autoResume = autoResume
     }
 }
+
+#endif // whole-file canImport(Darwin)

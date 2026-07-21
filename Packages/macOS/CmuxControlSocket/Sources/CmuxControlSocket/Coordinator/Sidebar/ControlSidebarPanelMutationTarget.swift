@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The pre-parsed target of a v1 panel-metadata mutation (`report_pr` /
@@ -25,3 +26,5 @@ public struct ControlSidebarPanelMutationTarget: Sendable, Equatable {
         self.panelID = panelID
     }
 }
+
+#endif // whole-file canImport(Darwin)

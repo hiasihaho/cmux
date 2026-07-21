@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.remote.terminal_session_end`, after the
@@ -11,3 +12,5 @@ public enum ControlWorkspaceRemoteTerminalSessionEndResolution: Sendable, Equata
     /// `remoteStatusPayload()`.
     case resolved(windowID: UUID?, workspaceID: UUID, remoteStatus: JSONValue)
 }
+
+#endif // whole-file canImport(Darwin)

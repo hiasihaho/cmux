@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 struct CmuxTextStyleMetrics {
@@ -27,3 +28,5 @@ struct CmuxTextStyleMetrics {
         }
     }
 }
+
+#endif // canImport(SwiftUI)

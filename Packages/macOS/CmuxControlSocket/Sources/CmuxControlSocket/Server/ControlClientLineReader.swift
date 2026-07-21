@@ -1,4 +1,9 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 internal import Darwin
+#else
+internal import Glibc
+#endif
 internal import Dispatch
 internal import Foundation
 
@@ -243,3 +248,5 @@ public final class ControlClientLineReader {
         idleReadDeadlineUptimeNanoseconds = overflowed ? .max : deadline
     }
 }
+
+#endif // whole-file canImport(Darwin)

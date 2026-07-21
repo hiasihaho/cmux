@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 #if DEBUG
 /// The outcome of `debug.command_palette.rename_input.selection`, preserving
 /// the legacy body's three shapes: missing window (error), no focused field
@@ -14,3 +15,5 @@ public enum ControlDebugRenameInputSelectionResolution: Sendable, Equatable {
     case active(location: Int, length: Int, textLength: Int)
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

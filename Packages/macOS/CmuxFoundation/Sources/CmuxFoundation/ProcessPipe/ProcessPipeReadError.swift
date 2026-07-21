@@ -1,4 +1,12 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
+#else
+import Glibc
+#endif
 public import Foundation
 
 /// A failed `read(2)`/`poll(2)` against a process pipe or socket descriptor,

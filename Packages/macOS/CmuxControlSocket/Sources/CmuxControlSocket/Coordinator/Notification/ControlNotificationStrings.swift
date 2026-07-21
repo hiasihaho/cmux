@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The localized notification-domain error messages, supplied by the app
 /// conformance so they resolve against the app's `Localizable.xcstrings`.
 ///
@@ -54,3 +55,5 @@ public struct ControlNotificationStrings: Sendable, Equatable {
         self.targetNotFound = targetNotFound
     }
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The localized workspace-group error messages, supplied by the app
 /// conformance so they resolve against the app's `Localizable.xcstrings`.
 ///
@@ -36,3 +37,5 @@ public struct ControlWorkspaceGroupStrings: Sendable, Equatable {
         self.invalidReferenceWorkspace = invalidReferenceWorkspace
     }
 }
+
+#endif // whole-file canImport(Darwin)

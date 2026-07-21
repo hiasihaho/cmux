@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of one main window, as the app target exposes it to
@@ -40,3 +41,5 @@ public struct ControlWindowSummary: Sendable, Equatable {
         self.selectedWorkspaceID = selectedWorkspaceID
     }
 }
+
+#endif // whole-file canImport(Darwin)

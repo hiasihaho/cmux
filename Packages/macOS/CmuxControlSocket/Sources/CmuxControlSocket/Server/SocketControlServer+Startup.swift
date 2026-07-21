@@ -1,5 +1,11 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 public import CmuxSettings
+#if canImport(Darwin)
 internal import Darwin
+#else
+internal import Glibc
+#endif
 internal import Foundation
 
 extension SocketControlServer {
@@ -375,3 +381,7 @@ extension SocketControlServer {
     }
 
 }
+
+#endif // canImport(Darwin)
+
+#endif // whole-file canImport(Darwin)

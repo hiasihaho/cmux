@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 public import SwiftUI
 
 /// Adds cmux font magnification values to SwiftUI environment lookups.
@@ -13,3 +14,5 @@ public extension EnvironmentValues {
         set { self[CmuxGlobalFontMagnificationPercentKey.self] = GlobalFontMagnification.clamp(newValue) }
     }
 }
+
+#endif // canImport(SwiftUI)

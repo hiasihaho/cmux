@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 #if DEBUG
 /// Which command-palette notification a debug command posts. Each case maps to
 /// one app-side `Notification.Name` the palette UI observes.
@@ -15,3 +16,5 @@ public enum ControlDebugCommandPaletteEvent: Sendable, Equatable {
     case renameInputDeleteBackward
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

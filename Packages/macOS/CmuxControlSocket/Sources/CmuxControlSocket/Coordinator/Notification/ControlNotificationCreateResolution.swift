@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `notification.create`, preserving the legacy body's three
@@ -22,3 +23,5 @@ public enum ControlNotificationCreateResolution: Sendable, Equatable {
     /// which may be absent).
     case delivered(workspaceID: UUID, surfaceID: UUID?)
 }
+
+#endif // whole-file canImport(Darwin)

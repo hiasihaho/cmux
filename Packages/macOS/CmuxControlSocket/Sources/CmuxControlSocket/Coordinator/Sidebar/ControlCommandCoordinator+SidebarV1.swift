@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The v1 split direction tokens shared by `drag_surface_to_split` /
@@ -426,3 +427,5 @@ extension ControlCommandCoordinator {
         return (target, nil)
     }
 }
+
+#endif // whole-file canImport(Darwin)

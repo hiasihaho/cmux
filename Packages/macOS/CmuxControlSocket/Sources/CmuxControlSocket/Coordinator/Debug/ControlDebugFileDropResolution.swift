@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 #if DEBUG
 public import Foundation
 
@@ -21,3 +22,5 @@ public enum ControlDebugFileDropResolution: Sendable, Equatable {
     case textDestinationDrop(handled: Bool)
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

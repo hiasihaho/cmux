@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The outcome of the v1 line-protocol `focus_webview` command, preserving
@@ -15,3 +16,5 @@ public enum ControlBrowserPanelFocusWebViewResolution: Sendable, Equatable {
     /// Focus moved into the web view.
     case focused
 }
+
+#endif // whole-file canImport(Darwin)

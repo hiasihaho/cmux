@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The mobile-host domain (`mobile.*` / `terminal.*`), lifted byte-faithfully
@@ -58,3 +59,5 @@ extension ControlCommandCoordinator {
         }
     }
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,4 +1,12 @@
+#if canImport(CoreGraphics)
+#if canImport(CoreGraphics)
 import CoreGraphics
+#else
+public import Foundation
+#endif
+#else
+public import Foundation
+#endif
 import Foundation
 
 /// Row hit-test context used while resolving a workspace reorder drag.

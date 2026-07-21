@@ -1,4 +1,9 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 internal import Darwin
+#else
+internal import Glibc
+#endif
 internal import Foundation
 
 extension SocketControlServer {
@@ -100,3 +105,5 @@ extension SocketControlServer {
             !transport.pathExists(path, matching: snapshot.boundSocketPathIdentity)
     }
 }
+
+#endif // whole-file canImport(Darwin)

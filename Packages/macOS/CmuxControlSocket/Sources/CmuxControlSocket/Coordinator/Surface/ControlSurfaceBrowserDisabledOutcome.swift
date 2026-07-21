@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of the legacy `v2BrowserDisabledExternalOpenResult`, shared by
@@ -21,3 +22,5 @@ public enum ControlSurfaceBrowserDisabledOutcome: Sendable, Equatable {
     /// placement payload). Carries the enclosing window and the opened URL.
     case openedExternally(windowID: UUID?, url: String)
 }
+
+#endif // whole-file canImport(Darwin)

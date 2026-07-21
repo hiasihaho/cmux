@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The sidebar-domain slice of the control-command seam (a constituent of the
@@ -320,3 +321,5 @@ public protocol ControlSidebarContext: AnyObject {
     /// can't resolve.
     func controlSidebarSurfaceHealth(tabArg: String) -> [ControlSidebarSurfaceHealthRow]?
 }
+
+#endif // whole-file canImport(Darwin)

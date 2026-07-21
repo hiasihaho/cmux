@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The v1 bonsplit pane commands (`list_panes` / `list_pane_surfaces` /
@@ -303,3 +304,5 @@ extension ControlCommandCoordinator {
         return lines.isEmpty ? "No surfaces" : lines.joined(separator: "\n")
     }
 }
+
+#endif // whole-file canImport(Darwin)

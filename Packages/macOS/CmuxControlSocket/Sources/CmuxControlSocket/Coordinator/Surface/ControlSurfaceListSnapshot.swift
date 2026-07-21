@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of a workspace's surfaces for the `surface.list` payload.
@@ -29,3 +30,5 @@ public struct ControlSurfaceListSnapshot: Sendable, Equatable {
         self.surfaces = surfaces
     }
 }
+
+#endif // whole-file canImport(Darwin)

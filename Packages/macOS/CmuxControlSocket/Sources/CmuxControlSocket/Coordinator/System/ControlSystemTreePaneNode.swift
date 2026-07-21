@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// One pane row of the `system.tree` snapshot (the legacy per-pane dictionary
@@ -41,3 +42,5 @@ public struct ControlSystemTreePaneNode: Sendable, Equatable {
         self.surfaces = surfaces
     }
 }
+
+#endif // whole-file canImport(Darwin)

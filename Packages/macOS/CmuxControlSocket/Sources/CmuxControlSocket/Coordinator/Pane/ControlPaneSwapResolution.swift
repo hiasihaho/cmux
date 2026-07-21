@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `pane.swap`, preserving every distinct branch of the legacy
@@ -44,3 +45,5 @@ public enum ControlPaneSwapResolution: Sendable, Equatable {
         targetSurfaceID: UUID
     )
 }
+
+#endif // whole-file canImport(Darwin)

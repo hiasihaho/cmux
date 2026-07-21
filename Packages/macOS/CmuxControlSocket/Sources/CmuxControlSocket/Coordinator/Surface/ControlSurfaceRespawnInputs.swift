@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The pre-parsed inputs for `surface.respawn`, lifted from the legacy
@@ -47,3 +48,5 @@ public struct ControlSurfaceRespawnInputs: Sendable, Equatable {
         self.requestedFocus = requestedFocus
     }
 }
+
+#endif // whole-file canImport(Darwin)

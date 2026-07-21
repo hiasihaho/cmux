@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.close`, preserving the legacy body's distinct failures
@@ -25,3 +26,5 @@ public enum ControlSurfaceCloseResolution: Sendable, Equatable {
     /// The surface was closed. Carries the echoed identity.
     case closed(windowID: UUID?, workspaceID: UUID, surfaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

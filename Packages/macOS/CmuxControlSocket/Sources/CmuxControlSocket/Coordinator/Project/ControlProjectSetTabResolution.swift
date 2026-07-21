@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The outcome of `project.set_tab` (the legacy `v2ProjectSetTab`).
 public enum ControlProjectSetTabResolution: Sendable, Equatable {
     /// No project surface resolved for the routing/surface selectors.
@@ -7,3 +8,5 @@ public enum ControlProjectSetTabResolution: Sendable, Equatable {
     /// The tab was set. Carries the resolved tab's raw value.
     case set(tab: String)
 }
+
+#endif // whole-file canImport(Darwin)

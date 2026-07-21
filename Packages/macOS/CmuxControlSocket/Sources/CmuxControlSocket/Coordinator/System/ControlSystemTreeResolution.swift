@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The app side's answer to the `system.tree` window walk: the matched window
@@ -29,3 +30,5 @@ public struct ControlSystemTreeResolution: Sendable, Equatable {
         self.windows = windows
     }
 }
+
+#endif // whole-file canImport(Darwin)

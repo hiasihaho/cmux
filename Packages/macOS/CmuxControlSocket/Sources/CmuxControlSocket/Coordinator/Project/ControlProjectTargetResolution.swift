@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The outcome of `project.set_selected_target` (the legacy
 /// `v2ProjectSetSelectedTarget`).
 public enum ControlProjectTargetResolution: Sendable, Equatable {
@@ -8,3 +9,5 @@ public enum ControlProjectTargetResolution: Sendable, Equatable {
     /// cleared).
     case updated(targetID: String?)
 }
+
+#endif // whole-file canImport(Darwin)

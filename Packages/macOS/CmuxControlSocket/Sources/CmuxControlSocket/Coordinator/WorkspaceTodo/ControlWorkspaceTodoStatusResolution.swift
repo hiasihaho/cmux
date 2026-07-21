@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The app-side resolution of `workspace.status.get` / `workspace.status.set`.
@@ -11,3 +12,5 @@ public enum ControlWorkspaceTodoStatusResolution: Sendable {
     /// The status snapshot after the read/mutation, with the owning window.
     case resolved(windowID: UUID?, status: ControlWorkspaceTodoStatusSnapshot)
 }
+
+#endif // whole-file canImport(Darwin)

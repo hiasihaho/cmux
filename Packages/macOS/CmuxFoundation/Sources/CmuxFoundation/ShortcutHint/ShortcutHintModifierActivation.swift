@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 public import AppKit
 
 /// Which modifier(s) activate keyboard shortcut hints. Pure value forwarding to
@@ -24,3 +25,5 @@ public enum ShortcutHintModifierActivation {
         }
     }
 }
+
+#endif // canImport(AppKit)

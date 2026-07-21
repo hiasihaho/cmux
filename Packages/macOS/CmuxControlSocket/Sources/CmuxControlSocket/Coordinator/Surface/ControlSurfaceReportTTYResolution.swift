@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.report_tty`, preserving the legacy body's distinct
@@ -22,3 +23,5 @@ public enum ControlSurfaceReportTTYResolution: Sendable, Equatable {
     /// echoes the resolved surface, not the requested one).
     case recorded(surfaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

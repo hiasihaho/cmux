@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The outcome of `session.restore_previous` (the legacy
 /// `v2SessionRestorePrevious` body).
 ///
@@ -11,3 +12,5 @@ public enum ControlSessionRestoreResolution: Sendable, Equatable {
     /// error message (key `terminal.restore.no_snapshot`).
     case noSnapshot(message: String)
 }
+
+#endif // whole-file canImport(Darwin)

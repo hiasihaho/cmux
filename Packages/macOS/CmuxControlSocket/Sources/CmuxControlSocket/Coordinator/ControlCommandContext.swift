@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The read-only seam through which ``ControlCommandCoordinator`` reaches live
 /// app state to run control commands, without the package importing the app
 /// target.
@@ -55,3 +56,5 @@ public protocol ControlCommandContext:
         _ body: @MainActor (any ControlCommandContext) -> T
     ) -> T
 }
+
+#endif // whole-file canImport(Darwin)

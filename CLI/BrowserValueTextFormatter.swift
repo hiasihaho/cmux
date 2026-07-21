@@ -1,4 +1,7 @@
 import Foundation
+#if !canImport(Darwin)
+import CoreFoundation
+#endif
 
 /// Converts browser RPC values into their plain-text CLI representation.
 struct BrowserValueTextFormatter {

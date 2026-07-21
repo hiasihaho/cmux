@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 
 final class SSHPTYAttachReconnectInputFilter {
@@ -79,8 +83,10 @@ final class SSHPTYAttachReconnectInputFilter {
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
             // Read ends can close mid-write: writers get EPIPE, never SIGPIPE.
+            #if canImport(Darwin)
             _ = fcntl(stopSignalFDs[1], F_SETNOSIGPIPE, 1)
             _ = fcntl(stopAcknowledgementFDs[1], F_SETNOSIGPIPE, 1)
+            #endif
             filterControl = SSHPTYAttachReconnectInputFilterControl(
                 stopSignalWriteFD: stopSignalFDs[1],
                 stopAcknowledgementReadFD: stopAcknowledgementFDs[0]
@@ -136,7 +142,7 @@ final class SSHPTYAttachReconnectInputFilter {
                 try Self.writeAll(fd: fd, data: input)
                 return true
             } catch {
-                _ = shutdown(fd, SHUT_WR)
+                _ = shutdown(fd, Int32(SHUT_WR))
                 return false
             }
         }
@@ -184,7 +190,7 @@ final class SSHPTYAttachReconnectInputFilter {
             if let filter = reconnectInputFilter, filter.hasPendingInput {
                 _ = await writeOrShutdown(filter.flushPendingInput())
             }
-            _ = shutdown(fd, SHUT_WR)
+            _ = shutdown(fd, Int32(SHUT_WR))
         }
 
         func stopReconnectFilteringAtDeadline() async -> Bool {

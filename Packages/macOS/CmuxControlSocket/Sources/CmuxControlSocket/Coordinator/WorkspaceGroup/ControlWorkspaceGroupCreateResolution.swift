@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.group.create`, preserving the legacy body's
@@ -31,3 +32,5 @@ public enum ControlWorkspaceGroupCreateResolution: Sendable, Equatable {
     /// The group was created. Carries its snapshot for the `group` payload.
     case created(ControlWorkspaceGroupSnapshot)
 }
+
+#endif // whole-file canImport(Darwin)

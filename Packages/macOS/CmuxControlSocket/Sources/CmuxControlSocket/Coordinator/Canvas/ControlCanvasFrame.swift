@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A pane frame in canvas coordinates (top-left origin, y grows downward),
@@ -15,3 +16,5 @@ public struct ControlCanvasFrame: Sendable, Equatable {
         self.height = height
     }
 }
+
+#endif // whole-file canImport(Darwin)

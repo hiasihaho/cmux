@@ -1,3 +1,5 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 internal import Foundation
 
 /// Owns Objective-C notification tokens for the socket server's lifetime.
@@ -29,3 +31,7 @@ final class SocketAuthorizationObserverBag: @unchecked Sendable {
         tokens.forEach(notificationCenter.removeObserver)
     }
 }
+
+#endif // canImport(Darwin)
+
+#endif // whole-file canImport(Darwin)

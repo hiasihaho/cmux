@@ -326,6 +326,7 @@ extension CMUXCLI {
         targetBundleIdentifier: String,
         explicitPassword _: String?
     ) -> ThemeReloadStatus {
+        #if canImport(Darwin)
         DistributedNotificationCenter.default().post(
             name: Notification.Name(Self.cmuxThemesReloadNotificationName),
             object: nil,
@@ -336,6 +337,11 @@ extension CMUXCLI {
             ]
         )
         return ThemeReloadStatus(requested: true, targetBundleIdentifier: targetBundleIdentifier)
+        #else
+        // No DistributedNotificationCenter on Linux; theme reload flows
+        // through the control socket instead, so nothing to post here.
+        return ThemeReloadStatus(requested: false, targetBundleIdentifier: targetBundleIdentifier)
+        #endif
     }
 
     func themeTargetBundleIdentifier(socketPath: String) -> String {

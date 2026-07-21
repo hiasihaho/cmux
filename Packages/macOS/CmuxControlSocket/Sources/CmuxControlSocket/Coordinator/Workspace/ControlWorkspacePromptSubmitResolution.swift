@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.prompt_submit`, after the coordinator has validated
@@ -21,3 +22,5 @@ public enum ControlWorkspacePromptSubmitResolution: Sendable, Equatable {
         messagePreview: String?
     )
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The first display-ordered pull request for the `sidebar_state` listing.
@@ -25,3 +26,5 @@ public struct ControlSidebarPullRequestInfo: Sendable, Equatable {
         self.label = label
     }
 }
+
+#endif // whole-file canImport(Darwin)

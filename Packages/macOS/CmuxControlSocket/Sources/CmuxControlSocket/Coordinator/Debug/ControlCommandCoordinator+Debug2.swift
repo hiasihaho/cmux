@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 #if DEBUG
 internal import Foundation
 
@@ -430,3 +431,5 @@ extension ControlCommandCoordinator {
     }
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The terminal grid size of a pane's selected surface, as the app target
 /// exposes it to ``ControlCommandCoordinator`` for the `pane.list` payload.
 ///
@@ -44,3 +45,5 @@ public struct ControlPaneGridSize: Sendable, Equatable {
         self.cellHeightPoints = cellHeightPoints
     }
 }
+
+#endif // whole-file canImport(Darwin)

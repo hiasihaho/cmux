@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The manual loader key state before and after a `workspace_loading` toggle,
 /// reported back to the caller (e.g. `before=ON;after=OFF`).
 public struct ControlSidebarWorkspaceLoadingState: Sendable, Equatable {
@@ -23,3 +24,5 @@ public struct ControlSidebarWorkspaceLoadingState: Sendable, Equatable {
         self.failureReason = failureReason
     }
 }
+
+#endif // whole-file canImport(Darwin)

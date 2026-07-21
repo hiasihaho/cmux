@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The sidebar progress state for the `sidebar_state` listing.
@@ -17,3 +18,5 @@ public struct ControlSidebarProgressInfo: Sendable, Equatable {
         self.label = label
     }
 }
+
+#endif // whole-file canImport(Darwin)

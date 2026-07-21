@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The workspace domain (the non-group `workspace.*` methods), lifted
@@ -866,3 +867,5 @@ extension ControlCommandCoordinator {
         return false
     }
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// Shared rendering for terminal split/create requests aimed at a remote tmux
@@ -44,3 +45,5 @@ extension ControlCommandCoordinator {
         )
     }
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of the v1 `new_surface` command.
@@ -14,3 +15,5 @@ public enum ControlSidebarNewSurfaceResolution: Sendable, Equatable {
     /// Creation failed.
     case failed
 }
+
+#endif // whole-file canImport(Darwin)

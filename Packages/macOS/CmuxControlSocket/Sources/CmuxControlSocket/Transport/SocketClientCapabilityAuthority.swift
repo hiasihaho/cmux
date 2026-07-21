@@ -1,4 +1,8 @@
+#if canImport(CryptoKit)
 internal import CryptoKit
+#else
+internal import Crypto
+#endif
 public import Foundation
 
 /// Issues and verifies opaque bearer capabilities for cmux-created terminals.

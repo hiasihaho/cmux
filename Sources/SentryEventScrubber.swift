@@ -1,3 +1,4 @@
+#if canImport(Sentry)
 import CmuxFoundation
 import Sentry
 
@@ -263,3 +264,5 @@ struct SentryEventScrubber {
         }
     }
 }
+
+#endif // canImport(Sentry)

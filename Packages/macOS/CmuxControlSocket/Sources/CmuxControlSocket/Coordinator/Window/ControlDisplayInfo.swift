@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// A read-only snapshot of one connected display, as the app target exposes it
 /// to ``ControlCommandCoordinator`` through ``ControlCommandContext``.
 ///
@@ -54,3 +55,5 @@ public struct ControlDisplayInfo: Sendable, Equatable {
         self.frameHeight = frameHeight
     }
 }
+
+#endif // whole-file canImport(Darwin)

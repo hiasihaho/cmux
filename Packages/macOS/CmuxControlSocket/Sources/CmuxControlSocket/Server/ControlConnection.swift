@@ -1,4 +1,9 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 public import Darwin
+#else
+public import Glibc
+#endif
 
 /// An accepted, configured control-socket client connection, delivered to the
 /// host through ``SocketControlServer/connections``.
@@ -39,3 +44,5 @@ public struct ControlConnection: Sendable {
         self.authorizationRevocationSignal = authorizationRevocationSignal
     }
 }
+
+#endif // whole-file canImport(Darwin)

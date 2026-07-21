@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The typed twins of the former `TerminalControllerV2ParamParsingSupport`
@@ -222,3 +223,5 @@ extension ControlCommandCoordinator {
         return .string(surfaceRef.replacingOccurrences(of: "surface:", with: "tab:"))
     }
 }
+
+#endif // whole-file canImport(Darwin)

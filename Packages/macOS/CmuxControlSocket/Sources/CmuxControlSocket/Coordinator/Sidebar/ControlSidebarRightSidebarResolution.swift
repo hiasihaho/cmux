@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The outcome of applying a v1 `right_sidebar` remote command app-side
@@ -12,3 +13,5 @@ public enum ControlSidebarRightSidebarResolution: Sendable, Equatable {
     /// (localized app-side where the original was localized).
     case failure(message: String)
 }
+
+#endif // whole-file canImport(Darwin)

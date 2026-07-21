@@ -1,5 +1,9 @@
 public import Foundation
+#if canImport(Darwin)
 internal import Darwin
+#else
+internal import Glibc
+#endif
 
 extension SocketTransport {
     /// Writes all of `data` to `socket`, retrying on `EINTR` and partial

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of one workspace's todo status, as the app target
@@ -72,3 +73,5 @@ public struct ControlWorkspaceTodoStatusSnapshot: Sendable, Equatable {
         self.signals = signals
     }
 }
+
+#endif // whole-file canImport(Darwin)

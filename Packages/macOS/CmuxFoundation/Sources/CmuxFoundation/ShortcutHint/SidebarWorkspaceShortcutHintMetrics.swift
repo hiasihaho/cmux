@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 public import AppKit
 
 /// Measures and caches the rendered width of sidebar shortcut-hint labels so
@@ -72,3 +73,5 @@ public struct SidebarWorkspaceShortcutHintMetrics {
     }
     #endif
 }
+
+#endif // canImport(AppKit)

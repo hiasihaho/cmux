@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of a workspace remote mutation that resolves a workspace by id
@@ -26,3 +27,5 @@ public enum ControlWorkspaceRemoteResolution: Sendable, Equatable {
     /// resolved workspace id, and the bridged `remoteStatusPayload()`.
     case resolved(windowID: UUID?, workspaceID: UUID, remoteStatus: JSONValue)
 }
+
+#endif // whole-file canImport(Darwin)

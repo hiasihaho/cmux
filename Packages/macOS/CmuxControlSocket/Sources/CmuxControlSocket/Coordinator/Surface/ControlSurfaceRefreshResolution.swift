@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.refresh`, preserving the legacy body's failure and the
@@ -13,3 +14,5 @@ public enum ControlSurfaceRefreshResolution: Sendable, Equatable {
     /// The terminals were refreshed. Carries the echoed identity and the count.
     case refreshed(windowID: UUID?, workspaceID: UUID, refreshedCount: Int)
 }
+
+#endif // whole-file canImport(Darwin)

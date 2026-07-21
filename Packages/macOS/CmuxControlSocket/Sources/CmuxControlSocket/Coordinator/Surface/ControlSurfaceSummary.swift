@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of one surface row for the `surface.list` payload, as the
@@ -87,3 +88,5 @@ public struct ControlSurfaceSummary: Sendable, Equatable {
         self.resumeBinding = resumeBinding
     }
 }
+
+#endif // whole-file canImport(Darwin)

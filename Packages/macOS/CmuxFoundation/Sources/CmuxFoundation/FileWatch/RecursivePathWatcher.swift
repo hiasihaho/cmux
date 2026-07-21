@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 import Foundation
 
 /// Watches a set of filesystem paths recursively and reports changes as a
@@ -166,3 +167,5 @@ public actor RecursivePathWatcher {
         handleRawEvent()
     }
 }
+
+#endif // canImport(Darwin)

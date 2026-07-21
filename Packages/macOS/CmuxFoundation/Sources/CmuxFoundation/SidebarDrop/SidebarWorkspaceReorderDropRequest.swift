@@ -1,4 +1,8 @@
+#if canImport(CoreGraphics)
 public import CoreGraphics
+#else
+public import Foundation
+#endif
 public import Foundation
 
 /// Input snapshot for resolving a sidebar workspace reorder drop.

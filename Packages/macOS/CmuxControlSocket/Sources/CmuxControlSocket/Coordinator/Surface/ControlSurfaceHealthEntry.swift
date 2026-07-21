@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only render-health row for one surface in the `surface.health` payload.
@@ -33,3 +34,5 @@ public struct ControlSurfaceHealthEntry: Sendable, Equatable {
         self.inWindow = inWindow
     }
 }
+
+#endif // whole-file canImport(Darwin)

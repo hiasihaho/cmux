@@ -1,4 +1,7 @@
 import Foundation
+#if !canImport(Darwin)
+import CoreFoundation
+#endif
 
 /// Wire frame sent from hook subcommands and the OpenCode plugin to the
 /// cmux socket, then materialized into a `WorkstreamItem` by the store.
@@ -211,7 +214,12 @@ private indirect enum AnyJSON: Codable, Sendable, Equatable {
             if CFGetTypeID(n) == CFBooleanGetTypeID() {
                 return .bool(n.boolValue)
             }
-            if CFNumberIsFloatType(n) {
+            #if canImport(Darwin)
+            let cfNumber = n as CFNumber
+            #else
+            let cfNumber = unsafeBitCast(n, to: CFNumber.self)
+            #endif
+            if CFNumberIsFloatType(cfNumber) {
                 return .double(n.doubleValue)
             }
             return .int(Int(n.int64Value))

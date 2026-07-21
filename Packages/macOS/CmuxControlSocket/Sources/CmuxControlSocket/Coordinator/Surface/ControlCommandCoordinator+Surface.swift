@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The surface domain (`surface.*` plus `debug.terminals`), lifted byte-faithfully
@@ -621,3 +622,5 @@ extension ControlCommandCoordinator {
     }
 
 }
+
+#endif // whole-file canImport(Darwin)

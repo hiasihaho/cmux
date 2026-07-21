@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The debug/test-only-domain slice of the control-command seam (a constituent
@@ -320,3 +321,5 @@ public protocol ControlDebugContext: AnyObject {
     func controlDebugRemoteTmuxSizingSettled() -> JSONValue?
 #endif
 }
+
+#endif // whole-file canImport(Darwin)

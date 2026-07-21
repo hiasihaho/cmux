@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 public import AppKit
 public import Foundation
 
@@ -51,3 +52,5 @@ public struct SidebarDragFailsafePolicy {
         eventType == .leftMouseUp
     }
 }
+
+#endif // canImport(AppKit)

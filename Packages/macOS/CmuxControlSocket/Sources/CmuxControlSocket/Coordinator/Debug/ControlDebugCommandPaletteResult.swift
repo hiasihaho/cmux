@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 #if DEBUG
 /// One command-palette result row for `debug.command_palette.results`
 /// (the Sendable twin of the app's `CommandPaletteDebugResultRow`).
@@ -30,3 +31,5 @@ public struct ControlDebugCommandPaletteResult: Sendable, Equatable {
     }
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The file-into-panel openers of the project domain: `markdown.open` and
@@ -140,3 +141,5 @@ extension ControlCommandCoordinator {
         return (filePath, nil)
     }
 }
+
+#endif // whole-file canImport(Darwin)

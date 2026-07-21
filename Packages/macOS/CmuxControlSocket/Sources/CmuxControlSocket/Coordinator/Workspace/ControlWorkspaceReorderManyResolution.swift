@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.reorder_many`, after the coordinator has parsed and
@@ -19,3 +20,5 @@ public enum ControlWorkspaceReorderManyResolution: Sendable, Equatable {
     /// window id (may be absent) and the per-workspace plan items.
     case resolved(windowID: UUID?, plans: [ControlWorkspaceReorderPlanItem])
 }
+
+#endif // whole-file canImport(Darwin)

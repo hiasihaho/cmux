@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.remote.pty_attach_end`, after the coordinator has
@@ -22,3 +23,5 @@ public enum ControlWorkspaceRemotePTYAttachEndResolution: Sendable, Equatable {
         remoteStatus: JSONValue
     )
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,6 +1,16 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
+#else
+import Glibc
+#endif
 public import Foundation
+#if canImport(OSLog)
 import OSLog
+#endif
 
 // Same subsystem/category as the original app-target ProcessPipeReader so
 // existing log queries keep working after the move into CmuxFoundation.

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The browser-panel slice of the control-command seam (a constituent of the
@@ -54,3 +55,5 @@ public protocol ControlBrowserPanelContext: AnyObject {
     /// Whether the web view holds focus (`is_webview_focused`).
     func controlBrowserPanelIsWebViewFocused(panelID: UUID) -> ControlBrowserPanelWebViewFocusState
 }
+
+#endif // whole-file canImport(Darwin)

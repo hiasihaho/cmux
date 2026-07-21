@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of a workspace's current surface for the `surface.current`
@@ -41,3 +42,5 @@ public struct ControlSurfaceCurrentSnapshot: Sendable, Equatable {
         self.surfaceTypeRawValue = surfaceTypeRawValue
     }
 }
+
+#endif // whole-file canImport(Darwin)

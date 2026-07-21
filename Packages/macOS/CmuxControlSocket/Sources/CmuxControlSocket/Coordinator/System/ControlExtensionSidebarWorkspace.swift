@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// One workspace row of the `extension.sidebar.snapshot` payload (the legacy
@@ -145,3 +146,5 @@ public struct ControlExtensionSidebarWorkspace: Sendable, Equatable {
         self.gitBranches = gitBranches
     }
 }
+
+#endif // whole-file canImport(Darwin)

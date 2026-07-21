@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `pane.focus`, preserving the legacy body's distinct failures
@@ -20,3 +21,5 @@ public enum ControlPaneFocusResolution: Sendable, Equatable {
     /// workspace and pane are present).
     case focused(windowID: UUID?, workspaceID: UUID, paneID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

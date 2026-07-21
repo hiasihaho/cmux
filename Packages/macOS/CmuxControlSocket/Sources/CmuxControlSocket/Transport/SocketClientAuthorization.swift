@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 public import Darwin
+#else
+public import Glibc
+#endif
 public import CmuxSettings
 
 /// Authorizes peer processes for control socket requests.

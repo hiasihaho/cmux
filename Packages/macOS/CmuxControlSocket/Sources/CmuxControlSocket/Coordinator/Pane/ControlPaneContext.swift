@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The pane-domain slice of the control-command seam (a constituent of the
@@ -140,3 +141,5 @@ public protocol ControlPaneContext: AnyObject {
     /// - Returns: The last-pane resolution.
     func controlPaneLast(routing: ControlRoutingSelectors) -> ControlPaneLastResolution
 }
+
+#endif // whole-file canImport(Darwin)

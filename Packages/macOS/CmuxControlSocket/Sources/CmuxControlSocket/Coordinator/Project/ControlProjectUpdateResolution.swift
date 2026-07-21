@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The outcome of the simple project-state setters (`project.set_scheme`,
 /// `project.set_configuration`, `project.set_selected_file`,
 /// `project.set_settings_filter`).
@@ -7,3 +8,5 @@ public enum ControlProjectUpdateResolution: Sendable, Equatable {
     /// The value was applied.
     case updated
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.report_pwd`, preserving the report commands'
@@ -21,3 +22,5 @@ public enum ControlSurfaceReportPWDResolution: Sendable, Equatable {
     /// echoes the resolved surface, not the requested one).
     case recorded(surfaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

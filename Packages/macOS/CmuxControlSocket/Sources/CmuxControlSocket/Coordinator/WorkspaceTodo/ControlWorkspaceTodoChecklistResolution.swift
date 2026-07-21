@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The app-side resolution of `workspace.todo.list`.
@@ -9,3 +10,5 @@ public enum ControlWorkspaceTodoChecklistResolution: Sendable {
     /// The checklist snapshot, with the owning window.
     case resolved(windowID: UUID?, checklist: ControlWorkspaceTodoChecklistSnapshot)
 }
+
+#endif // whole-file canImport(Darwin)

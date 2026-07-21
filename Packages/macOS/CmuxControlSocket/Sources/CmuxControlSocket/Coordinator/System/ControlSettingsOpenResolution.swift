@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The outcome of `settings.open` (the legacy `v2SettingsOpen` body): the app
 /// validates the target against its `SettingsNavigationTarget` enum and
 /// presents the window before replying, so `opened` means a window actually
@@ -13,3 +14,5 @@ public enum ControlSettingsOpenResolution: Sendable, Equatable {
     /// the diagnostic reason from the window presenter.
     case failed(message: String)
 }
+
+#endif // whole-file canImport(Darwin)

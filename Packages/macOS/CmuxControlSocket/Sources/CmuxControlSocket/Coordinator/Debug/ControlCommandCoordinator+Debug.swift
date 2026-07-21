@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The debug/test-only domain (`debug.*` main-actor methods), lifted byte-faithfully
@@ -497,3 +498,5 @@ extension ControlCommandCoordinator {
     }
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

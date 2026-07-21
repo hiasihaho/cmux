@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 public import Foundation
 
 /// Pure text transform converting a workspace-description markdown string into
@@ -24,3 +25,5 @@ public struct SidebarMarkdownRenderer {
         )
     }
 }
+
+#endif // canImport(AppKit)

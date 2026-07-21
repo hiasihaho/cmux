@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 #if DEBUG
 /// The outcome of `debug.type`, preserving the legacy body's two distinct
 /// `not_found` failures (no window vs. no first responder).
@@ -11,3 +12,5 @@ public enum ControlDebugTypeResolution: Sendable, Equatable {
     case inserted
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

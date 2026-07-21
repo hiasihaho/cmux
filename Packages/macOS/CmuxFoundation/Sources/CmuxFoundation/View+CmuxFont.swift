@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 public import SwiftUI
 
 /// Adds cmux-owned font scaling modifiers to SwiftUI views.
@@ -60,3 +61,5 @@ public extension View {
         )
     }
 }
+
+#endif // canImport(SwiftUI)

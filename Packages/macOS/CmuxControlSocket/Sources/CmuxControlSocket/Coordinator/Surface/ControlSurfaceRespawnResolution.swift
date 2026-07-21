@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.respawn`, preserving the legacy body's distinct
@@ -36,3 +37,5 @@ public enum ControlSurfaceRespawnResolution: Sendable, Equatable {
         typeRawValue: String
     )
 }
+
+#endif // whole-file canImport(Darwin)

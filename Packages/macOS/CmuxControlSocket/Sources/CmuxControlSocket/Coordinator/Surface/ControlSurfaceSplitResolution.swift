@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.split`, preserving the legacy body's distinct failures
@@ -47,3 +48,5 @@ public enum ControlSurfaceSplitResolution: Sendable, Equatable {
         typeRawValue: String?
     )
 }
+
+#endif // whole-file canImport(Darwin)

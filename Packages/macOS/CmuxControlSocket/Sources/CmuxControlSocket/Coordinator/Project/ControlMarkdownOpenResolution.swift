@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `markdown.open` (the legacy `v2MarkdownOpen` main-actor
@@ -60,3 +61,5 @@ public enum ControlMarkdownOpenResolution: Sendable, Equatable {
     /// The split was created.
     case opened(Created)
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The workspace-todo slice of the control-command seam (a constituent of the
@@ -198,3 +199,5 @@ public protocol ControlWorkspaceTodoContext: AnyObject {
         requestedFocus: Bool
     ) -> ControlWorkspaceTodoOpenResolution
 }
+
+#endif // whole-file canImport(Darwin)

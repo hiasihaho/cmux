@@ -1,6 +1,16 @@
 public import Foundation
+#if canImport(Darwin)
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
+#else
+import Glibc
+#endif
+#if canImport(os)
 import os
+#endif
 
 /// Sendable ownership boundary for Dispatch's thread-safe timer source.
 private final class CommandTimer: @unchecked Sendable {

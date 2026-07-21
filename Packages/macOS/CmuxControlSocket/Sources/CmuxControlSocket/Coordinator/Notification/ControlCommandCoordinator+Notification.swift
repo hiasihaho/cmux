@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The notification domain (`notification.*`), lifted byte-faithfully from the
@@ -400,3 +401,5 @@ extension ControlCommandCoordinator {
         notificationStrings.targetNotFound
     }
 }
+
+#endif // whole-file canImport(Darwin)

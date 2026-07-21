@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// A Sendable snapshot of one sidebar metadata block, in display order, for
@@ -22,3 +23,5 @@ public struct ControlSidebarMetadataBlockSnapshot: Sendable, Equatable {
         self.priority = priority
     }
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.move_to_window`, preserving the legacy body's three
@@ -14,3 +15,5 @@ public enum ControlWorkspaceMoveToWindowResolution: Sendable, Equatable {
     /// The workspace was moved (legacy success echoing workspace + window).
     case resolved
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The `project.get_state` snapshot (the legacy `v2ProjectGetState`
@@ -115,3 +116,5 @@ public struct ControlProjectStateSnapshot: Sendable, Equatable {
         self.loadState = loadState
     }
 }
+
+#endif // whole-file canImport(Darwin)

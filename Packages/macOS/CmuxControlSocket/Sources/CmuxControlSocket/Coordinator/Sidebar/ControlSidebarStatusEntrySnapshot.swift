@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// A Sendable snapshot of one sidebar status/metadata entry, in display order,
@@ -46,3 +47,5 @@ public struct ControlSidebarStatusEntrySnapshot: Sendable, Equatable {
         self.format = format
     }
 }
+
+#endif // whole-file canImport(Darwin)

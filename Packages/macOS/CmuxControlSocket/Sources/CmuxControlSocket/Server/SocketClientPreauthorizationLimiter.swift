@@ -1,3 +1,5 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 /// Bounds concurrent socket clients waiting to prove authorization.
 public actor SocketClientPreauthorizationLimiter {
     private let maximumConcurrentClaims: Int
@@ -25,3 +27,7 @@ public actor SocketClientPreauthorizationLimiter {
         activeClaims -= 1
     }
 }
+
+#endif // canImport(Darwin)
+
+#endif // whole-file canImport(Darwin)

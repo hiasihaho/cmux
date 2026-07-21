@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.reorder`, preserving the legacy body's distinct
@@ -20,3 +21,5 @@ public enum ControlSurfaceReorderResolution: Sendable, Equatable {
     /// present from the located surface).
     case reordered(windowID: UUID, workspaceID: UUID, paneID: UUID, surfaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of one delivered terminal notification, as the app
@@ -68,3 +69,5 @@ public struct ControlNotificationSnapshot: Sendable, Equatable {
         self.tabTitle = tabTitle
     }
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.action` / `tab.action` (the legacy `v2TabAction`
@@ -103,3 +104,5 @@ public enum ControlTabActionResolution: Sendable, Equatable {
     /// The action ran; emit the legacy `finish(_:)` payload.
     case completed(Outcome)
 }
+
+#endif // whole-file canImport(Darwin)

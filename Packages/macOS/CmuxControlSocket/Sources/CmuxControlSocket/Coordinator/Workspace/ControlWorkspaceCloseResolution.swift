@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.close`, preserving the legacy body's failures and
@@ -21,3 +22,5 @@ public enum ControlWorkspaceCloseResolution: Sendable, Equatable {
     /// The workspace was closed. Carries the owning window id (may be absent).
     case resolved(windowID: UUID?)
 }
+
+#endif // whole-file canImport(Darwin)

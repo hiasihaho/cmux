@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import CmuxSettings
 public import Foundation
 
@@ -249,3 +250,5 @@ public protocol ControlWorkspaceGroupContext: AnyObject {
         groupID: UUID
     ) -> ControlWorkspaceGroupFocusResolution
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 public import AppKit
 
 extension NSColor {
@@ -78,3 +79,5 @@ extension NSColor {
         return String(format: "#%02X%02X%02X", redByte, greenByte, blueByte)
     }
 }
+
+#endif // canImport(AppKit)

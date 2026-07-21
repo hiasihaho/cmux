@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `pane.resize`, including local Bonsplit mutations and resize
@@ -91,3 +92,5 @@ public enum ControlPaneResizeResolution: Sendable, Equatable {
         newDividerPosition: Double
     )
 }
+
+#endif // whole-file canImport(Darwin)

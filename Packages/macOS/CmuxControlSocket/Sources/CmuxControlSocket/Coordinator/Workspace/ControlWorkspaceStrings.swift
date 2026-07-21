@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The localized workspace-domain error messages, resolved against the app
@@ -52,3 +53,5 @@ public struct ControlWorkspaceStrings: Sendable, Equatable {
         self.reorderManyTabManagerUnavailable = reorderManyTabManagerUnavailable
     }
 }
+
+#endif // whole-file canImport(Darwin)

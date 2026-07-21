@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The app-focus-domain slice of the control-command seam (a constituent of the
 /// ``ControlCommandContext`` umbrella).
 ///
@@ -22,3 +23,5 @@ public protocol ControlAppFocusContext: AnyObject {
     /// `NSApplication.didBecomeActiveNotification` to `AppDelegate.shared`.
     func controlSimulateAppActive()
 }
+
+#endif // whole-file canImport(Darwin)

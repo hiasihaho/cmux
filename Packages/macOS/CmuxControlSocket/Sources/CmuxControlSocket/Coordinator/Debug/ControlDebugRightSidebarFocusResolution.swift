@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 #if DEBUG
 /// The outcome of `debug.right_sidebar.focus`, preserving the legacy body's
 /// ordering: mode validation first (app-side, against `RightSidebarMode`),
@@ -14,3 +15,5 @@ public enum ControlDebugRightSidebarFocusResolution: Sendable, Equatable {
     case revealed(ControlDebugRightSidebarFocusState)
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

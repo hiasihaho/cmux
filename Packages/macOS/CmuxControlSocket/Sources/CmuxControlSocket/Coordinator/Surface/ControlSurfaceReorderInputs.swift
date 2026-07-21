@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The pre-parsed inputs for `surface.reorder`, lifted from the legacy
@@ -26,3 +27,5 @@ public struct ControlSurfaceReorderInputs: Sendable, Equatable {
         self.afterSurfaceID = afterSurfaceID
     }
 }
+
+#endif // whole-file canImport(Darwin)

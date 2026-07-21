@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The outcome of resolving the v1 `list_pane_surfaces` target pane and its
@@ -34,3 +35,5 @@ public enum ControlSidebarPaneSurfacesResolution: Sendable, Equatable {
     /// The resolved pane's tabs, in order.
     case rows([Row])
 }
+
+#endif // whole-file canImport(Darwin)

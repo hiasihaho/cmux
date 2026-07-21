@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// Wire names for `canvas.align` commands, validated at the coordinator so
 /// unknown commands fail with `invalid_params` before crossing the seam. The
 /// app maps each case onto the engine's `CanvasAlignmentCommand`.
@@ -12,3 +13,5 @@ public enum ControlCanvasAlignCommand: String, Sendable, CaseIterable {
     case distributeHorizontally = "distribute-horizontally"
     case distributeVertically = "distribute-vertically"
 }
+
+#endif // whole-file canImport(Darwin)

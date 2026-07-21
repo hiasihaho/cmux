@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 
 extension CMUXCLI {
@@ -29,6 +33,20 @@ extension CMUXCLI {
     }
 
     private func sessionsListProcessStartTime(for pid: Int) -> TimeInterval? {
+        #if !canImport(Darwin)
+        // Linux: field 22 of /proc/<pid>/stat is starttime in clock ticks
+        // since boot; convert via btime from /proc/stat.
+        guard let stat = try? String(contentsOfFile: "/proc/\(pid)/stat", encoding: .utf8),
+              let close = stat.lastIndex(of: ")") else { return nil }
+        let fields = stat[stat.index(after: close)...].split(separator: " ")
+        guard fields.count >= 20, let ticks = Double(fields[19]) else { return nil }
+        guard let sysStat = try? String(contentsOfFile: "/proc/stat", encoding: .utf8),
+              let btimeLine = sysStat.split(separator: "\n").first(where: { $0.hasPrefix("btime ") }),
+              let btime = Double(btimeLine.dropFirst("btime ".count)) else { return nil }
+        let hz = Double(sysconf(Int32(_SC_CLK_TCK)))
+        guard hz > 0 else { return nil }
+        return btime + ticks / hz
+        #else
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, Int32(pid)]
         var process = kinfo_proc()
         var length = MemoryLayout<kinfo_proc>.stride
@@ -40,18 +58,30 @@ extension CMUXCLI {
         }
         let startTime = process.kp_proc.p_un.__p_starttime
         return TimeInterval(startTime.tv_sec) + (TimeInterval(startTime.tv_usec) / 1_000_000)
+        #endif
     }
 
     private func sessionsListProcessExecutablePath(for pid: Int) -> String? {
+        #if !canImport(Darwin)
+        return try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/\(pid)/exe")
+        #else
         var buffer = [CChar](repeating: 0, count: 4096)
         let length = buffer.withUnsafeMutableBufferPointer { pointer in
             proc_pidpath(pid_t(pid), pointer.baseAddress, UInt32(pointer.count))
         }
         guard length > 0 else { return nil }
         return String(cString: buffer)
+        #endif
     }
 
     private func sessionsListProcessArguments(for pid: Int) -> [String]? {
+        #if !canImport(Darwin)
+        // Linux: /proc/<pid>/cmdline is NUL-separated argv, no argc prefix.
+        guard let data = FileManager.default.contents(atPath: "/proc/\(pid)/cmdline"),
+              !data.isEmpty else { return nil }
+        let args = data.split(separator: 0).compactMap { String(data: Data($0), encoding: .utf8) }
+        return args.isEmpty ? nil : args
+        #else
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, Int32(pid)]
         var size: size_t = 0
         guard sysctl(&mib, u_int(mib.count), nil, &size, nil, 0) == 0,
@@ -65,6 +95,7 @@ extension CMUXCLI {
         }
         guard success else { return nil }
         return sessionsListProcessArguments(from: Array(buffer.prefix(Int(size))))
+        #endif
     }
 
     private func sessionsListProcessArguments(from bytes: [UInt8]) -> [String]? {

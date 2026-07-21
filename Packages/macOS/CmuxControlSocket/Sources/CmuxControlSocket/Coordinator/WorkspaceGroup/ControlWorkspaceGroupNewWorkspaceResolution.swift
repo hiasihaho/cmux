@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.group.new_workspace`, preserving the legacy body's
@@ -22,3 +23,5 @@ public enum ControlWorkspaceGroupNewWorkspaceResolution: Sendable, Equatable {
     /// mints the workspace ref).
     case created(workspaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

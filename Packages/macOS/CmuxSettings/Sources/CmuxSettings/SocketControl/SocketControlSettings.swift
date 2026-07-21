@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 public import Darwin
+#else
+public import Glibc
+#endif
 public import Foundation
 
 /// Pure resolution policy for the cmux control socket: where its path lives, which

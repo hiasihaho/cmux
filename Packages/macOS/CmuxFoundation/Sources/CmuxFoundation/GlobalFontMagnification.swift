@@ -1,4 +1,6 @@
+#if canImport(AppKit)
 public import AppKit
+#endif
 public import Foundation
 
 /// App-wide magnification for cmux-owned chrome and terminal configuration.
@@ -73,6 +75,7 @@ public struct GlobalFontMagnification {
     public func scaledSize(_ baseSize: CGFloat) -> CGFloat {
         scaled(baseSize)
     }
+    #if canImport(AppKit)
 
     /// Creates a magnified AppKit system font.
     ///
@@ -121,6 +124,7 @@ public struct GlobalFontMagnification {
     public func font(name: String, size baseSize: CGFloat) -> NSFont? {
         NSFont(name: name, size: scaledSize(baseSize))
     }
+    #endif // canImport(AppKit)
 
     /// Normalizes a requested magnification to the supported range and step.
     public static func clamp(_ percent: Int) -> Int {
@@ -190,6 +194,7 @@ public struct GlobalFontMagnification {
     public static func scaledSize(_ baseSize: CGFloat) -> CGFloat {
         Self().scaledSize(baseSize)
     }
+    #if canImport(AppKit)
 
     /// Creates a system font using the standard stored magnification.
     ///
@@ -238,6 +243,7 @@ public struct GlobalFontMagnification {
     public static func font(name: String, size baseSize: CGFloat) -> NSFont? {
         Self().font(name: name, size: baseSize)
     }
+    #endif // canImport(AppKit)
 
     /// Stores a new standard percent and posts the live-update notification.
     ///

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.current`, preserving the legacy body's two distinct
@@ -21,3 +22,5 @@ public enum ControlWorkspaceCurrentResolution: Sendable, Equatable {
         summary: ControlWorkspaceSummary?
     )
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,5 +1,9 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 public import Foundation
+#if canImport(os)
 internal import os
+#endif
 
 /// Per-surface dedupe cache for high-frequency socket telemetry reports
 /// (`report_*` shell-activity updates), so repeated identical reports skip
@@ -63,3 +67,7 @@ public final class SocketFastPathState: Sendable {
         }
     }
 }
+
+#endif // canImport(Darwin)
+
+#endif // whole-file canImport(Darwin)

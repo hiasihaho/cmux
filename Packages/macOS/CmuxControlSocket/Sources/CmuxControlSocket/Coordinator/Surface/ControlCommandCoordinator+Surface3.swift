@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The surface-domain resume (`surface.resume.*`) and reporting
@@ -374,3 +375,5 @@ extension ControlCommandCoordinator {
         ]
     }
 }
+
+#endif // whole-file canImport(Darwin)

@@ -309,3 +309,20 @@ extension SurfaceRegistry {
     }
 }
 #endif
+
+#if !canImport(CGhosttyEmbed)
+import Foundation
+
+// VTE-only build: the Ghostty helpers callers use unconditionally
+// (scrollback capture/replay, cwd) become honest "not available" answers,
+// so the features degrade instead of the build breaking.
+extension SurfaceRegistry {
+    func ghosttyIsMapped(for surfaceId: UUID) -> Bool { false }
+    func ghosttyReadText(for surfaceId: UUID, includeScrollback: Bool) -> String? { nil }
+    @discardableResult
+    func ghosttyWriteDisplay(for surfaceId: UUID, text: String) -> Bool { false }
+    func ghosttyChildExited(for surfaceId: UUID) -> Bool { false }
+    func currentGhosttyTitle(for surfaceId: UUID) -> String? { nil }
+    func currentGhosttyDirectory(for surfaceId: UUID) -> String? { nil }
+}
+#endif

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// A pixel rectangle a pane occupies, as the app target exposes it to
 /// ``ControlCommandCoordinator`` for the `pane.list` payload.
 ///
@@ -28,3 +29,5 @@ public struct ControlPanePixelFrame: Sendable, Equatable {
         self.height = height
     }
 }
+
+#endif // whole-file canImport(Darwin)

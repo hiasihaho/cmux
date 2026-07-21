@@ -1,4 +1,12 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 public import Darwin
+#else
+public import Glibc
+#endif
+#else
+public import Glibc
+#endif
 public import Foundation
 
 extension SocketControlSettings {

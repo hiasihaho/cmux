@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The app-side resolution of the checklist mutations (`workspace.todo.add`
@@ -27,3 +28,5 @@ public enum ControlWorkspaceTodoMutationResolution: Sendable {
         checklist: ControlWorkspaceTodoChecklistSnapshot
     )
 }
+
+#endif // whole-file canImport(Darwin)

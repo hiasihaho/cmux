@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A routed workspace mutation outcome shared by `workspace.select` and
@@ -15,3 +16,5 @@ public enum ControlWorkspaceRoutedResolution: Sendable, Equatable {
     /// The mutation succeeded. Carries the owning window id (may be absent).
     case resolved(windowID: UUID?)
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of one surface (tab) within a pane, as the app target
@@ -37,3 +38,5 @@ public struct ControlPaneSurfaceSummary: Sendable, Equatable {
         self.isSelected = isSelected
     }
 }
+
+#endif // whole-file canImport(Darwin)

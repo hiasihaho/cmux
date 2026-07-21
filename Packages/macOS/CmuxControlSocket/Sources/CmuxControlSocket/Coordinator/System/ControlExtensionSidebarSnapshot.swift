@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The `extension.sidebar.snapshot` snapshot the app side hands the
@@ -31,3 +32,5 @@ public struct ControlExtensionSidebarSnapshot: Sendable, Equatable {
         self.workspaces = workspaces
     }
 }
+
+#endif // whole-file canImport(Darwin)

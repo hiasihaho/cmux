@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// One panel's health row for the v1 `surface_health` listing.
@@ -31,3 +32,5 @@ public struct ControlSidebarSurfaceHealthRow: Sendable, Equatable {
         self.kind = kind
     }
 }
+
+#endif // whole-file canImport(Darwin)

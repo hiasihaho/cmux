@@ -1,5 +1,6 @@
+#if canImport(Darwin)
 public import Foundation
-internal import Observation
+public import Observation
 
 /// The main-actor RPC dispatch half of the former `TerminalController`: it
 /// receives decoded ``ControlRequest``s, runs the command logic against live
@@ -241,3 +242,5 @@ public final class ControlCommandCoordinator {
         )
     }
 }
+
+#endif // whole-file canImport(Darwin)

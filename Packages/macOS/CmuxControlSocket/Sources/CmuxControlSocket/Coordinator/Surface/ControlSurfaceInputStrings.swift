@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The app-bundle-resolved localized terminal-input error strings, shared by
@@ -32,3 +33,5 @@ public struct ControlSurfaceInputStrings: Sendable, Equatable {
         self.processExited = processExited
     }
 }
+
+#endif // whole-file canImport(Darwin)

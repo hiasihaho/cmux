@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.group.focus`, preserving the legacy body's single
@@ -17,3 +18,5 @@ public enum ControlWorkspaceGroupFocusResolution: Sendable, Equatable {
     /// The group's anchor was focused. Carries the anchor workspace id.
     case focused(anchorWorkspaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A Sendable snapshot of one workspace's full sidebar context for the v1
@@ -71,3 +72,5 @@ public struct ControlSidebarStateSnapshot: Sendable, Equatable {
         self.recentLogEntries = recentLogEntries
     }
 }
+
+#endif // whole-file canImport(Darwin)

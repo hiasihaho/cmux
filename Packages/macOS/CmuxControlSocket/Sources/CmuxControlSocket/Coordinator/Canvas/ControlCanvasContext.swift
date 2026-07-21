@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The canvas-domain slice of the control-command seam (a constituent of the
@@ -87,3 +88,5 @@ public protocol ControlCanvasContext: AnyObject {
         type: String
     ) -> ControlCanvasActionResolution
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `pane.last`, preserving the legacy body's distinct failures
@@ -19,3 +20,5 @@ public enum ControlPaneLastResolution: Sendable, Equatable {
     /// selected surface may be absent; workspace and pane are present).
     case focused(windowID: UUID?, workspaceID: UUID, paneID: UUID, selectedSurfaceID: UUID?)
 }
+
+#endif // whole-file canImport(Darwin)

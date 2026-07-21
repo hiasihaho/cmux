@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// One surface row of the `system.tree` snapshot (the legacy
@@ -80,3 +81,5 @@ public struct ControlSystemTreeSurfaceNode: Sendable, Equatable {
         self.url = url
     }
 }
+
+#endif // whole-file canImport(Darwin)

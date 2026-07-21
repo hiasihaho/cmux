@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of a workspace's pane layout for `pane.list`, as the
@@ -41,3 +42,5 @@ public struct ControlPaneListSnapshot: Sendable, Equatable {
         self.containerHeight = containerHeight
     }
 }
+
+#endif // whole-file canImport(Darwin)

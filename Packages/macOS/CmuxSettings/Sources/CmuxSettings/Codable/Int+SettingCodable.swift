@@ -1,4 +1,7 @@
 import Foundation
+#if !canImport(Darwin)
+import CoreFoundation
+#endif
 
 /// Integer ``SettingCodable`` conformance.
 ///

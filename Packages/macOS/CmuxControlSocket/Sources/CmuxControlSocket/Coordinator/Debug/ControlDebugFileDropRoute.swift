@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 #if DEBUG
 /// The drop route for `debug.terminal.simulate_file_drop` (the package twin of
 /// the legacy body's local `TerminalFileDropSimulationRoute`).
@@ -9,3 +10,5 @@ public enum ControlDebugFileDropRoute: Sendable, Equatable {
     case textDestination
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

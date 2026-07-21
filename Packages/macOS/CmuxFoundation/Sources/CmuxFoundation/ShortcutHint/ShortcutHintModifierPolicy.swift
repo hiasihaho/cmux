@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 public import AppKit
 
 /// Decides whether keyboard shortcut-hint overlays should be shown for a given
@@ -77,3 +78,5 @@ public struct ShortcutHintModifierPolicy {
             )
     }
 }
+
+#endif // canImport(AppKit)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The window-domain slice of the control-command seam (a constituent of the
@@ -69,3 +70,5 @@ public protocol ControlWindowContext: AnyObject {
     ///   the display can't be resolved.
     func controlMoveAllWindows(toDisplayMatching query: String) -> ControlMoveAllWindowsResult?
 }
+
+#endif // whole-file canImport(Darwin)

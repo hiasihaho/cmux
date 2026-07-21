@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A read-only snapshot of one workspace, as the app target exposes it to
@@ -77,3 +78,5 @@ public struct ControlWorkspaceSummary: Sendable, Equatable {
         self.latestSubmittedAt = latestSubmittedAt
     }
 }
+
+#endif // whole-file canImport(Darwin)

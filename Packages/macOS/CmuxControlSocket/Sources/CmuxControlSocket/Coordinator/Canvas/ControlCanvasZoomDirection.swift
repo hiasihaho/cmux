@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// Wire names for `canvas.zoom` directions, validated at the coordinator so
 /// unknown directions fail with `invalid_params` before crossing the seam.
 public enum ControlCanvasZoomDirection: String, Sendable, CaseIterable {
@@ -5,3 +6,5 @@ public enum ControlCanvasZoomDirection: String, Sendable, CaseIterable {
     case zoomOut = "out"
     case reset
 }
+
+#endif // whole-file canImport(Darwin)

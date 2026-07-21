@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.clear_history`, preserving the legacy body's distinct
@@ -25,3 +26,5 @@ public enum ControlSurfaceClearHistoryResolution: Sendable, Equatable {
     /// The history was cleared. Carries the echoed identity.
     case cleared(windowID: UUID?, workspaceID: UUID, surfaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

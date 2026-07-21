@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 public import Foundation
 
 /// Observes global font magnification changes for AppKit-backed views.
@@ -35,3 +36,5 @@ public final class GlobalFontMagnificationChangeObserver {
         }
     }
 }
+
+#endif // canImport(AppKit)

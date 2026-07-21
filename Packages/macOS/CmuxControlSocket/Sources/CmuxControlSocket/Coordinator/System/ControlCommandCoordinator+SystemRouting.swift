@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The `system.tree` window-routing parse: the typed twin of the legacy
@@ -110,3 +111,5 @@ extension ControlCommandCoordinator {
         )
     }
 }
+
+#endif // whole-file canImport(Darwin)

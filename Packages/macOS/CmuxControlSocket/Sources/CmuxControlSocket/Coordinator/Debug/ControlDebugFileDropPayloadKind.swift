@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 #if DEBUG
 /// The synthesized pasteboard payload for `debug.terminal.simulate_file_drop`
 /// (the package twin of the legacy body's local
@@ -9,3 +10,5 @@ public enum ControlDebugFileDropPayloadKind: Sendable, Equatable {
     case imageData
 }
 #endif
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The pre-parsed inputs `pane.resize` carries, as ``ControlCommandCoordinator``
@@ -64,3 +65,5 @@ public struct ControlPaneResizeInputs: Sendable, Equatable {
         self.intent = intent
     }
 }
+
+#endif // whole-file canImport(Darwin)

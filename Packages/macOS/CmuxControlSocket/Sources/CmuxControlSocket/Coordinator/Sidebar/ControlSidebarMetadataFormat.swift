@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The render format of a sidebar status/metadata entry (the typed twin of the
@@ -9,3 +10,5 @@ public enum ControlSidebarMetadataFormat: String, Sendable, Equatable {
     /// Markdown.
     case markdown
 }
+
+#endif // whole-file canImport(Darwin)

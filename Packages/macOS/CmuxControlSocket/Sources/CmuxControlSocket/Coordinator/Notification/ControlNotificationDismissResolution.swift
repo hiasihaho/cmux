@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 /// The outcome of dismissing a single notification by id (`notification.dismiss`
 /// with an `id` selector).
 ///
@@ -11,3 +12,5 @@ public enum ControlNotificationDismissResolution: Sendable, Equatable {
     /// build the success payload.
     case dismissed(ControlNotificationSnapshot)
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of moving every main window onto one display, returned by
@@ -18,3 +19,5 @@ public struct ControlMoveAllWindowsResult: Sendable, Equatable {
         self.windowIDs = windowIDs
     }
 }
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The outcome of forwarding a v1 `drag_surface_to_split` stable-ref target to
@@ -10,3 +11,5 @@ public enum ControlSidebarSplitOffOutcome: Sendable, Equatable {
     /// Split-off failed with the given v2 error message.
     case error(message: String)
 }
+
+#endif // whole-file canImport(Darwin)

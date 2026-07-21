@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.report_shell_state`, preserving the legacy body's two
@@ -16,3 +17,5 @@ public enum ControlSurfaceReportShellStateResolution: Sendable, Equatable {
     /// `published: true, pending: true` (the resolve+update runs asynchronously).
     case pending
 }
+
+#endif // whole-file canImport(Darwin)

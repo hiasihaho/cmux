@@ -1,3 +1,5 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 public import CmuxSettings
 
 extension SocketControlServer {
@@ -70,3 +72,7 @@ extension SocketControlServer {
         return true
     }
 }
+
+#endif // canImport(Darwin)
+
+#endif // whole-file canImport(Darwin)

@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The small system-domain bodies: `auth.login`, `session.restore_previous`,
@@ -166,3 +167,5 @@ extension ControlCommandCoordinator {
     }
 #endif
 }
+
+#endif // whole-file canImport(Darwin)

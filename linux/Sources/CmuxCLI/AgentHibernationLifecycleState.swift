@@ -1,0 +1,1 @@
+../../../Sources/AgentHibernation/AgentHibernationLifecycleState.swift

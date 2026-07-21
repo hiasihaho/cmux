@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The window domain (`window.*`), lifted byte-faithfully from the former
@@ -237,3 +238,5 @@ extension ControlCommandCoordinator {
         )
     }
 }
+
+#endif // whole-file canImport(Darwin)

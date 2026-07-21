@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The app-focus domain (`app.focus_override.set`, `app.simulate_active`),
@@ -65,3 +66,5 @@ extension ControlCommandCoordinator {
         return .ok(.object([:]))
     }
 }
+
+#endif // whole-file canImport(Darwin)

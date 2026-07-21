@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// A Sendable snapshot of the selected workspace's bonsplit panes for the v1
@@ -22,3 +23,5 @@ public struct ControlSidebarPaneListSnapshot: Sendable, Equatable {
         self.tabCounts = tabCounts
     }
 }
+
+#endif // whole-file canImport(Darwin)

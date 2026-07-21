@@ -1,4 +1,7 @@
 import Foundation
+#if !canImport(Darwin)
+import CoreFoundation
+#endif
 
 extension Bool: SettingCodable {
     public static func decodeFromUserDefaults(_ raw: Any?) -> Bool? {

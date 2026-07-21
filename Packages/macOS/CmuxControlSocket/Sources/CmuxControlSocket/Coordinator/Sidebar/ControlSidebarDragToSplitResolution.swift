@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of the v1 `drag_surface_to_split` fallback path (moving a
@@ -12,3 +13,5 @@ public enum ControlSidebarDragToSplitResolution: Sendable, Equatable {
     /// The surface moved into the new pane.
     case moved(newPaneID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

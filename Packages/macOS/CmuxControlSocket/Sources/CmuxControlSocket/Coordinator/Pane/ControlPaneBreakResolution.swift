@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `pane.break`, preserving every distinct branch of the legacy
@@ -36,3 +37,5 @@ public enum ControlPaneBreakResolution: Sendable, Equatable {
     /// identity (window may be absent; workspace, pane, and surface present).
     case broken(windowID: UUID?, workspaceID: UUID, paneID: UUID, surfaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

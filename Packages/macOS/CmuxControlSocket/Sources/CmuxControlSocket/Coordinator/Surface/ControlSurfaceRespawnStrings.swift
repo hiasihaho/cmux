@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The app-bundle-resolved localized strings for `surface.respawn`.
@@ -44,3 +45,5 @@ public struct ControlSurfaceRespawnStrings: Sendable, Equatable {
         self.surfaceNotTerminal = surfaceNotTerminal
     }
 }
+
+#endif // whole-file canImport(Darwin)

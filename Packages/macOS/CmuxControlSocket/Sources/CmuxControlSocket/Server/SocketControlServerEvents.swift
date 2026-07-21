@@ -1,3 +1,5 @@
+#if canImport(Darwin)
+#if canImport(Darwin)
 /// Callback seam between ``SocketControlServer`` and its host application.
 ///
 /// The server is a transport/state-machine component: it owns the listener
@@ -82,3 +84,7 @@ public struct SocketControlServerEvents: Sendable {
         self.rearmRequested = rearmRequested
     }
 }
+
+#endif // canImport(Darwin)
+
+#endif // whole-file canImport(Darwin)

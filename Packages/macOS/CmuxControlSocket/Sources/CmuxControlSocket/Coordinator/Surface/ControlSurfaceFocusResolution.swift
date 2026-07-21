@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `surface.focus`, preserving the legacy body's distinct failures
@@ -18,3 +19,5 @@ public enum ControlSurfaceFocusResolution: Sendable, Equatable {
     /// The surface was focused. Carries the echoed identity (window may be absent).
     case focused(windowID: UUID?, workspaceID: UUID, surfaceID: UUID)
 }
+
+#endif // whole-file canImport(Darwin)

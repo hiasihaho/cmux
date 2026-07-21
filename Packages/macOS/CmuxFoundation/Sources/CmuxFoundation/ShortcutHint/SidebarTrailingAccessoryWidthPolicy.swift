@@ -1,4 +1,8 @@
+#if canImport(CoreGraphics)
 public import CoreGraphics
+#else
+public import Foundation
+#endif
 
 /// Fixed widths for sidebar row trailing accessories.
 public struct SidebarTrailingAccessoryWidthPolicy {

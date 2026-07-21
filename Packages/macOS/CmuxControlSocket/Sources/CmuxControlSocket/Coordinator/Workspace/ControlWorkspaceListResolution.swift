@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 public import Foundation
 
 /// The outcome of `workspace.list`, preserving the legacy body's single failure
@@ -20,3 +21,5 @@ public enum ControlWorkspaceListResolution: Sendable, Equatable {
         selectedIndex: Int?
     )
 }
+
+#endif // whole-file canImport(Darwin)

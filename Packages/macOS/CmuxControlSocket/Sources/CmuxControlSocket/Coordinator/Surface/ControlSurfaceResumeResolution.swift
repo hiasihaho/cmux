@@ -1,3 +1,4 @@
+#if canImport(Darwin)
 internal import Foundation
 
 /// The outcome of the `surface.resume.set` / `.get` / `.clear` methods, preserving
@@ -23,3 +24,5 @@ public enum ControlSurfaceResumeResolution: Sendable, Equatable {
     /// resulting binding (a `null` binding still emits the `resume_binding` key).
     case result(ControlSurfaceResumeSnapshot)
 }
+
+#endif // whole-file canImport(Darwin)
