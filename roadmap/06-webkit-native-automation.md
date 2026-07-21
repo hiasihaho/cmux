@@ -57,7 +57,7 @@ the full useful WebKitGTK feature set.**
    exempt from page CSP, no eval involved — so this captures on every
    site and from page load (better than lazy arming on both counts).
    Keep wire shape of `browser.console.list`/`errors.list` unchanged.
-2. **WebDriver opt-in.** `webkit_web_context_set_automation_allowed(TRUE)`
+2. ✅ **WebDriver opt-in** (shipped 2026-07-21). `webkit_web_context_set_automation_allowed(TRUE)`
    + handle `WebKitWebContext::automation-started` →
    `WebKitAutomationSession` (+ `set_application_info`). Gate behind an
    env var / socket flag (e.g. `CMUX_WEBDRIVER=1`) — automation mode has

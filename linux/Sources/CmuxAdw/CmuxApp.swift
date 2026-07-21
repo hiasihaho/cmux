@@ -42,6 +42,9 @@ struct CmuxApp: App {
         }
         ControlSocketServer.shared.start()
 
+        // W3C WebDriver opt-in (CMUX_WEBDRIVER=1 only) — roadmap/06.
+        BrowserWebDriver.enableIfRequested()
+
         // Structural changes save immediately (scene body); this periodic
         // pass additionally picks up shell cwd drift (OSC 7) for restores.
         let saveState = { [self] in

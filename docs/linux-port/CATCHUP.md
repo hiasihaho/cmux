@@ -43,9 +43,10 @@ picks it up at its next (human-approved) restart.
    resource leak — see roadmap/05-ghostty-embed-hardening.md (agent-
    drivable local DoS + ReleaseFast memory-unsafety smell; not blocking).
 3. WebKit-native automation (decided 2026-07-21, no CDP/Chromium):
-   roadmap/06-webkit-native-automation.md. First increment: console
-   capture v2 via document-start user script + script message handler
-   (fixes the strict-CSP blind spot of the wrap-based console verbs).
+   roadmap/06-webkit-native-automation.md. Increments 1 (console capture
+   v2 — CSP-proof, from page load) and 2 (W3C WebDriver opt-in via
+   CMUX_WEBDRIVER=1 — trusted input, verified isTrusted=true) are DONE.
+   Next: Web Inspector pane, then the long tail.
 4. Flatpak packaging.
 5. Parity long tail: PARITY.md ❌ rows (system.tree, surface.focus,
    pane.resize, terminal find overlay, sidebar metadata pills…).

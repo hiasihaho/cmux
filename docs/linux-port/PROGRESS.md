@@ -968,6 +968,48 @@ eval seeing page globals), plus clear and per-surface isolation.
 Deliberate semantic: entries logged by our own isolated-world automation
 are NOT captured — we record what the page logs, not what we log.
 
+## 2026-07-21 — W3C WebDriver opt-in (roadmap/06 increment 2) ✅
+
+Trusted input, the one thing our JS-injection verbs fundamentally cannot
+do. WebKitGTK speaks W3C WebDriver (not CDP); an app opts in by allowing
+automation on its web context, then answers two signals.
+
+Implementation (`BrowserWebDriver.swift`, gated on `CMUX_WEBDRIVER=1`):
+`webkit_web_context_set_automation_allowed` on the default context,
+`automation-started` → set application info + connect the session's
+`create-web-view`, which constructs the driver's view with the
+construct-only `is-controlled-by-automation` property (6.0 ships only
+`webkit_web_view_new(void)`, so `g_object_new_with_properties`) on the
+automation network session (ephemeral profile — the driver does NOT get
+the human's cookies) and presents it in its own window.
+
+**API archaeology:** WebKitGTK 6.0 exports `set_automation_allowed` /
+`is_automation_allowed` / `get_network_session_for_automation` and
+documents `WebKitWebContext::automation-started` in
+`/usr/share/gir-1.0/WebKit-6.0.gir`, but Fedora's installed C headers
+OMIT the two functions. Prototypes are therefore declared in
+`Sources/CWebKit/shim.h` against the real exported symbols.
+
+Verified end-to-end with the real `/usr/bin/WebKitWebDriver`:
+- Session creation returns `"browserName":"cmux","browserVersion":"1"` —
+  our application info surfacing through WebDriver capabilities, proving
+  the whole handshake fired.
+- Navigation, element lookup, click and send-keys all work.
+- **The payoff, measured on one page:** WebDriver click/keys →
+  `click isTrusted=true | keydown isTrusted=true`; the same page driven
+  by our JS verbs → `click isTrusted=false`.
+
+Gotchas found: capabilities must OMIT `browserName` (we report "cmux", so
+asking for "webkitgtk"/"MiniBrowser" fails capability matching); the
+driver launches the browser binary itself, so point
+`webkitgtk:browserOptions.binary` at a wrapper that sets an isolated
+CMUX_APP_ID/SOCKET_PATH — otherwise it collides with the daily; and one
+session at a time unless `--replace-on-new-session`.
+
+Scope note: this drives a driver-owned window in a driver-launched
+instance, not the human's existing panes (that is the WebDriver model).
+Adopting a cmux split as the automation view is the follow-up.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge
