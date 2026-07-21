@@ -1039,6 +1039,45 @@ Verified in attach mode against a running instance:
   the role/name tree with element refs; console capture v2 records
   entries — all against the driver-controlled view.
 
+## 2026-07-21 — WebDriver test harness: 9/9 incl. a live GitHub click
+
+`linux/tests/webdriver-smoke.sh` (+ `linux/tests/README.md`) is now the
+regression test for the whole WebDriver stack, runnable beside the daily
+instance (own app id/socket/session). Nine assertions: automation opt-in ·
+attach session without launching a browser · split adoption grows the
+workspace · driver and cmux report the same URL for the adopted pane ·
+WebDriver click yields `isTrusted=true` · console capture v2 on the
+driver-controlled pane · cmux snapshot on github.com (isolated-world CSP
+fallback) · a WebDriver click really navigates GitHub
+(`/cmux` → `/cmux/issues`) · cmux observes that navigation on the same
+pane. Result: **9 passed, 0 failed.**
+
+Getting there cost four rounds, each a lesson now encoded in the harness
+and its README:
+
+- **Hidden elements.** `a[href$="/issues"]` matches several nodes on
+  GitHub; the first three are `displayed=False` and WebDriver correctly
+  refuses with `element not interactable`. That strictness is a genuine
+  behavioral difference from our JS verbs, which would dispatch on a
+  hidden node regardless — real-user semantics vs. blind dispatch. The
+  harness now picks the first *displayed* match.
+- **Hand-escaped JSON.** Selectors contain double quotes, so
+  `"value":"$1"` produced invalid JSON and matched nothing. Payloads are
+  built with `json.dumps` now.
+- **A false-passing assertion.** "cmux sees the driver's navigation"
+  compared two URLs that were both unchanged. Navigation assertions must
+  require `after != before`.
+- **Stale test state.** A `--keep` run leaves the fixture server holding
+  its port, which poisoned the next run into five unrelated-looking
+  failures. The script now frees its ports and kills its own app-id
+  instance before starting.
+
+Also confirmed while debugging: **each WebDriver session adopts its own
+pane** (a second session added a third pane), and a suspected staleness
+bug in `browser url` was a false alarm — the query had targeted the first
+session's pane; the correct pane agreed with `location.href` and the
+snapshot title.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge
