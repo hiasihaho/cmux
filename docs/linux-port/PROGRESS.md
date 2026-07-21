@@ -1751,3 +1751,42 @@ terminals at all, so one suite failing while five passed was itself the
 clue. And the A/B that settled it only worked because the repro was
 reduced to *create workspace → select → poll for shell*, small enough to
 run against four binaries.
+
+## 2026-07-21 — Xvfb unlocks visual verification, and immediately finds a bug
+
+`xorg-x11-server-Xvfb` installed. cmux-adw runs under a private X display
+and can be screenshotted:
+
+```sh
+Xvfb :99 -screen 0 1400x900x24 &
+env -u WAYLAND_DISPLAY DISPLAY=:99 GDK_BACKEND=x11 ... cmux-adw &
+DISPLAY=:99 import -window root shot.png
+```
+
+Both `GDK_BACKEND=x11` **and** unsetting `WAYLAND_DISPLAY` are required —
+GTK4 prefers Wayland whenever that variable is set and ignores `DISPLAY`.
+
+This closes the gap recorded in the visual-verification memory: UI can now
+be checked without asking the human, and test instances get a
+guaranteed-mapped window instead of depending on the desktop's state.
+
+**It found a real bug within minutes.** With four surfaces in a pane
+(`surface_count: 4`), the tab strip renders **one** tab, labelled
+"Browser" — not the four page titles. Model-level assertions all pass,
+because the model is right; only the widget is wrong. Likely cause, to
+confirm: the skeleton rebuild `g_object_ref_sink`s and detaches every
+surface container, but a container inside an `AdwTabPage` is owned by that
+page, so `adw_tab_view_append` afterwards does not take all of them. The
+"Browser" label is the same story from the other side —
+`tabTitle(for:)` fell through to its default, meaning the registry lookup
+for that surface returned nothing at build time.
+
+Worth stating plainly: the human looked at this earlier and said it
+"looks quite good already". It does, at a glance — a pane with a tab bar
+and a working page. The count being wrong is only visible if you compare
+against the model, which is exactly the comparison a screenshot plus a
+socket query makes cheap and neither makes alone.
+
+New: [DEPENDENCIES.md](DEPENDENCIES.md) — build, Ghostty, GNOME 49/50,
+test and runtime dependencies with the versions developed against and
+why each is needed, aimed at a future podman image for other developers.
