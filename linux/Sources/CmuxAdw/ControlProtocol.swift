@@ -946,6 +946,38 @@ struct ControlCommandHandler {
         return zoomed
     }
 
+    /// Selects the next/previous workspace (macOS `nextSidebarTab` /
+    /// `prevSidebarTab`). Shares the wrap-around behaviour of the
+    /// `workspace.next` verb rather than reimplementing it.
+    @discardableResult
+    func stepWorkspace(forward: Bool) -> UUID? {
+        let allTabs = tabs.wrappedValue
+        guard let index = allTabs.firstIndex(where: { $0.id == selection.wrappedValue }),
+              allTabs.count > 1 else { return nil }
+        let count = allTabs.count
+        let target = allTabs[forward ? (index + 1) % count : (index + count - 1) % count].id
+        select(target)
+        return target
+    }
+
+    /// Cycles the focused surface within a workspace (macOS `nextSurface`
+    /// / `prevSurface`). Walks every surface including background tabs, so
+    /// a tabbed pane is not skipped over as if it held one.
+    func stepFocusedSurface(tabId: UUID, forward: Bool) {
+        guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }) else { return }
+        let all = tabs.wrappedValue[index].allSurfaces.map(\.surface.surfaceId)
+        guard all.count > 1 else { return }
+        let current = all.firstIndex(of: tabs.wrappedValue[index].focusedSurfaceId) ?? 0
+        let next = forward
+            ? (current + 1) % all.count
+            : (current - 1 + all.count) % all.count
+        let target = all[next]
+        // Selecting the surface also brings its tab to the front, so
+        // cycling through a tabbed pane actually shows each one.
+        tabs.wrappedValue[index].layout = tabs.wrappedValue[index].layout.selecting(surfaceId: target)
+        tabs.wrappedValue[index].focusedSurfaceId = target
+    }
+
     /// A tab strip changed selection.
     func selectSurfaceTab(tabId: UUID, surfaceId: UUID) {
         guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }) else { return }

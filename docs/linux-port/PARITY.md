@@ -137,7 +137,7 @@ are implemented on both**, 47 are macOS-only, and a further 29 macOS
 | Workspace pinning / rename UI | ❌ | |
 | Sidebar metadata pills (git branch, PR, ports, status/progress) | ❌ | pairs with report_* verbs |
 | Update pill / Sparkle auto-update | — | Flatpak packaging phase owns updates |
-| Keyboard shortcuts | 🟡 | 8 of macOS's 28 commands bound: new workspace (Ctrl+Shift+T), split right/down (D/S), find (F), zoom (Z), close pane (W), **open browser pane (B)**, **browser devtools (I)**. Still unbound, though the verbs exist: next/previous workspace, rename workspace. Not implemented at all: directional pane focus (`focusLeft/Right/Up/Down`), next/prev surface, jump-to-unread, open folder, JS console, flash, multi-window |
+| Keyboard shortcuts | 🟡 | 12 of macOS's 28 commands bound: new workspace (Ctrl+Shift+T), split right/down (D/S), find (F), zoom (Z), close pane (W), **open browser pane (B)**, **browser devtools (I)**, **next/previous workspace (Ctrl+Shift+PageDown/Up)**, **next/previous pane (Ctrl+Tab / Ctrl+Shift+Tab)**. Still unbound though the verb exists: rename workspace (needs a text dialog). Not implemented at all: directional pane focus (`focusLeft/Right/Up/Down`), next/prev surface, jump-to-unread, open folder, JS console, flash, multi-window |
 | CLI (shared `CLI/cmux.swift`) | ✅ | builds unmodified on Linux; global flags before subcommand |
 | Claude hooks (Stop/Notification → cmux claude-hook) | ✅ | |
 

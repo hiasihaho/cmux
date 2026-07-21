@@ -197,6 +197,33 @@ struct CmuxApp: App {
                         }
                         .keyboardShortcut("i".ctrl().shift())
                         .tooltip("Browser developer tools (Ctrl+Shift+I)")
+                        // Navigation commands macOS has had all along; the
+                        // workspace verbs already existed unbound. Hidden
+                        // buttons would only clutter the bar, so these are
+                        // keyboard-only.
+                        Button(icon: .custom(name: "go-next-symbolic")) {
+                            _ = controlHandler.stepWorkspace(forward: true)
+                        }
+                        .keyboardShortcut("Page_Down".ctrl().shift())
+                        .tooltip("Next workspace (Ctrl+Shift+PageDown)")
+                        Button(icon: .custom(name: "go-previous-symbolic")) {
+                            _ = controlHandler.stepWorkspace(forward: false)
+                        }
+                        .keyboardShortcut("Page_Up".ctrl().shift())
+                        .tooltip("Previous workspace (Ctrl+Shift+PageUp)")
+                        Button(icon: .custom(name: "go-jump-symbolic")) {
+                            controlHandler.stepFocusedSurface(tabId: selection, forward: true)
+                        }
+                        // Ctrl+Tab, not Ctrl+Shift+]: with Shift held the
+                        // "]" key produces braceright, so the accelerator
+                        // never matches what the user actually presses.
+                        .keyboardShortcut("Tab".ctrl())
+                        .tooltip("Next pane (Ctrl+Tab)")
+                        Button(icon: .custom(name: "go-jump-symbolic")) {
+                            controlHandler.stepFocusedSurface(tabId: selection, forward: false)
+                        }
+                        .keyboardShortcut("Tab".ctrl().shift())
+                        .tooltip("Previous pane (Ctrl+Shift+Tab)")
                     } end: {
                         Button(icon: .custom(name: "software-update-urgent-symbolic")) {
                             simulateAttention()

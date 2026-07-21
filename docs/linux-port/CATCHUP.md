@@ -1,6 +1,6 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-21 ~11:40** (navigation barrier + quadratic CLI
+Last updated: **2026-07-21 ~14:10** (navigation barrier + quadratic CLI
 transfer fixed, both found by the SPA-extraction dogfood). Update this
 file at the end of every significant session; it is the fastest path
 from cold start to productive work. Deep history lives in
@@ -82,7 +82,32 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    demonstrably more flexible — as with session state, where WebKitGTK's
    native blob beats macOS's shadow-stack emulation.
 
-5. **Deferred: merge `linux-port` into the fork's `main`.** Not urgent —
+5. **Keyboard/UI commands still to do.** macOS binds 28 commands; Linux
+   now binds 12. The gap is what a person can *reach*, which a verb-level
+   test suite cannot see — every suite was green while the browser pane
+   had no way in.
+
+   *Cheap-ish (needs a small dialog, verb already exists):*
+   - **Rename workspace** — `workspace.rename` works over the socket;
+     there is no text-entry dialog, which is the only missing piece.
+
+   *Real work (no verb, needs new logic):*
+   - **Directional pane focus** (`focusLeft/Right/Up/Down`) — needs
+     geometry-aware traversal of the paned tree, not just list order.
+     Pairs with `surface.focus` ❌ in PARITY; the socket verb and the
+     shortcut should land together.
+   - **Jump to latest unread** (`jumpToUnread`) — needs an ordering over
+     workspaces with attention state.
+   - **Open folder** (`openFolder`) — a directory picker that opens a
+     workspace there; needs a file-chooser dialog.
+   - **Browser JavaScript console** (`showBrowserJavaScriptConsole`) —
+     distinct from DevTools; macOS opens the console pane directly.
+   - **Flash focused panel** (`triggerFlash`) — a visual ping; the verb
+     exists on macOS as `surface.trigger_flash`.
+   - **Multi-window** (`newWindow`/`closeWindow`) — the whole
+     `window.create/close/current/focus` family, a phase of its own.
+
+6. **Deferred: merge `linux-port` into the fork's `main`.** Not urgent —
    the work is pushed to `origin/linux-port` and the upstream PR flows
    from there, so nothing is stranded. But it is real work that gets
    harder the longer it waits, and it has a trap:
@@ -111,7 +136,7 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    Merge *into* `linux-port` first is the point: `main` is never left
    broken, and a bad resolution costs a branch rather than the fork.
 
-6. Flatpak packaging.
+7. Flatpak packaging.
 5. Parity long tail: PARITY.md ❌ rows (system.tree, surface.focus,
    pane.resize, terminal find overlay, sidebar metadata pills…).
 6. Upstreaming to manaflow: everything is PRE-PREPARED in

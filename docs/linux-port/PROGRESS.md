@@ -2141,3 +2141,32 @@ rename workspace. Not implemented at all: directional pane focus
 folder, JS console, flash, multi-window.
 
 8 suites, 79 assertions, 0 failed.
+
+## 2026-07-21 — workspace and pane navigation shortcuts
+
+The cheap half of the command-surface gap: **Ctrl+Shift+PageDown/PageUp**
+for next/previous workspace (the `workspace.next/previous` verbs existed
+unbound) and **Ctrl+Tab / Ctrl+Shift+Tab** to cycle the focused pane
+(new `stepFocusedSurface`, which walks *every* surface including
+background tabs so a tabbed pane is not treated as one).
+
+Cycling a surface also selects its tab, so stepping through a tabbed pane
+actually shows each page rather than silently focusing something hidden.
+
+**One binding did not work and the reason is worth keeping:** the first
+attempt used Ctrl+Shift+`]`. With Shift held, that key produces
+`braceright`, not `bracketright` — so the accelerator never matched what
+was actually pressed. It failed silently, exactly like a feature that
+was not wired at all. Ctrl+Tab has no such ambiguity. Any shortcut whose
+key changes glyph under Shift needs the shifted keysym, or a different
+key.
+
+Caught only because the shortcuts were driven with real key events under
+xdotool; a unit test of the handler would have passed.
+
+macOS binds 28 commands, Linux now binds 12. The remainder is written up
+in CATCHUP as an explicit to-do, split into "needs a small dialog"
+(rename workspace) and "real work, no verb yet" (directional pane focus,
+jump-to-unread, open folder, JS console, flash, multi-window).
+
+8 suites, 79 assertions, 0 failed.
