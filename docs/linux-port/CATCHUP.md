@@ -1,6 +1,6 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-21 ~05:30** (navigation barrier + quadratic CLI
+Last updated: **2026-07-21 ~09:30** (navigation barrier + quadratic CLI
 transfer fixed, both found by the SPA-extraction dogfood). Update this
 file at the end of every significant session; it is the fastest path
 from cold start to productive work. Deep history lives in
@@ -63,7 +63,26 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    done 2026-07-21 — `cmux browser inspect`, human-confirmed rendering).
    Next: increment 4 (native console tap) and the increment-5 long tail
    (WebKitFindController, download hardening, popup routing).
-4. Flatpak packaging.
+4. Open gaps we have committed to fixing properly (not worked around):
+   - **Terminal scrollback persistence** — macOS stores it
+     (`SessionTerminalPanelSnapshot.scrollback`); we restore the cwd only.
+     Ghostty can already produce the text via `read_text --scrollback`.
+   - **Browser state capture is throttled** — a navigation is not a model
+     change, so state reaches disk on the 15s timer. Quitting seconds
+     after navigating persists the previous URL. Proper fix is capturing
+     on `load-changed`, which means a session write per navigation —
+     needs a debounce, not a naive hook.
+   - **Divider positions across restart** — v3 has a natural home for it
+     (macOS: `SessionSplitLayoutSnapshot.dividerPosition`).
+   - **Browser URL bar, pane zoom, screencast, `browser.tab.*`** — see
+     PARITY.md; the tab verbs now have a real model to address.
+
+   Method: read the macOS implementation first (it is usually right and
+   is the parity target), then deviate only where our own approach is
+   demonstrably more flexible — as with session state, where WebKitGTK's
+   native blob beats macOS's shadow-stack emulation.
+
+5. Flatpak packaging.
 5. Parity long tail: PARITY.md ❌ rows (system.tree, surface.focus,
    pane.resize, terminal find overlay, sidebar metadata pills…).
 6. Upstreaming to manaflow: everything is PRE-PREPARED in

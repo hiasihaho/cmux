@@ -8,6 +8,11 @@ stubs, or intentionally skips a feature.** Evidence and dates live in
 Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 — not planned / not applicable on Linux.
 
+Parity runs both ways: the **Linux-only additions** section near the end
+lists what this port has that macOS does not, and
+[FEATURES.md](FEATURES.md) describes them. Method-level gaps below were
+measured by diffing the two capability lists, not estimated.
+
 ## Control socket — v2 methods
 
 ### system / window / workspace
@@ -31,7 +36,7 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | surface.focus / current | ❌ | focus-intent verbs; need focus policy port |
 | surface.move / reorder / refresh / clear_history | ❌ | |
 | surface.health / action / drag_to_split / trigger_flash | ❌ | |
-| pane.create / list / focus / surfaces | ✅ | one surface per pane (no stacked surfaces yet) |
+| pane.create / list / focus / surfaces | ✅ | panes hold several surfaces behind an AdwTabView strip since 2026-07-21; `surface_count`/`surface_refs`/`selected_surface_ref` report the real list |
 | pane.break / join / last / resize / swap | ❌ | pane.resize would pair well with divider persistence |
 
 ### browser — navigation & automation
@@ -66,6 +71,23 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | browser.highlight / addscript / addstyle / addinitscript | ❌ | |
 | browser.state.save / load, trace.*, screencast.*, input_* | ❌ / — | input_* is not_supported on macOS too |
 
+### browser — not yet ported
+
+Measured by diffing the two capability lists (2026-07-21): **88 v2 methods
+are implemented on both**, 51 are macOS-only, and a further 29 macOS
+`debug.*` methods are UI-test harness hooks rather than port targets.
+
+| Group | Missing on Linux |
+|---|---|
+| script injection | `addinitscript` `addscript` `addstyle` |
+| network control | `network.requests` `network.route` `network.unroute` `offline.set` |
+| device emulation | `viewport.set` `geolocation.set` |
+| trusted input | `input_keyboard` `input_mouse` `input_touch` (WebDriver covers the real-input case today) |
+| capture / tracing | `screencast.start` `screencast.stop` `trace.start` `trace.stop` |
+| browser tabs | `tab.list` `tab.new` `tab.switch` `tab.close` |
+| state | `state.save` `state.load` |
+| misc | `focus_webview` `is_webview_focused` `highlight` |
+
 ### notifications / app / auth / debug
 
 | Method | Status | Notes |
@@ -97,11 +119,17 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | Notifications page + unread counts | ✅ | |
 | Desktop notifications | ✅ | GNotification; suppressed when workspace selected; withdrawn on close |
 | Split panes (GtkPaned tree) | ✅ | fresh splits balance 50/50 at first allocation (phase 5b fix) |
-| Divider position persistence across restart | ❌ | session schema v3 candidate; positions survive in-session rebuilds only |
-| Session persistence (layout, cwds, URLs, selection) | ✅ | XDG JSON, schema v2 |
+| Divider position persistence across restart | ❌ | v3 shipped without it — the schema now has a natural home for it (per-`split` field, as macOS does with `SessionSplitLayoutSnapshot.dividerPosition`); positions survive in-session rebuilds only |
+| Session persistence (layout, cwds, URLs, selection) | ✅ | XDG JSON, **schema v3** — normalized like macOS (flat `surfaces` array + layout referencing ids), so multi-tab panes round-trip. v2 files migrate on read. Browser panes additionally restore zoom and a *navigable* back/forward list (see Linux-only below) |
+| Terminal scrollback persistence | ❌ | macOS stores it (`SessionTerminalPanelSnapshot.scrollback: String?`) so a restored shell keeps its history on screen. Linux restores the cwd only; Ghostty panes can already produce the text (`read_text --scrollback`), so this is a capture+replay question, not a missing capability |
 | Terminal surfaces | ✅ | **Ghostty is the default** in shim-linked builds (CMUX_GHOSTTY=1; CMUX_TERM=vte falls back to VTE): titles/pwd/bell/focus, send/read verbs incl. scrollback, shell integration, auto-close on exit, resize fixed (fork renderer patch Darwin-gated). Remaining gap: eager background spawn (panes in never-shown workspaces start on first selection) |
 | Browser panes (WebKitGTK) | ✅ | |
+| Browser find-in-page | ✅ | WebKitFindController behind a GTK find bar (Ctrl+Shift+F), match counter, next/prev with wrap, case toggle; also socket-drivable (`browser find-in-page`) so an agent and the human share one controller |
 | Terminal find overlay | ✅ | Ghostty panes: built-in search overlay via the shim (Ctrl+Shift+F / header magnifier) — needle entry, next/prev, highlight, Esc-to-close all native. VTE panes: no overlay (VTE search API unused) |
+| Browser URL / address bar | ❌ | macOS browser panes have an editable address bar (`Sources/Panels/BrowserPanelView.swift`, `debug.browser.address_bar_focused`). Linux navigates only via `browser goto` / links — a human cannot type a URL into a pane |
+| Pane zoom ("focus mode") | ❌ | macOS `toggleSplitZoom` ("Toggle Pane Zoom", `TabManager.toggleSplitZoom`) temporarily expands one pane to fill the workspace, tmux-style. Nothing equivalent on Linux |
+| Browser screencast (capture mode) | ❌ | macOS exposes `browser.screencast.start` / `.stop` over the socket — continuous frame capture, distinct from the one-shot `browser.screenshot` we have |
+| Browser tabs as a socket surface | 🟡 | macOS has `browser.tab.list / new / switch / close`. Linux now has per-pane tabs in the model and UI, so these verbs have something real to address — but they are not implemented yet |
 | Command palette | ❌ | |
 | Tab drag-and-drop (reorder, tear-off, cross-window) | ❌ | |
 | Multi-window | ❌ | |
@@ -111,6 +139,25 @@ Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 | Keyboard shortcuts | 🟡 | new tab, splits, close pane; no palette/full map |
 | CLI (shared `CLI/cmux.swift`) | ✅ | builds unmodified on Linux; global flags before subcommand |
 | Claude hooks (Stop/Notification → cmux claude-hook) | ✅ | |
+
+## Linux-only additions (no macOS counterpart)
+
+Things this port has that macOS cmux does not. Full descriptions and the
+✅/★/⚙ overview live in [FEATURES.md](FEATURES.md); this is the index, so
+that a parity read never leaves the impression the port is only catching
+up.
+
+| Addition | Notes |
+|---|---|
+| `search.panes` (`cmux search`) | text search across **every** pane at once — terminal screen/scrollback and rendered browser `innerText` in one query, with per-hit surface/workspace/pane refs under `--json`. macOS has per-pane find only |
+| Native browser history across restarts | v3 persists WebKitGTK's own session-state blob, so a restored pane has a *real* back/forward list. macOS stores history URLs but has to emulate navigation with shadow stacks (`restoredBackHistoryStack`), because WKWebView cannot rebuild a list from URLs |
+| `browser.inspect` | Web Inspector hosted in a cmux pane via public WebKitGTK API. macOS has DevTools too (`BrowserPanel.toggleDeveloperTools`, private `_inspector` selectors) — the difference is presentation and API surface, so this is parity-with-a-twist rather than a pure addition |
+| `browser.find_in_page` | the same find controller the UI bar uses, exposed over the socket, so an agent and the human highlight identically |
+| `browser.identify` | surface/url/title for a browser pane in one call |
+| Popup burst budget | popups become tabs, capped per opener per 10s. macOS routes popups (richer: middle-click intent, modifier flags, open-externally rules) but has no budget |
+| `browser screenshot --full-page` | whole-document capture; both platforms default to the visible viewport, macOS exposes no full-page flag |
+| Navigation barrier on `goto`/`back`/`forward`/`reload` | the verb holds its response until the new document commits. macOS has the same latent race (`v2BrowserNavigate` → `navigateSmart` → immediate `.ok`) — see [UPSTREAM.md](UPSTREAM.md) §4b |
+| Quadratic CLI transfer fix | in the **shared** `CLI/cmux.swift`, so macOS benefits once merged — UPSTREAM.md §4a |
 
 ## Deliberate deviations from macOS (upstream candidates)
 
@@ -129,9 +176,11 @@ scripts; the Linux port fixes them and macOS should adopt the same:
 
 ## Known wire-level deviations
 
-- `browser.wait` with `timeout_ms` > ~14s is cut off by the socket
-  dispatcher's 15s transport timeout (macOS pumps the run loop instead).
-  Raise the transport budget if long waits become a real workflow.
+- ~~`browser.wait` with `timeout_ms` > ~14s is cut off by the 15s
+  transport timeout~~ — **fixed 2026-07-21**: both the socket dispatcher
+  and the CLI now derive their budget from the request's own `timeout_ms`.
+  The old behavior was worse than a truncation, because the transport
+  timeout was worded identically to a genuine condition-not-met.
 - `--json new-workspace` prints `OK workspace:N`, not JSON — shared-CLI
   behavior, identical on macOS; upstream ergonomics, not a port gap.
 - Timeout replies for v2 requests return `"id": null` (the transport
