@@ -39,6 +39,7 @@ cleanup() {
         [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
     done
     [ -n "${PAGE_PID:-}" ] && kill "$PAGE_PID" 2>/dev/null
+    free_port $PAGE_PORT 2>/dev/null
     rm -rf "$WORK" "$SOCK" "$SESSION_FILE"
 }
 trap cleanup EXIT
@@ -76,8 +77,12 @@ cat > "$WORK/index.html" <<'EOF'
 <button id="btn">click me</button><div id="out">none</div>
 <script src="app.js"></script></body></html>
 EOF
-( cd "$WORK" && python3 -m http.server $PAGE_PORT >/dev/null 2>&1 & echo $! > "$WORK/pid" )
-PAGE_PID=$(cat "$WORK/pid"); sleep 1
+# --directory avoids a wrapper subshell: with `cd X && python3 ... &`
+# the recorded $! is the SUBSHELL's pid, so cleanup killed the wrapper and
+# orphaned the server (it kept holding PAGE_PORT after the suite).
+python3 -m http.server $PAGE_PORT --directory "$WORK" >/dev/null 2>&1 &
+PAGE_PID=$!
+sleep 1
 
 # ------------------------------------------------------------- instance
 info "starting isolated cmux (automation + inspector server)"
@@ -172,7 +177,14 @@ CONSOLE=$(cx --json browser console list --surface "$SURF" 2>/dev/null \
 # ------------------------------------------------------ GitHub (strict CSP)
 if curl -s -m 8 -o /dev/null https://github.com; then
     info "github.com: strict CSP + real navigation"
-    wd_post /url '{"url":"https://github.com/manaflow-ai/cmux"}' >/dev/null; sleep 6
+    wd_post /url '{"url":"https://github.com/manaflow-ai/cmux"}' >/dev/null
+    # Poll instead of a fixed sleep: GitHub load time varies with the
+    # network, and a too-short wait fails assertions for reasons that
+    # look like product bugs.
+    for _ in $(seq 1 20); do
+        [ -n "$(wd_first_displayed 'a[href$="/issues"]')" ] && break
+        sleep 1
+    done
 
     SNAP=$(cx browser snapshot --surface "$SURF" 2>/dev/null | head -3)
     echo "$SNAP" | grep -q 'document' \

@@ -1078,6 +1078,32 @@ bug in `browser url` was a false alarm — the query had targeted the first
 session's pane; the correct pane agreed with `location.href` and the
 snapshot title.
 
+## 2026-07-21 — Flakiness check: 8/8 green, plus a leak the green runs hid
+
+Ran `webdriver-smoke.sh` five times, then three more after hardening.
+**All 8 runs: 9 passed, 0 failed** — no flakiness in the WebDriver /
+adoption stack. Runtime was near-identical each run because it is
+dominated by fixed waits, not variance.
+
+The exercise still paid for itself twice:
+
+- **Leaked fixture server, masked by the green runs.** The suite started
+  its HTTP server as `cd "$WORK" && python3 -m http.server &`, so `$!`
+  held the *wrapper subshell's* pid; cleanup killed the wrapper and
+  orphaned the server, which kept holding the port after every run. It
+  never showed up as a failure because the pre-flight cleanup frees that
+  port at the start of the next run — a self-masking leak. Fixed with
+  `--directory` (no subshell) plus a `free_port` backstop in cleanup;
+  verified by checking the port immediately after each of three runs.
+- **Latent timing flake removed.** The GitHub section used a fixed
+  `sleep 6`; on a slower network that fails in a way that looks like a
+  product bug. Now polls for the link (≤20s), which is both more robust
+  and *faster* in practice: 27s → 20s per run.
+
+Lesson worth generalizing: "the suite is green" is not the same as "the
+suite is clean" — check for leaked processes/ports after a run, not just
+exit codes.
+
 ## Known gotchas (for future sessions)
 
 - Filter `swift build` output: pkg-config emits huge

@@ -50,6 +50,17 @@ navigates GitHub · cmux observes that navigation on the same pane.
 - **Assert that state actually changed.** The first version compared
   before/after URLs that were both unchanged and called it a pass. Any
   navigation assertion must require `after != before`.
+- **Background a server directly, not behind `cd X && …`.** With
+  `cd "$WORK" && python3 -m http.server &`, `$!` is the *wrapper
+  subshell's* pid — cleanup kills the wrapper and orphans the server,
+  which then keeps holding the port. Use `--directory` (no subshell) and
+  free the port on exit as a backstop. This leak stayed invisible for a
+  while because the pre-flight cleanup papered over it on the next run:
+  the suite was green while leaving a stray process behind every time.
+- **Poll, don't sleep, for network-dependent state.** The GitHub section
+  originally waited a fixed 6s; that is the classic latent flake (and it
+  fails looking like a product bug). Polling for the link is both more
+  robust and faster (27s → 20s per run).
 - **Each WebDriver session adopts its own pane**, so a second session
   against the same instance adds another surface — target surfaces by the
   ref captured after *that* session started, not a hard-coded one.
