@@ -183,6 +183,20 @@ struct CmuxApp: App {
                         }
                         .keyboardShortcut("z".ctrl().shift())
                         .tooltip("Zoom pane (Ctrl+Shift+Z)")
+                        // macOS exposes "Open Browser" and "Toggle Browser
+                        // Developer Tools" as commands; both verbs already
+                        // existed here with no way to reach them without
+                        // dropping to the CLI.
+                        Button(icon: .custom(name: "web-browser-symbolic")) {
+                            openBrowserPane()
+                        }
+                        .keyboardShortcut("b".ctrl().shift())
+                        .tooltip("Open browser pane (Ctrl+Shift+B)")
+                        Button(icon: .custom(name: "applications-engineering-symbolic")) {
+                            inspectFocusedPane()
+                        }
+                        .keyboardShortcut("i".ctrl().shift())
+                        .tooltip("Browser developer tools (Ctrl+Shift+I)")
                     } end: {
                         Button(icon: .custom(name: "software-update-urgent-symbolic")) {
                             simulateAttention()
@@ -238,6 +252,32 @@ struct CmuxApp: App {
         guard let tab = tabs.first(where: { $0.id == selection }),
               let focused = tab.focusedSurface else { return }
         controlHandler.closeSurface(tabId: tab.id, surfaceId: focused.surfaceId)
+    }
+
+    /// macOS "Open Browser": a browser pane split off the focused one.
+    private func openBrowserPane() {
+        guard let tab = tabs.first(where: { $0.id == selection }),
+              let focused = tab.focusedSurface else { return }
+        _ = controlHandler.split(
+            tab: tab,
+            surfaceId: focused.surfaceId,
+            direction: controlHandler.preferredSplitDirection(for: focused.surfaceId),
+            kind: .browser(initialURL: "about:blank")
+        )
+    }
+
+    /// macOS "Toggle Browser Developer Tools". Only browser panes have an
+    /// inspector; on a terminal this is a no-op rather than an error, the
+    /// same as pressing it with nothing selected.
+    private func inspectFocusedPane() {
+        guard let tab = tabs.first(where: { $0.id == selection }),
+              let focused = tab.focusedSurface,
+              case .browser = focused.kind else { return }
+        _ = controlHandler.v2BrowserInspect(
+            id: nil,
+            params: ["surface_id": focused.surfaceId.uuidString],
+            respond: { _ in }
+        )
     }
 
     /// Open Ghostty's built-in find-in-terminal overlay on the focused

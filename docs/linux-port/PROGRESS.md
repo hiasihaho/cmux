@@ -2098,3 +2098,46 @@ scheme → `http://…`, a non-URL query → the fixture search URL.
 
 New suite `browser-urlbar-smoke.sh` (5 assertions). 8 suites, 79
 assertions, 0 failed.
+
+## 2026-07-21 — the browser pane had no way in
+
+Prompted by the human asking whether macOS has an "open browser pane"
+feature. It does — and surveying the whole command surface turned up a
+sharper problem than the one asked about.
+
+**macOS binds 28 keyboard commands; Linux bound 6.** More to the point,
+several macOS commands map onto verbs Linux *already had*, with no way to
+reach them from the keyboard or the UI at all:
+
+| macOS command | Linux verb | reachable? |
+|---|---|---|
+| Open Browser, Split Browser Right/Down | `browser.open_split` ✓ | no |
+| Toggle Browser Developer Tools | `browser.inspect` ✓ | no |
+| Next / Previous Workspace | `workspace.next/previous` ✓ | no |
+| Rename Workspace | `workspace.rename` ✓ | no |
+
+So the browser pane, the Web Inspector pane, the tab strip, find-in-page
+and the address bar were all built and tested — and a person sitting in
+cmux could not open a browser pane without dropping to the CLI. The
+capability was finished; the way in was never wired. Worth remembering as
+a category: *building the verb is not shipping the feature*, and a
+verb-level test suite cannot notice the difference.
+
+Bound now: **Ctrl+Shift+B** opens a browser pane (splitting along the
+longer axis, so it does not shred the layout) and **Ctrl+Shift+I** opens
+DevTools for a focused browser pane, both with toolbar buttons. DevTools
+is a no-op on a terminal pane rather than an error.
+
+Verified by driving the real keys with xdotool on the private display:
+1 pane → Ctrl+Shift+B → 2 panes with the new one a browser at
+`about:blank` → Ctrl+Shift+I → 3 panes with "inspector widget placed" in
+the log, and a screenshot showing terminal, browser-with-address-bar and
+the DevTools pane (Elements/Console/Graphics) side by side.
+
+Still unbound but cheap, since the verbs exist: next/previous workspace,
+rename workspace. Not implemented at all: directional pane focus
+(`focusLeft/Right/Up/Down` — needs geometry-aware logic and pairs with the
+`surface.focus` ❌ in PARITY), next/prev surface, jump-to-unread, open
+folder, JS console, flash, multi-window.
+
+8 suites, 79 assertions, 0 failed.
