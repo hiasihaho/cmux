@@ -7,7 +7,11 @@ import Foundation
 /// restored session reopens shells where they were.
 enum SessionStore {
 
-    static let schemaVersion = 2
+    /// v3 normalizes the layout the way macOS cmux always has: surfaces
+    /// live once in a flat array and the tree references them by id, so a
+    /// pane can carry several (tabs). v2 inlined the surface into the leaf,
+    /// which is exactly why multi-tab panes could not round-trip.
+    static let schemaVersion = 3
 
     struct Snapshot: Codable, Equatable {
         var version: Int
@@ -18,16 +22,60 @@ enum SessionStore {
 
     struct WorkspaceSnapshot: Codable, Equatable {
         var title: String
-        /// Optional so version-2 files without it keep decoding.
         var customTitle: String?
         var workingDirectory: String
+        /// Flat, id-keyed; the layout tree references these.
+        var surfaces: [SurfaceSnapshot]
         var layout: LayoutSnapshot
-        var focusedLeafIndex: Int
+        var focusedSurfaceId: String?
+    }
+
+    struct SurfaceSnapshot: Codable, Equatable {
+        var id: String
+        var type: String
+        var workingDirectory: String
+        var browser: BrowserSnapshot?
+    }
+
+    /// `url`/`zoom`/history are the portable baseline (what macOS stores).
+    /// `sessionState` is WebKitGTK's own blob — richer, optional, and never
+    /// load-bearing; see BrowserSessionState for the layering rule.
+    struct BrowserSnapshot: Codable, Equatable {
+        var url: String
+        var zoom: Double?
+        var backURLs: [String]?
+        var forwardURLs: [String]?
+        var sessionState: String?
     }
 
     indirect enum LayoutSnapshot: Codable, Equatable {
-        case leaf(kind: String, workingDirectory: String, url: String)
+        /// A pane and its tabs. `selectedId` is the one on top.
+        case pane(surfaceIds: [String], selectedId: String?)
         case split(orientation: String, first: LayoutSnapshot, second: LayoutSnapshot)
+    }
+
+    // MARK: v2 (read-only — migrated on load, never written)
+
+    private struct VersionProbe: Codable { var version: Int }
+
+    private struct SnapshotV2: Codable {
+        var version: Int
+        var selectedIndex: Int
+        var tabCounter: Int
+        var workspaces: [WorkspaceSnapshotV2]
+    }
+
+    private struct WorkspaceSnapshotV2: Codable {
+        var title: String
+        var customTitle: String?
+        var workingDirectory: String
+        var layout: LayoutSnapshotV2
+        var focusedLeafIndex: Int
+    }
+
+    private indirect enum LayoutSnapshotV2: Codable {
+        case leaf(kind: String, workingDirectory: String, url: String)
+        case split(orientation: String, first: LayoutSnapshotV2, second: LayoutSnapshotV2)
     }
 
     static var fileURL: URL {
@@ -73,58 +121,69 @@ enum SessionStore {
             version: schemaVersion,
             selectedIndex: tabs.firstIndex { $0.id == selection } ?? 0,
             tabCounter: tabCounter,
-            workspaces: tabs.map { tab in
-                WorkspaceSnapshot(
-                    title: tab.title,
-                    customTitle: tab.customTitle,
-                    workingDirectory: tab.workingDirectory,
-                    // A workspace of nothing but inspector panes collapses to
-                    // nil; restore it as a plain terminal rather than losing
-                    // the workspace itself.
-                    layout: layoutSnapshot(tab.layout)
-                        ?? .leaf(kind: "terminal", workingDirectory: tab.workingDirectory, url: ""),
-                    focusedLeafIndex: tab.surfaces.firstIndex {
-                        $0.surfaceId == tab.focusedSurfaceId
-                    } ?? 0
-                )
-            }
+            workspaces: tabs.map(workspaceSnapshot)
         )
     }
 
-    /// Returns nil for panes that must not survive a restart. Inspector
-    /// panes are the only such kind today: WebKit only hands out the
-    /// inspector widget during its own `attach` signal, so there is nothing
-    /// to recreate on restore — persisting one would resurrect an empty
-    /// pane. A split with one pruned side collapses to the surviving side.
-    private static func layoutSnapshot(_ node: PaneNode) -> LayoutSnapshot? {
+    private static func workspaceSnapshot(_ tab: TerminalTab) -> WorkspaceSnapshot {
+        var surfaces: [SurfaceSnapshot] = []
+        for (_, surface) in tab.allSurfaces {
+            // Inspector panes are dropped: WebKit only surrenders the
+            // DevTools widget during its own `attach` signal, so a restored
+            // one would be a permanently empty pane.
+            switch surface.kind {
+            case .inspector:
+                continue
+            case .terminal:
+                // Live cwd via OSC 7 beats the spawn-time directory.
+                let cwd = SurfaceRegistry.shared.currentDirectory(for: surface.surfaceId)
+                    ?? surface.workingDirectory
+                surfaces.append(SurfaceSnapshot(
+                    id: surface.surfaceId.uuidString, type: "terminal",
+                    workingDirectory: cwd, browser: nil
+                ))
+            case .browser(let initialURL):
+                surfaces.append(SurfaceSnapshot(
+                    id: surface.surfaceId.uuidString, type: "browser",
+                    workingDirectory: "",
+                    browser: BrowserSessionState.capture(
+                        surfaceId: surface.surfaceId, fallbackURL: initialURL
+                    )
+                ))
+            }
+        }
+        let kept = Set(surfaces.map(\.id))
+        return WorkspaceSnapshot(
+            title: tab.title,
+            customTitle: tab.customTitle,
+            workingDirectory: tab.workingDirectory,
+            surfaces: surfaces,
+            // A workspace of nothing but inspector panes collapses to nil;
+            // restore it as a plain terminal rather than losing the
+            // workspace itself.
+            layout: layoutSnapshot(tab.layout, kept: kept)
+                ?? .pane(surfaceIds: [], selectedId: nil),
+            focusedSurfaceId: kept.contains(tab.focusedSurfaceId.uuidString)
+                ? tab.focusedSurfaceId.uuidString : surfaces.first?.id
+        )
+    }
+
+    /// Returns nil for a node whose surfaces were all dropped. A split with
+    /// one pruned side collapses to the surviving side.
+    private static func layoutSnapshot(_ node: PaneNode, kept: Set<String>) -> LayoutSnapshot? {
         switch node {
         case .leaf(let pane):
-            // A pane can hold several tabs. The snapshot format predates
-            // that and stores one surface per leaf, so the extra tabs are
-            // recorded as siblings — losing them silently would be worse
-            // than restoring them as panes, and the tab grouping is cheap
-            // to rebuild by hand compared to losing a shell's cwd.
-            let entries = pane.surfaces.compactMap { surface -> LayoutSnapshot? in
-                switch surface.kind {
-                case .terminal:
-                    // Live cwd via OSC 7 beats the spawn-time directory.
-                    let cwd = SurfaceRegistry.shared.currentDirectory(for: surface.surfaceId)
-                        ?? surface.workingDirectory
-                    return .leaf(kind: "terminal", workingDirectory: cwd, url: "")
-                case .browser(let initialURL):
-                    // Live page URL beats the initial one.
-                    let url = SurfaceRegistry.shared.currentURL(for: surface.surfaceId) ?? initialURL
-                    return .leaf(kind: "browser", workingDirectory: "", url: url)
-                case .inspector:
-                    return nil
-                }
-            }
-            guard let first = entries.first else { return nil }
-            return entries.dropFirst().reduce(first) { acc, next in
-                .split(orientation: "horizontal", first: acc, second: next)
-            }
+            let ids = pane.surfaces
+                .map(\.surfaceId.uuidString)
+                .filter(kept.contains)
+            guard !ids.isEmpty else { return nil }
+            let selected = pane.selected.surfaceId.uuidString
+            return .pane(
+                surfaceIds: ids,
+                selectedId: ids.contains(selected) ? selected : ids.first
+            )
         case .split(let orientation, let first, let second):
-            switch (layoutSnapshot(first), layoutSnapshot(second)) {
+            switch (layoutSnapshot(first, kept: kept), layoutSnapshot(second, kept: kept)) {
             case (nil, nil):
                 return nil
             case (let only?, nil), (nil, let only?):
@@ -139,17 +198,92 @@ enum SessionStore {
 
     static func restore() -> (tabs: [TerminalTab], selection: UUID, tabCounter: Int)? {
         guard let data = try? Data(contentsOf: fileURL),
-              let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data),
-              snapshot.version == schemaVersion,
-              !snapshot.workspaces.isEmpty else { return nil }
+              let probe = try? JSONDecoder().decode(VersionProbe.self, from: data) else { return nil }
+        switch probe.version {
+        case 3:
+            guard let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else { return nil }
+            return restoreV3(snapshot)
+        case 2:
+            // Migrated in place: a v2 file is read, converted, and the next
+            // save writes v3. Refusing it would silently discard a real
+            // session — the whole reason v2 stays decodable.
+            guard let snapshot = try? JSONDecoder().decode(SnapshotV2.self, from: data) else { return nil }
+            return restoreV2(snapshot)
+        default:
+            return nil
+        }
+    }
 
+    private static func restoreV3(_ snapshot: Snapshot) -> (tabs: [TerminalTab], selection: UUID, tabCounter: Int)? {
+        guard !snapshot.workspaces.isEmpty else { return nil }
         let tabs: [TerminalTab] = snapshot.workspaces.map { workspace in
-            var tab = TerminalTab(
-                title: workspace.title,
-                workingDirectory: workspace.workingDirectory
-            )
+            var byId: [String: PaneSurface] = [:]
+            for entry in workspace.surfaces {
+                let id = UUID(uuidString: entry.id) ?? UUID()
+                let kind: SurfaceKind
+                if entry.type == "browser" {
+                    kind = .browser(initialURL: entry.browser?.url ?? "")
+                    // Parked for the surface factory; the richer state (zoom,
+                    // history, WebKit blob) cannot ride in SurfaceKind.
+                    if let browser = entry.browser {
+                        BrowserRestoreStore.pending[id] = browser
+                    }
+                } else {
+                    kind = .terminal
+                }
+                byId[entry.id] = PaneSurface(
+                    surfaceId: id, kind: kind,
+                    workingDirectory: entry.workingDirectory.isEmpty
+                        ? workspace.workingDirectory : entry.workingDirectory
+                )
+            }
+            var tab = TerminalTab(title: workspace.title, workingDirectory: workspace.workingDirectory)
             tab.customTitle = workspace.customTitle
-            tab.layout = layoutNode(workspace.layout)
+            tab.layout = layoutNode(workspace.layout, byId: byId)
+                ?? .leaf(PaneLeaf(workingDirectory: workspace.workingDirectory))
+            let live = tab.allSurfaces.map(\.surface.surfaceId)
+            tab.focusedSurfaceId = workspace.focusedSurfaceId
+                .flatMap { UUID(uuidString: $0) }
+                .flatMap { live.contains($0) ? $0 : nil }
+                ?? live.first ?? tab.focusedSurfaceId
+            return tab
+        }
+        let selected = tabs[safe: snapshot.selectedIndex] ?? tabs[0]
+        return (tabs, selected.id, max(snapshot.tabCounter, tabs.count))
+    }
+
+    private static func layoutNode(_ snapshot: LayoutSnapshot, byId: [String: PaneSurface]) -> PaneNode? {
+        switch snapshot {
+        case .pane(let surfaceIds, let selectedId):
+            let surfaces = surfaceIds.compactMap { byId[$0] }
+            guard !surfaces.isEmpty else { return nil }
+            let index = selectedId.flatMap { id in
+                surfaces.firstIndex { $0.surfaceId.uuidString == id }
+            } ?? 0
+            return .leaf(PaneLeaf(surfaces: surfaces, selectedIndex: index))
+        case .split(let orientation, let first, let second):
+            switch (layoutNode(first, byId: byId), layoutNode(second, byId: byId)) {
+            case (nil, nil):
+                return nil
+            case (let only?, nil), (nil, let only?):
+                return only
+            case (let a?, let b?):
+                return .split(
+                    orientation: PaneNode.SplitOrientation(rawValue: orientation) ?? .horizontal,
+                    first: a, second: b
+                )
+            }
+        }
+    }
+
+    // MARK: v2 migration
+
+    private static func restoreV2(_ snapshot: SnapshotV2) -> (tabs: [TerminalTab], selection: UUID, tabCounter: Int)? {
+        guard !snapshot.workspaces.isEmpty else { return nil }
+        let tabs: [TerminalTab] = snapshot.workspaces.map { workspace in
+            var tab = TerminalTab(title: workspace.title, workingDirectory: workspace.workingDirectory)
+            tab.customTitle = workspace.customTitle
+            tab.layout = layoutNodeV2(workspace.layout)
             let leaves = tab.surfaces
             tab.focusedSurfaceId = (leaves[safe: workspace.focusedLeafIndex] ?? leaves.first
                 ?? PaneLeaf()).surfaceId
@@ -159,7 +293,7 @@ enum SessionStore {
         return (tabs, selected.id, max(snapshot.tabCounter, tabs.count))
     }
 
-    private static func layoutNode(_ snapshot: LayoutSnapshot) -> PaneNode {
+    private static func layoutNodeV2(_ snapshot: LayoutSnapshotV2) -> PaneNode {
         switch snapshot {
         case .leaf(let kind, let workingDirectory, let url):
             if kind == "browser" {
@@ -172,8 +306,8 @@ enum SessionStore {
         case .split(let orientation, let first, let second):
             return .split(
                 orientation: PaneNode.SplitOrientation(rawValue: orientation) ?? .horizontal,
-                first: layoutNode(first),
-                second: layoutNode(second)
+                first: layoutNodeV2(first),
+                second: layoutNodeV2(second)
             )
         }
     }

@@ -112,6 +112,14 @@ Small but real. These are genuine additions, not just different internals:
   per-pane find (`Sources/Find/`) but no cross-pane search verb.
   Deliberately separate from interactive find-in-pane, which is a
   different feature with a different engine.
+- ★ **Native browser history across restarts.** Session v3 persists
+  WebKitGTK's own `webkit_web_view_get_session_state()` blob alongside the
+  portable URL list, so a restored browser pane has a *real* back/forward
+  list — `back`/`forward` genuinely navigate after a restart. macOS stores
+  history URLs too but has to emulate navigation with shadow stacks
+  (`restoredBackHistoryStack`), because WKWebView cannot rebuild a list
+  from URLs. The blob is never load-bearing: if a future WebKit rejects
+  it, the portable fields still restore the pane.
 - ⚙ **Per-pane tab strips (AdwTabView).** A pane holds several surfaces
   behind a tab bar that auto-hides when there is only one, and popups open
   as tabs rather than splits — three popups leave the pane at full size

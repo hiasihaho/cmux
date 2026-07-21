@@ -48,7 +48,12 @@ enum BrowserSurfaceFactory {
         gtk_widget_set_vexpand(widget, 1)
         let webView = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: WebKitWebView.self)
 
-        if case .browser(let initialURL) = leaf.kind, !initialURL.isEmpty {
+        // A session restore parks the full browser state (zoom, history,
+        // WebKit's own blob) here, since SurfaceKind can only carry a URL.
+        // Falls back to the plain URL when there is nothing parked.
+        if let restored = BrowserRestoreStore.pending.removeValue(forKey: leaf.surfaceId) {
+            BrowserSessionState.restore(restored, into: webView)
+        } else if case .browser(let initialURL) = leaf.kind, !initialURL.isEmpty {
             webkit_web_view_load_uri(webView, initialURL)
         }
 

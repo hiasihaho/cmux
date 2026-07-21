@@ -1619,3 +1619,70 @@ no errors.
 
 Suites after the refactor: webdriver 9/9, navigation 8/8, popup 12/12,
 search 11/11, find 11/11.
+
+## 2026-07-21 — session schema v3: normalized surfaces, real browser state
+
+Multi-tab panes now round-trip. The v2 format inlined a surface into each
+layout leaf, so a pane could only ever persist one — the tab work shipped
+with extra tabs coming back as *sibling panes*. That was a normalization
+problem, not a platform one.
+
+**macOS was already right, and does not use anything mac-only.** Read
+before designing (`Sources/SessionPersistence.swift`): a workspace stores
+`panels: [SessionPanelSnapshot]` flat, and the layout tree references them
+— `SessionPaneLayoutSnapshot { panelIds: [UUID], selectedPanelId: UUID? }`
+*is* tabs-per-pane, persisted. v3 mirrors that: `surfaces` flat per
+workspace, `LayoutSnapshot.pane(surfaceIds:selectedId:)`.
+
+Just as important, `SessionBrowserPanelSnapshot` stores **plain strings** —
+url, zoom, back/forward URL lists — and deliberately *not*
+`WKWebView.interactionState`. Nothing to port around.
+
+**v2 stays decodable.** `restore()` probes the version and migrates;
+refusing an old file would silently discard a real session. Verified
+against the human's actual 5-workspace file (a copy).
+
+**Browser state is layered, and the layering is the design.** Portable
+fields (url/zoom/history URLs) mirror macOS and are inspectable in the
+JSON. WebKitGTK's own `webkit_web_view_get_session_state()` blob rides
+alongside, base64, capped at 512 KB. The rule that makes an opaque
+format safe to adopt: **it is never load-bearing** — tried first, and a
+missing/stale/version-rejected blob costs nothing because the portable
+path still restores. Strategies live in an ordered array; adding one is a
+function and a line.
+
+That buys something macOS cannot do: **the restored back/forward list is
+real**. macOS emulates history with shadow stacks
+(`restoredBackHistoryStack`, `usesRestoredSessionHistory` in
+BrowserPanel) because WKWebView has no API to rebuild a list from URLs.
+We hand WebKit its own state back. Asserted: after a restart, `back` and
+`forward` genuinely navigate.
+
+Three bugs found while testing, all in the new code:
+
+- **A save that races surface creation persisted `url=""` forever.**
+  Adopting a popup mutates the model, which triggers an *immediate* save —
+  and at that instant WebKit has not committed a URI to the new view. The
+  tab then came back blank. Fixed with a last-known-good URL cache;
+  asserted ("no browser surface persisted an empty URL"). Note the shape:
+  the 15s timer would have corrected it, so this only bit on a quick
+  quit — which is exactly when a user expects their session to be saved.
+- **`load_uri` after `restore_session_state` duplicates the current
+  entry**, so `back` landed on the page you were already looking at —
+  indistinguishable from history restore not working. Fixed with
+  `go_to_back_forward_list_item`, which navigates *within* the restored
+  list.
+- The first round-trip test compared `surface:N` refs across a restart.
+  Refs are reassigned on load, so that comparison is meaningless; the
+  suite compares UUIDs.
+
+**Known gap:** browser state is only captured on a model change or the 15s
+timer, because a navigation is not a model change. A quit within seconds
+of navigating persists the previous URL. Fixing it properly means
+capturing on `load-changed`, which is a per-navigation write to the
+session file — deliberately not done yet.
+
+New suite `linux/tests/session-persistence-smoke.sh` (10 assertions:
+migration, tab round-trip, selection, URLs, navigable history). All six
+suites green: webdriver 9/9, navigation 8/8, popup 12/12, search 11/11,
+find 11/11, session 10/10.

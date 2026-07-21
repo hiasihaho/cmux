@@ -9,6 +9,7 @@ socket and session file).
 |---|---|
 | [`browser-navigation-smoke.sh`](browser-navigation-smoke.sh) | The navigation barrier: goto/back/forward/reload must never let a following eval read the previous document; plus load_state, wait-flag chaining, honest timeouts |
 | [`webdriver-smoke.sh`](webdriver-smoke.sh) | The whole WebDriver stack: automation opt-in, attach mode, split adoption, trusted input, and cmux+WebDriver sharing one surface — plus a live strict-CSP run against github.com |
+| [`session-persistence-smoke.sh`](session-persistence-smoke.sh) | Schema v3: v2 migration, multi-tab panes round-tripping as tabs, selected tab, browser URLs, navigable restored history |
 | [`browser-find-smoke.sh`](browser-find-smoke.sh) | Find-in-page: counts, next/previous wrap, case sensitivity, no-match recovery |
 | [`find-probe.c`](find-probe.c) | Standalone probe for WebKitFindController signal semantics |
 | [`pane-search-smoke.sh`](pane-search-smoke.sh) | `cmux search` across panes: both pane kinds, --kind/--regex/--case-sensitive, innerText semantics, JSON refs |
