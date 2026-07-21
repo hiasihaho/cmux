@@ -63,19 +63,18 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    done 2026-07-21 — `cmux browser inspect`, human-confirmed rendering).
    Next: increment 4 (native console tap) and the increment-5 long tail
    (WebKitFindController, download hardening, popup routing).
-4. Open gaps we have committed to fixing properly (not worked around):
-   - **Terminal scrollback persistence** — macOS stores it
-     (`SessionTerminalPanelSnapshot.scrollback`); we restore the cwd only.
-     Ghostty can already produce the text via `read_text --scrollback`.
-   - **Browser state capture is throttled** — a navigation is not a model
-     change, so state reaches disk on the 15s timer. Quitting seconds
-     after navigating persists the previous URL. Proper fix is capturing
-     on `load-changed`, which means a session write per navigation —
-     needs a debounce, not a naive hook.
-   - **Divider positions across restart** — v3 has a natural home for it
-     (macOS: `SessionSplitLayoutSnapshot.dividerPosition`).
-   - **Browser URL bar, pane zoom, screencast, `browser.tab.*`** — see
-     PARITY.md; the tab verbs now have a real model to address.
+4. ✅ The four open gaps of 2026-07-20 are DONE (2026-07-21): terminal
+   scrollback persistence (out of band, configurable up to unlimited,
+   replayed via the fork's `inject_output`), browser state captured on
+   `load-changed` with a debounce, divider positions as fractions, and
+   the browser URL bar + pane zoom + `browser.tab.*`.
+
+   Still open on the settings side: `CMUX_SCROLLBACK_LIMIT`,
+   `CMUX_SEARCH_URL` and `CMUX_TERM` are env-var-only. Next is an XDG
+   config file so they persist, then a preferences window —
+   adwaita-swift already binds `PreferencesPage`/`SwitchRow`/`SpinRow`/
+   `ComboRow`, so the UI needs no shim and has three real settings on
+   day one.
 
    Method: read the macOS implementation first (it is usually right and
    is the parity target), then deviate only where our own approach is

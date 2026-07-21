@@ -66,29 +66,74 @@ enum TerminalScrollback {
 /// Same shape as `BrowserRestoreStore`, and for a sharper reason: a
 /// Ghostty pane has no terminal to write to until it is first mapped, so
 /// the replay cannot happen when the model is built.
+///
+/// Replay is therefore a *restartable poll*, which two bugs made necessary.
+///
+/// A pane in a workspace the human has not opened is the awkward case: it
+/// exists in the model, but GTK never maps it, so its terminal never
+/// starts. The first version polled for ~10s and then discarded the text —
+/// so every workspace not opened within ten seconds of a restart came back
+/// empty while its scrollback file still sat on disk holding the content.
+/// Not discarding was necessary but not sufficient: a single retry when
+/// the view syncs still lands *before* the newly-shown pane has been
+/// mapped, so it fails too. Hence: keep the text, and let each sync start
+/// a fresh poll — selecting a workspace is exactly the moment its panes
+/// begin to map.
 enum TerminalScrollbackStore {
     static var pending: [UUID: String] = [:]
 
-    /// Replays and consumes a pane's parked text. Called once the surface
-    /// reports a running shell; a pane that is never shown keeps its text
-    /// parked rather than losing it.
-    static func replayIfPending(surfaceId: UUID, attempt: Int = 0) {
-        guard let text = pending[surfaceId] else { return }
-        if SurfaceRegistry.shared.ghosttyWriteDisplay(
-            for: surfaceId, text: TerminalScrollback.replayPayload(text)
-        ) {
-            pending.removeValue(forKey: surfaceId)
+    /// Surfaces with a poll in flight, so a burst of syncs cannot stack
+    /// several chains onto one surface. All access is from the GTK main
+    /// loop, so a plain Set is safe.
+    private static var polling: Set<UUID> = []
+
+    /// Begins (or resumes) polling for one surface. Safe to call
+    /// repeatedly; a chain already running is left alone.
+    static func startReplay(surfaceId: UUID) {
+        guard pending[surfaceId] != nil, !polling.contains(surfaceId) else { return }
+        polling.insert(surfaceId)
+        poll(surfaceId: surfaceId, attempt: 0)
+    }
+
+    /// Restarts polling for every surface still holding text. Called from
+    /// the view sync: selecting a workspace for the first time is what
+    /// finally maps its panes.
+    static func replayPendingIfReady() {
+        for surfaceId in pending.keys { startReplay(surfaceId: surfaceId) }
+    }
+
+    /// Drops text for a surface that no longer exists, so a closed pane
+    /// does not hold its content forever.
+    static func forget(_ surfaceId: UUID) {
+        pending.removeValue(forKey: surfaceId)
+        polling.remove(surfaceId)
+    }
+
+    private static func poll(surfaceId: UUID, attempt: Int) {
+        guard let text = pending[surfaceId] else {
+            polling.remove(surfaceId)
             return
         }
-        // The shell spawns on first map, which for a background workspace
-        // may be much later — or never. Retry for ~10s, then drop it
-        // rather than holding the text (and the expectation) forever.
-        guard attempt < 20 else {
+        // Only inject into a *mapped* surface. `write_display` accepts
+        // bytes as soon as the core surface exists, so an unmapped pane
+        // would report success and queue the replay into a terminal that
+        // has not started — the text would be consumed and lost.
+        if SurfaceRegistry.shared.ghosttyIsMapped(for: surfaceId),
+           SurfaceRegistry.shared.ghosttyWriteDisplay(
+               for: surfaceId, text: TerminalScrollback.replayPayload(text)
+           ) {
             pending.removeValue(forKey: surfaceId)
+            polling.remove(surfaceId)
+            return
+        }
+        // Give up on *this* chain, never on the text: the next sync starts
+        // a new one. A pane that is never shown simply keeps its content.
+        guard attempt < 20 else {
+            polling.remove(surfaceId)
             return
         }
         scheduleOnMainLoop(afterMs: 500) {
-            replayIfPending(surfaceId: surfaceId, attempt: attempt + 1)
+            poll(surfaceId: surfaceId, attempt: attempt + 1)
         }
     }
 }

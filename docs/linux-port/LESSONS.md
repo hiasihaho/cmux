@@ -167,3 +167,32 @@ years.
   shell-less, and on the daily instance the harness deliberately skips
   the `select-workspace` that would start it (focus etiquette). A
   daily-targeted run just times out.
+
+## On APIs that succeed too early
+
+`ghostty_embed_surface_write_display` returns `true` once the core
+surface exists. That is *not* the same as "there is a terminal that will
+show this": an unmapped pane has a core surface but no started terminal,
+so the bytes are queued and lost while the caller records success and
+throws its only copy away. Scrollback replay now gates on
+`gtk_widget_get_mapped` — the real readiness signal — and treats the
+API's return value as necessary but not sufficient.
+
+The general shape: when a call's success means "accepted" rather than
+"took effect", never let that be the point where the last copy is
+dropped. Look for an independent signal that the effect landed.
+
+## On verifying a fix before believing it
+
+The background-workspace scrollback bug was "fixed" twice before it was
+actually fixed. The first fix removed the discard; the reproduction still
+returned zero. The second added a retry on view sync; the reproduction
+still returned zero — the sync runs before GTK maps the pane. Only the
+third (a restartable poll) worked.
+
+What made this cheap rather than embarrassing was running the exact
+reproduction after each attempt, so each wrong theory cost one run
+instead of reaching the user. And after the real fix, running it
+*backwards*: reinstate the original bug, confirm the new assertion fails,
+restore. A regression test that has never failed is a hypothesis, not a
+guard.

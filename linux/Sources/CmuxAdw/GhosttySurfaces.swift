@@ -137,7 +137,7 @@ enum GhosttySurfaceFactory {
 
         // Replay saved screen text once the shell is actually up — the
         // surface has no terminal until it is first mapped.
-        TerminalScrollbackStore.replayIfPending(surfaceId: leaf.surfaceId)
+        TerminalScrollbackStore.startReplay(surfaceId: leaf.surfaceId)
 
         let tabId = tab.id
         let surfaceId = leaf.surfaceId
@@ -254,6 +254,16 @@ extension SurfaceRegistry {
         guard let pointer = ghostty(for: surfaceId) else { return false }
         let widget = UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: GtkWidget.self)
         return GhosttySurfaceFactory.boolProperty(widget, "child-exited")
+    }
+
+    /// True once GTK has mapped the surface — the point at which it has a
+    /// running terminal of a real size. A pane in a workspace nobody has
+    /// selected is realized but never mapped, and writing to it silently
+    /// succeeds into a terminal that has not started.
+    func ghosttyIsMapped(for surfaceId: UUID) -> Bool {
+        guard let pointer = ghostty(for: surfaceId) else { return false }
+        let widget = UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: GtkWidget.self)
+        return gtk_widget_get_mapped(widget) != 0
     }
 
     /// Terminal text: active screenful, or the whole buffer with

@@ -329,4 +329,65 @@ else
     skip "scrollback assertions" "the shell never started (unmapped window)"
 fi
 
+# ------------------------------- scrollback in a workspace nobody has opened
+# The case that shipped broken twice. A pane in an unselected workspace is
+# never mapped, so its terminal does not exist and the replay cannot land:
+#   1. the first version polled ~10s and then DISCARDED the text, so any
+#      workspace not opened in that window came back empty forever;
+#   2. keeping the text but retrying once per view sync still failed —
+#      the sync runs BEFORE the newly shown pane is mapped.
+# Both panes of a split are checked, because the report that found this was
+# "the split ones had no content".
+info "scrollback replays into a workspace opened long after the restart"
+kill_instance
+rm -f "$SESSION"
+start_instance || exit 2
+WS6=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+cx select-workspace --workspace "$WS6" >/dev/null
+T6=$(first_surface_ref "$WS6")
+if [ -n "$T6" ] && wait_for_shell "$T6"; then
+    cx new-split right --surface "$T6" >/dev/null 2>&1
+    sleep 3
+    refs6=$(cx --json list-panes --workspace "$WS6" 2>/dev/null | python3 -c '
+import json,sys
+print(" ".join(r for p in json.load(sys.stdin)["panes"] for r in p["surface_refs"]))')
+    for r in $refs6; do
+        wait_for_shell "$r" && cx send --surface "$r" 'echo BGWS_MARKER_XYZ\n' >/dev/null 2>&1
+    done
+    sleep 3
+    # Leave WS6 UNSELECTED across the restart — the whole point.
+    cx select-workspace --workspace workspace:1 >/dev/null 2>&1
+    sleep 3
+    kill_instance
+    start_instance || exit 2
+    # Longer than the poll chain's own ~10s lifetime, so a fix that merely
+    # polls harder at startup cannot pass this.
+    sleep 15
+    WS6B=$(cx list-workspaces | grep -oE 'workspace:[0-9]+' | sed -n '2p')
+    cx select-workspace --workspace "$WS6B" >/dev/null 2>&1
+    sleep 6
+    replayed6=0; panes6=0
+    for r in $(cx --json list-panes --workspace "$WS6B" 2>/dev/null | python3 -c '
+import json,sys
+print(" ".join(r for p in json.load(sys.stdin)["panes"] for r in p["surface_refs"]))'); do
+        panes6=$((panes6 + 1))
+        n=$(cx read-screen --surface "$r" 2>/dev/null | grep -c BGWS_MARKER_XYZ)
+        [ "${n:-0}" -gt 0 ] && replayed6=$((replayed6 + 1))
+    done
+    expect "both split panes replay after a late first open" "$panes6" "$replayed6"
+
+    # Re-selecting must not replay a second time: the text is consumed on
+    # success, and a poll left running would append it again.
+    first6=$(cx --json list-panes --workspace "$WS6B" 2>/dev/null | python3 -c '
+import json,sys
+print(json.load(sys.stdin)["panes"][0]["surface_refs"][0])')
+    lines_once=$(cx read-screen --surface "$first6" 2>/dev/null | grep -c BGWS_MARKER_XYZ)
+    cx select-workspace --workspace workspace:1 >/dev/null 2>&1; sleep 2
+    cx select-workspace --workspace "$WS6B" >/dev/null 2>&1; sleep 3
+    lines_twice=$(cx read-screen --surface "$first6" 2>/dev/null | grep -c BGWS_MARKER_XYZ)
+    expect "re-selecting the workspace does not replay again" "$lines_once" "$lines_twice"
+else
+    skip "background-workspace scrollback assertions" "the shell never started"
+fi
+
 finish

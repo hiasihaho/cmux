@@ -2266,3 +2266,46 @@ shim, and `CMUX_SEARCH_URL`, `CMUX_TERM` and this limit give it three
 real settings on day one.
 
 8 suites, 83 assertions, 0 failed.
+
+### Scrollback replay into workspaces nobody has opened yet (2026-07-21)
+
+Reported after the feature landed: *"i had a split one at the right side
+of the first tab and both horizontal ones had no content"*. The split
+turned out to be a red herring — a split alone replays fine. What
+actually decided it was **whether the workspace was selected at restore**.
+The workspace holding the empty panes was a background one.
+
+Root cause, in two layers:
+
+1. **The text was thrown away.** A pane in an unselected workspace is
+   never mapped, so its terminal never starts. The replay polled for ~10s
+   and then *discarded* the pending text — so any workspace not opened
+   within ten seconds of a restart came back empty forever, while its
+   scrollback file still sat on disk holding the content.
+2. **Keeping the text was not enough.** The obvious follow-up — keep it,
+   and retry once whenever the view syncs — still failed, and the fix was
+   verified as not working before it shipped. The sync runs *before* GTK
+   has mapped the newly shown pane, so the single retry always missed.
+
+Replay is now a **restartable poll**: each view sync starts a fresh
+~10s chain for any surface still holding text (guarded by a `polling` set
+so a burst of syncs cannot stack chains), and giving up ends the chain,
+never the text.
+
+One more trap found on the way: `ghostty_embed_surface_write_display`
+returns success as soon as the *core surface* exists, which happens well
+before the pane is mapped. The bytes are queued into a terminal that has
+not started and are simply lost — a success the caller believes. Replay
+therefore gates on `gtk_widget_get_mapped` first, which is the real
+"there is a terminal here" signal.
+
+Verified end to end, and the negative direction too: with the original
+discard reinstated the new assertion fails (`expected '2', got '0'`), so
+the test genuinely guards the regression rather than merely passing.
+`session-persistence-smoke` now covers both split panes of a workspace
+first opened 15s after the restart, plus a re-selection check that the
+text is not replayed twice.
+
+Note for later: only Ghostty panes capture and replay scrollback —
+`ghosttyReadText` returns nil for VTE surfaces, so under the VTE backend
+this feature is simply absent (not broken).

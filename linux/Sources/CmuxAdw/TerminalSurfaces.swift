@@ -255,6 +255,7 @@ struct TerminalStackWidget: AdwaitaWidget {
         let liveSurfaces = Set(tabs.flatMap { $0.allSurfaces.map(\.surface.surfaceId) })
         for surfaceId in SurfaceRegistry.shared.containers.keys where !liveSurfaces.contains(surfaceId) {
             SurfaceRegistry.shared.unregister(surfaceId)
+            TerminalScrollbackStore.forget(surfaceId)
         }
         // Same for tab views whose pane is gone, or a closed pane keeps its
         // AdwTabView (and the containers inside it) alive forever.
@@ -339,6 +340,10 @@ struct TerminalStackWidget: AdwaitaWidget {
         // Titles arrive after the page does (a freshly adopted popup has
         // neither title nor URL yet), so refresh them on every sync.
         PaneTabs.refreshAllTitles(tabs: tabs)
+        // Selecting a workspace for the first time is what finally maps its
+        // panes and starts their shells — the moment a restored scrollback
+        // can actually be replayed.
+        TerminalScrollbackStore.replayPendingIfReady()
 
         if let tab = tabs.first(where: { $0.id == selection }) {
             gtk_stack_set_visible_child_name(stack, tab.id.uuidString)
