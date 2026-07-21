@@ -29,6 +29,39 @@ extension SurfaceRegistry {
 /// `OpaquePointer` so CVte-bound code never sees WebKit types.
 enum BrowserSurfaceFactory {
 
+    /// Constructs the web view, honoring a pending profile assignment.
+    /// `network-session` is construct-only (like `related-view`), so a
+    /// profiled pane must be born into its session — it cannot move later.
+    private static func makeWebView(surfaceId: UUID) -> UnsafeMutablePointer<GtkWidget>? {
+        let assigned = BrowserProfileAssignments.pending.removeValue(forKey: surfaceId)
+        guard let profileId = assigned,
+              let session = BrowserProfiles.session(for: profileId) else {
+            // Default profile (or a profile whose session failed): WebKit's
+            // default session, which is where pre-profile state lives.
+            return webkit_web_view_new()
+        }
+        BrowserProfileAssignments.live[surfaceId] = profileId
+        var sessionValue = GValue()
+        _ = g_value_init(&sessionValue, webkit_network_session_get_type())
+        g_value_set_object(&sessionValue, UnsafeMutableRawPointer(session))
+        let name = strdup("network-session")
+        defer {
+            free(name)
+            g_value_unset(&sessionValue)
+        }
+        var names: [UnsafePointer<CChar>?] = [UnsafePointer(name)]
+        var values: [GValue] = [sessionValue]
+        let created = names.withUnsafeMutableBufferPointer { namePtr in
+            values.withUnsafeMutableBufferPointer { valuePtr in
+                g_object_new_with_properties(
+                    webkit_web_view_get_type(), 1, namePtr.baseAddress, valuePtr.baseAddress
+                )
+            }
+        }
+        guard let created else { return webkit_web_view_new() }
+        return UnsafeMutableRawPointer(created).assumingMemoryBound(to: GtkWidget.self)
+    }
+
     static func create(
         for leaf: PaneSurface,
         in tab: TerminalTab,
@@ -42,7 +75,7 @@ enum BrowserSurfaceFactory {
         let adopted = BrowserAdoption.pending.removeValue(forKey: leaf.surfaceId)
         let widgetOrNil: UnsafeMutablePointer<GtkWidget>? = adopted.map {
             UnsafeMutableRawPointer($0).assumingMemoryBound(to: GtkWidget.self)
-        } ?? webkit_web_view_new()
+        } ?? Self.makeWebView(surfaceId: leaf.surfaceId)
         guard let widget = widgetOrNil else { return }
         gtk_widget_set_hexpand(widget, 1)
         gtk_widget_set_vexpand(widget, 1)
@@ -144,17 +177,42 @@ extension ControlCommandHandler {
         guard let target = v2TargetSurfaceForBrowser(params) else {
             return v2BrowserError(id: id, code: "not_found", message: "Surface not found")
         }
+        // Resolve the profile BEFORE mutating the model, so a bad name
+        // fails the whole command rather than opening a default-profile
+        // pane the caller believes is contained.
+        var profileId: UUID?
+        if let query = params["profile"] as? String, !query.isEmpty {
+            do {
+                let profile = try BrowserProfiles.resolve(query)
+                profileId = profile.id
+            } catch let error as BrowserProfiles.ProfileError {
+                return v2BrowserError(id: id, code: "not_found", message: error.message)
+            } catch {
+                return v2BrowserError(id: id, code: "internal_error", message: "\(error)")
+            }
+        }
         let url = (params["url"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "about:blank"
         guard let newLeaf = split(
             tab: target.tab,
             surfaceId: target.surfaceId,
             direction: "right",
-            kind: .browser(initialURL: url)
+            kind: .browser(initialURL: url),
+            prepare: { newSurfaceId in
+                // Before the layout mutation: the view sync can run the
+                // surface factory before split() even returns, and the
+                // network session is construct-only.
+                if let profileId {
+                    BrowserProfileAssignments.pending[newSurfaceId] = profileId
+                }
+            }
         ) else {
             return v2BrowserError(id: id, code: "internal_error", message: "Failed to create split")
         }
+        if let profileId {
+            BrowserProfiles.noteUsed(profileId)
+        }
         let registry = RefRegistry.shared
-        return v2BrowserOk(id: id, result: [
+        var result: [String: Any] = [
             "workspace_id": target.tab.id.uuidString,
             "workspace_ref": registry.ref(kind: "workspace", uuid: target.tab.id),
             "surface_id": newLeaf.surfaceId.uuidString,
@@ -163,7 +221,99 @@ extension ControlCommandHandler {
             "pane_ref": registry.ref(kind: "pane", uuid: newLeaf.paneId),
             "created_split": true,
             "url": url
+        ]
+        if let profileId {
+            result["profile_id"] = profileId.uuidString
+        }
+        return v2BrowserOk(id: id, result: result)
+    }
+
+    // MARK: browser.profiles.* — wire format mirrors macOS's
+    // BrowserProfileAutomation exactly, so the shared CLI behaves
+    // identically on both platforms.
+
+    private func profilePayload(_ profile: BrowserProfiles.Definition) -> [String: Any] {
+        [
+            "id": profile.id.uuidString,
+            "name": profile.displayName,
+            "slug": profile.slug,
+            "built_in_default": profile.isBuiltInDefault,
+            "current": profile.id == BrowserProfiles.effectiveLastUsedID,
+        ]
+    }
+
+    private func v2ProfileFailure(id: Any?, _ error: Error) -> String {
+        if let profileError = error as? BrowserProfiles.ProfileError {
+            let code: String
+            switch profileError {
+            case .notFound: code = "not_found"
+            case .ambiguous: code = "ambiguous"
+            case .duplicateName: code = "already_exists"
+            case .builtInDefault, .inUse: code = "invalid_request"
+            }
+            return v2BrowserError(id: id, code: code, message: profileError.message)
+        }
+        return v2BrowserError(id: id, code: "internal_error", message: "\(error)")
+    }
+
+    func v2BrowserProfilesList(id: Any?) -> String {
+        v2BrowserOk(id: id, result: [
+            "current_profile_id": BrowserProfiles.effectiveLastUsedID.uuidString,
+            "profiles": BrowserProfiles.all.map(profilePayload),
         ])
+    }
+
+    func v2BrowserProfilesCreate(id: Any?, params: [String: Any]) -> String {
+        guard let name = params["name"] as? String,
+              !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return v2BrowserError(id: id, code: "invalid_request", message: "profile create requires a name")
+        }
+        do {
+            let profile = try BrowserProfiles.create(named: name)
+            return v2BrowserOk(id: id, result: ["created": true, "profile": profilePayload(profile)])
+        } catch {
+            return v2ProfileFailure(id: id, error)
+        }
+    }
+
+    func v2BrowserProfilesRename(id: Any?, params: [String: Any]) -> String {
+        guard let query = params["profile"] as? String,
+              let newName = params["new_name"] as? String,
+              !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return v2BrowserError(id: id, code: "invalid_request", message: "profile rename requires a profile and a new name")
+        }
+        do {
+            let profile = try BrowserProfiles.rename(query, to: newName)
+            return v2BrowserOk(id: id, result: ["renamed": true, "profile": profilePayload(profile)])
+        } catch {
+            return v2ProfileFailure(id: id, error)
+        }
+    }
+
+    func v2BrowserProfilesClear(id: Any?, params: [String: Any]) -> String {
+        guard let query = params["profile"] as? String else {
+            return v2BrowserError(id: id, code: "invalid_request", message: "profile clear requires a profile")
+        }
+        do {
+            let profile = try BrowserProfiles.clear(query, liveCount: BrowserProfileAssignments.liveCount)
+            return v2BrowserOk(id: id, result: [
+                "cleared": true, "count": 1, "profile": profilePayload(profile),
+            ])
+        } catch {
+            return v2ProfileFailure(id: id, error)
+        }
+    }
+
+    func v2BrowserProfilesDelete(id: Any?, params: [String: Any]) -> String {
+        guard let query = params["profile"] as? String else {
+            return v2BrowserError(id: id, code: "invalid_request", message: "profile delete requires a profile")
+        }
+        do {
+            let profile = try BrowserProfiles.delete(query, liveCount: BrowserProfileAssignments.liveCount)
+            return v2BrowserOk(id: id, result: ["deleted": true, "profile": profilePayload(profile)])
+        } catch {
+            return v2ProfileFailure(id: id, error)
+        }
     }
 
     // `browser.navigate` / back / forward / reload live in

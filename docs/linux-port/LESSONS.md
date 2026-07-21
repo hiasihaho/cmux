@@ -223,3 +223,19 @@ Two smaller ones from the same night: an unpinned transitive dependency
 changed at all — commit the lockfile; and when extracting a target's
 file list from a pbxproj, ids are not uniformly 24 hex chars — validate
 the parse against a symbol you know must be there.
+
+## On accidentally-green tests
+
+Four of five profile assertions passed while every pane silently shared
+one cookie jar — the panes that were *supposed* to see the cookie saw
+it, for the wrong reason. Only the negative assertion ("the default pane
+does NOT see it") failed honestly. When testing isolation, the negative
+case is the load-bearing one: positives pass in a world with no
+isolation at all.
+
+Two more from the same feature: a session cookie (`document.cookie`
+without max-age) is never persisted by any browser — a restart test
+against it fails on perfectly correct code; and construct-only GObject
+properties make ordering bugs silent — the view just lands in the
+default configuration, works fine, and only cross-container checks
+notice.

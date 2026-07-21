@@ -69,6 +69,12 @@ struct CmuxApp: App {
             // each popup.
             let surfaceId = handler.adoptBrowserTab(nextTo: openerSurfaceId) { pendingId in
                 BrowserAdoption.pending[pendingId] = view
+                // The popup's web view inherits the opener's network
+                // session via related-view; the ASSIGNMENT must follow so
+                // persistence and in-use checks see the popup's profile.
+                if let profile = BrowserProfileAssignments.live[openerSurfaceId] {
+                    BrowserProfileAssignments.live[pendingId] = profile
+                }
             }
             return surfaceId != nil
         }

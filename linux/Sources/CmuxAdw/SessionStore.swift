@@ -50,6 +50,9 @@ enum SessionStore {
         var backURLs: [String]?
         var forwardURLs: [String]?
         var sessionState: String?
+        /// Browser profile UUID; absent = the built-in default, so files
+        /// written before profiles existed decode unchanged.
+        var profile: String?
     }
 
     indirect enum LayoutSnapshot: Codable, Equatable {
@@ -185,12 +188,16 @@ enum SessionStore {
                     workingDirectory: cwd, browser: nil, scrollback: nil
                 ))
             case .browser(let initialURL):
+                var browser = BrowserSessionState.capture(
+                    surfaceId: surface.surfaceId, fallbackURL: initialURL
+                )
+                if let profile = BrowserProfileAssignments.live[surface.surfaceId] {
+                    browser?.profile = profile.uuidString
+                }
                 surfaces.append(SurfaceSnapshot(
                     id: surface.surfaceId.uuidString, type: "browser",
                     workingDirectory: "",
-                    browser: BrowserSessionState.capture(
-                        surfaceId: surface.surfaceId, fallbackURL: initialURL
-                    )
+                    browser: browser
                 ))
             }
         }
@@ -280,6 +287,12 @@ enum SessionStore {
                     // history, WebKit blob) cannot ride in SurfaceKind.
                     if let browser = entry.browser {
                         BrowserRestoreStore.pending[id] = browser
+                        // Profile before web-view construction: the network
+                        // session is construct-only.
+                        if let profileRaw = browser.profile,
+                           let profileId = UUID(uuidString: profileRaw) {
+                            BrowserProfileAssignments.pending[id] = profileId
+                        }
                     }
                 } else {
                     kind = .terminal

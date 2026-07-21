@@ -13839,7 +13839,11 @@ struct CMUXCLI {
             // Parse routing flags before URL assembly so they never leak into the URL string.
             let (workspaceOpt, argsAfterWorkspace) = parseOption(subArgs, name: "--workspace")
             let (windowOpt, argsAfterWindow) = parseOption(argsAfterWorkspace, name: "--window")
-            let (focusOpt, urlArgs) = parseOption(argsAfterWindow, name: "--focus")
+            // Linux-port extension (candidate for upstreaming): open the
+            // pane inside a browser profile. macOS selects profiles via the
+            // pane's popover; agents need a flag.
+            let (profileOpt, argsAfterProfile) = parseOption(argsAfterWindow, name: "--profile")
+            let (focusOpt, urlArgs) = parseOption(argsAfterProfile, name: "--focus")
             // Reject unrecognized flags instead of folding them into the URL, where they
             // would silently produce an unparseable URL (blank page) or a search query.
             if let strayFlag = urlArgs.first(where: { $0.hasPrefix("--") }) {
@@ -13872,6 +13876,9 @@ struct CMUXCLI {
             var params: [String: Any] = [:]
             if !url.isEmpty {
                 params["url"] = url
+            }
+            if let profileOpt, !profileOpt.isEmpty {
+                params["profile"] = profileOpt
             }
             if let sourceSurface = try normalizeSurfaceHandle(surfaceRaw, client: client) {
                 params["surface_id"] = sourceSurface

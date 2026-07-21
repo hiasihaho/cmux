@@ -2447,3 +2447,51 @@ Traps that cost a round each, worth remembering:
 macOS is untouched: every change is behind canImport/os guards, in
 Linux-only compat files, or under linux/. The macOS build itself cannot
 be verified from this machine — noted for the next VM run.
+
+### Browser profiles (2026-07-22)
+
+roadmap/07, first feature built against the freshly merged upstream: the
+CLI half (`browser profiles list/create/rename/clear/delete`, payloads,
+slugs) already existed in the shared binary — the Linux side only had to
+answer it. `BrowserProfiles.swift` keeps one `WebKitNetworkSession` per
+profile (that sharing is what makes a profile one container), the
+built-in default maps to WebKit's default session so pre-profile state
+stays put, and the store/data live beside the session file so test
+instances are isolated for free. Panes join a profile via
+`browser open --profile <slug|id|name>` — a Linux-port extension flag
+(macOS selects via the pane popover; agents need a flag), candidate for
+upstreaming. Popups inherit the opener's session through `related-view`
+and the assignment record follows. v3 snapshots carry `profile` per
+browser surface; absent = default, old files decode unchanged.
+
+Three findings, each worth its LESSONS weight:
+
+- **The construct-only race, relearned.** The profile assignment was
+  parked *after* `split()` returned — but mutating the tab layout can
+  re-render and run the surface factory before `split()` returns, so
+  every profiled pane silently landed in the default session. The
+  adoption code had learned exactly this and documented it ("observed
+  exactly that way"); `split()` now takes the same pre-mutation
+  `prepare:` hook. Isolation testing is what caught it: the *other*
+  pane seeing the cookie was the only assertion that failed honestly
+  while four others passed by accident.
+- **Session cookies don't persist — by design.** `document.cookie`
+  without `max-age`/`expires` is a session cookie; no browser writes it
+  to disk. The restart assertion failed against perfectly correct code
+  until the fixture set `max-age`. Cookies *do* need
+  `webkit_cookie_manager_set_persistent_storage` on a custom session
+  (the data directory alone only covers storage/cache) — verified both
+  ways against cookies.sqlite.
+- **`clear`/`delete` require the profile's panes closed** (macOS clears
+  live stores; our stricter rule keeps "cleared" meaning cleared) — and
+  delete of the built-in default is refused, mirroring upstream.
+
+Suite: browser-profile-smoke.sh, 14 assertions — CRUD + slug rules,
+cookie isolation, same-profile sharing, popup inheritance, delete guard
+rails, and the restart round trip (3 work panes + 1 default pane each
+back in their own container, cookies intact).
+
+Noticed while debugging, parked: after a session restore, `list-panes`
+with no --workspace reports "Workspace not found" until a workspace is
+explicitly selected — pre-existing selection-resolution quirk, suites
+always pass --workspace.

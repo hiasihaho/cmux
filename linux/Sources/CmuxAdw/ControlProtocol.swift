@@ -447,6 +447,16 @@ struct ControlCommandHandler {
             return v2PaneZoom(id: id, params: params)
         case "browser.open_split":
             return v2BrowserOpenSplit(id: id, params: params)
+        case "browser.profiles.list":
+            return v2BrowserProfilesList(id: id)
+        case "browser.profiles.create":
+            return v2BrowserProfilesCreate(id: id, params: params)
+        case "browser.profiles.rename":
+            return v2BrowserProfilesRename(id: id, params: params)
+        case "browser.profiles.clear":
+            return v2BrowserProfilesClear(id: id, params: params)
+        case "browser.profiles.delete":
+            return v2BrowserProfilesDelete(id: id, params: params)
         case "browser.tab.list":
             return v2BrowserTabList(id: id, params: params)
         case "browser.tab.new":
@@ -857,16 +867,23 @@ struct ControlCommandHandler {
     /// split-off shell's current directory (OSC 7) when known. Returns the
     /// new leaf, or nil for an invalid direction/surface.
     @discardableResult
+    /// `prepare` runs after the leaf exists but BEFORE the layout mutation:
+    /// mutating the tab layout can re-render (and run the surface factory)
+    /// before this function returns, so anything the factory must find —
+    /// a pending profile assignment, say — has to be parked first. Same
+    /// rule as `adoptBrowserSplit`'s register closure, learned there.
     func split(
         tab: TerminalTab,
         surfaceId: UUID,
         direction: String,
-        kind: SurfaceKind = .terminal
+        kind: SurfaceKind = .terminal,
+        prepare: (UUID) -> Void = { _ in }
     ) -> PaneLeaf? {
         guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id }) else { return nil }
         let cwd = SurfaceRegistry.shared.currentDirectory(for: surfaceId)
             ?? tab.workingDirectory
         let newLeaf = PaneLeaf(kind: kind, workingDirectory: cwd)
+        prepare(newLeaf.surfaceId)
         guard let layout = tabs.wrappedValue[index].layout.splitting(
             surfaceId: surfaceId,
             direction: direction,
