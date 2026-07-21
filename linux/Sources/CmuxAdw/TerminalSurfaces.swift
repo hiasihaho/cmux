@@ -99,6 +99,17 @@ final class SurfaceRegistry {
         containers[surfaceId] = container
     }
 
+    /// Inspector panes own only their container: the DevTools widget itself
+    /// belongs to WebKit and is reparented in later by the `attach` handler,
+    /// so there is no second pointer for us to hold.
+    func registerInspector(
+        container: OpaquePointer,
+        for surfaceId: UUID
+    ) {
+        retain(container)
+        containers[surfaceId] = container
+    }
+
     func unregister(_ surfaceId: UUID) {
         if let terminal = terminals.removeValue(forKey: surfaceId) {
             release(OpaquePointer(terminal))
@@ -217,6 +228,13 @@ struct TerminalStackWidget: AdwaitaWidget {
                         in: tab,
                         storage: storage,
                         onTitleChanged: onTitleChanged,
+                        onSurfaceFocused: onSurfaceFocused
+                    )
+                case .inspector:
+                    InspectorSurfaceFactory.create(
+                        for: leaf,
+                        in: tab,
+                        storage: storage,
                         onSurfaceFocused: onSurfaceFocused
                     )
                 }

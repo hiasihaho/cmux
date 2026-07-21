@@ -67,7 +67,7 @@ the full useful WebKitGTK feature set.**
    navigation come from the driver side. Revisit **WebDriver BiDi** as
    WebKitGTK's support matures (event streams: console, network — the
    real CDP-alternative).
-3. **Web Inspector pane** (noted for later — see decision below; not scheduled yet). `webkit_settings_set_enable_developer_extras`
+3. **Web Inspector pane** — ✅ DONE 2026-07-21 (`cmux browser inspect`; see PROGRESS.md for the empirical API notes and the attach/open-window trap). `webkit_settings_set_enable_developer_extras`
    + `webkit_web_view_get_inspector()`; present the inspector (it is a
    GTK widget via `WebKitWebInspector`) in a cmux split next to its page.
    Full DevTools — elements, network, debugger, console — for the human;

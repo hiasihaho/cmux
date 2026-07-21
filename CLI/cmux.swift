@@ -2494,6 +2494,18 @@ struct CMUXCLI {
             return
         }
 
+        if subcommand == "inspect" || subcommand == "devtools" {
+            let sid = try requireSurface()
+            var params: [String: Any] = ["surface_id": sid]
+            let (directionOpt, _) = parseOption(subArgs, name: "--direction")
+            if let directionOpt { params["direction"] = directionOpt }
+            let payload = try client.sendV2(method: "browser.inspect", params: params)
+            let surfaceText = formatHandle(payload, kind: "surface", idFormat: idFormat) ?? "unknown"
+            let paneText = formatHandle(payload, kind: "pane", idFormat: idFormat) ?? "unknown"
+            output(payload, fallback: "OK surface=\(surfaceText) pane=\(paneText)")
+            return
+        }
+
         if subcommand == "open" || subcommand == "open-split" || subcommand == "new" {
             // Parse routing flags before URL assembly so they never leak into the URL string.
             let (workspaceOpt, argsAfterWorkspace) = parseOption(subArgs, name: "--workspace")
@@ -4591,6 +4603,8 @@ struct CMUXCLI {
               press|key|keydown|keyup [--key <key> | <key>] [--snapshot-after]
               select [--selector <css> | <css>] [--value <value> | <value>] [--snapshot-after]
               scroll [--selector <css>] [--dx <n>] [--dy <n>] [--snapshot-after]
+              inspect|devtools [--direction <right|down|left|up>]
+                open the Web Inspector (DevTools) for this surface in a split
               screenshot [--out <path>] [--full-page]
                 without --out the PNG is discarded; --full-page captures the whole
                 document instead of just the visible viewport
@@ -6597,6 +6611,7 @@ struct CMUXCLI {
           browser find nth <index> <selector>   (0-based; negative counts from end)
           browser frame <selector|main>
           browser dialog <accept|dismiss> [text]
+          browser inspect|devtools [--direction <right|down|left|up>]
           browser screenshot [--out <path>] [--full-page]
           browser download [wait] [--path <path>] [--timeout-ms <ms>]
           browser cookies <get|set|clear> [...]

@@ -9,6 +9,7 @@ socket and session file).
 |---|---|
 | [`browser-navigation-smoke.sh`](browser-navigation-smoke.sh) | The navigation barrier: goto/back/forward/reload must never let a following eval read the previous document; plus load_state, wait-flag chaining, honest timeouts |
 | [`webdriver-smoke.sh`](webdriver-smoke.sh) | The whole WebDriver stack: automation opt-in, attach mode, split adoption, trusted input, and cmux+WebDriver sharing one surface — plus a live strict-CSP run against github.com |
+| [`inspector-probe.c`](inspector-probe.c) | Standalone probe that answers what `webkit_web_inspector_get_web_view()` returns and when — how the Web Inspector pane was designed. **Read its caveat below before trusting a probe like this.** |
 | [`ghostty-embed-smoke.c`](ghostty-embed-smoke.c) | Minimal C harness that hosts a Ghostty surface in a plain GtkApplication (proves the embedding shim independent of cmux) |
 | [`ghostty-resize-bisect.sh`](ghostty-resize-bisect.sh) | X11 screenshot-diff detector for the (fixed) post-resize freeze; kept for reference — see the caveats in its header |
 
@@ -96,3 +97,25 @@ the race window is wide and the verdict does not depend on network luck.
 - **`--json` prints the result payload directly**, with no `result`
   wrapper. A `.get("result", d)` fallback silently hides which of the two
   you actually got; assert on the real shape.
+
+## inspector-probe.c
+
+```sh
+gcc linux/tests/inspector-probe.c -o /tmp/inspector-probe \
+    $(pkg-config --cflags --libs gtk4 webkitgtk-6.0) && /tmp/inspector-probe
+```
+
+Answers three things the WebKitGTK docs do not: `get_web_view()` is NULL
+outside the placement signal, the object is a `WebKitWebViewBase` that is
+**not** a `WebKitWebView`, and returning TRUE claims responsibility for
+placement.
+
+**Caveat — the reason this file is kept.** The probe emits `attach`,
+because its web view sits alone in a plain `GtkWindow`. Inside cmux's pane
+tree WebKit emits `open-window` instead: the surrounding widget tree
+changes its docking decision, and no amount of probing in the simplified
+environment would have shown that. The first implementation trusted the
+probe, claimed `open-window` without placing anything, and produced a
+silently empty pane. **A probe tells you what an API does in the probe's
+environment.** Handle every signal it might send, and verify in the real
+one.

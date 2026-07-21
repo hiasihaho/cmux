@@ -5,6 +5,11 @@ import Foundation
 enum SurfaceKind: Equatable {
     case terminal
     case browser(initialURL: String)
+    /// Web Inspector (DevTools) for another surface's web view. Ephemeral
+    /// by nature: WebKit hands out the inspector widget only during its
+    /// own `attach` signal, so it cannot be rebuilt on session restore —
+    /// these panes are deliberately not persisted.
+    case inspector(targetSurfaceId: UUID)
 
     var typeName: String {
         switch self {
@@ -12,6 +17,8 @@ enum SurfaceKind: Equatable {
             return "terminal"
         case .browser:
             return "browser"
+        case .inspector:
+            return "inspector"
         }
     }
 }

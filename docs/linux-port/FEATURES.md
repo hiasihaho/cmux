@@ -97,6 +97,15 @@ Small but real. These are genuine additions, not just different internals:
   text, console capture) address the very same surface — trusted input
   and rich inspection on one pane. macOS cmux has no automation opt-in at
   all.
+- ⚙ **Web Inspector in a cmux pane** (`cmux browser inspect`). Full
+  DevTools — elements, network, debugger, console — hosted as a real cmux
+  split you can move and close like any other pane, via public WebKitGTK
+  API. Parity in capability, not a Linux-only feature: macOS cmux also has
+  DevTools (`BrowserPanel.toggleDeveloperTools`, through WKWebView's
+  private `_inspector` selectors); what differs is that theirs is WebKit's
+  own inspector presentation and ours is a pane. Reports `attached`
+  honestly, because WebKit places the widget asynchronously and the split
+  can land while the embed is still pending.
 - ★ **`browser screenshot --full-page`.** Captures the whole document
   (`WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT`) instead of just the visible
   viewport, so content laid out wider or taller than the pane is not
@@ -118,7 +127,7 @@ Small but real. These are genuine additions, not just different internals:
 - ★ **Renderer resize fix** — the fork's macOS-oriented stale-frame replay
   froze GTK surfaces after a window resize; the Linux work Darwin-gated it
   (macOS unchanged), a fix the fork/ecosystem benefits from
-  (`roadmap/05-ghostty-embed-hardening.md`, UPSTREAM.md).
+  (`../../roadmap/05-ghostty-embed-hardening.md`, UPSTREAM.md).
 
 ## Known gaps vs macOS
 
@@ -133,7 +142,7 @@ never-selected background workspaces spawn their shell on first selection
 Beyond the JS-injection layer, the things page JavaScript can never reach
 — trusted input events, network interception, a real debugger,
 cross-origin frames, CSP-proof console capture — are tracked as a decided
-direction in `roadmap/06-webkit-native-automation.md`: adopt native
+direction in `../../roadmap/06-webkit-native-automation.md`: adopt native
 WebKitGTK APIs (WebDriver/BiDi, user scripts, Inspector), explicitly
 *not* a CDP/Chromium engine swap.
 

@@ -1,6 +1,6 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-21 ~04:45** (navigation barrier + quadratic CLI
+Last updated: **2026-07-21 ~05:30** (navigation barrier + quadratic CLI
 transfer fixed, both found by the SPA-extraction dogfood). Update this
 file at the end of every significant session; it is the fastest path
 from cold start to productive work. Deep history lives in
@@ -52,16 +52,17 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    spawn (designs assessed in PROGRESS 2026-07-17) — background panes
    still spawn on first selection only.
 2. Ghostty-embed hardening (deferred, security-flavored): the fast-churn
-   resource leak — see roadmap/05-ghostty-embed-hardening.md (agent-
+   resource leak — see ../../roadmap/05-ghostty-embed-hardening.md (agent-
    drivable local DoS + ReleaseFast memory-unsafety smell; not blocking).
 3. WebKit-native automation (decided 2026-07-21, no CDP/Chromium):
-   roadmap/06-webkit-native-automation.md. Increments 1 (console capture
+   ../../roadmap/06-webkit-native-automation.md. Increments 1 (console capture
    v2 — CSP-proof, from page load) and 2 (W3C WebDriver opt-in via
    CMUX_WEBDRIVER=1 — trusted input, verified isTrusted=true) are DONE,
    as is WebDriver split adoption (the driver drives a visible cmux pane)
-   and the navigation barrier. Next: **Web Inspector pane** — the human
-   gated it on "features and tests for webdriver and our split adaption
-   options are tested thoroughly", which the two suites now satisfy.
+   the navigation barrier, and the **Web Inspector pane** (increment 3,
+   done 2026-07-21 — `cmux browser inspect`, human-confirmed rendering).
+   Next: increment 4 (native console tap) and the increment-5 long tail
+   (WebKitFindController, download hardening, popup routing).
 4. Flatpak packaging.
 5. Parity long tail: PARITY.md ❌ rows (system.tree, surface.focus,
    pane.resize, terminal find overlay, sidebar metadata pills…).

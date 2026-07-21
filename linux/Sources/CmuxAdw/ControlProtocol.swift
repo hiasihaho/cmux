@@ -284,6 +284,8 @@ struct ControlCommandHandler {
             return v2BrowserSnapshot(id: id, params: params, respond: respond)
         case "browser.wait":
             return v2BrowserWait(id: id, params: params, respond: respond)
+        case "browser.inspect":
+            return v2BrowserInspect(id: id, params: params, respond: respond)
         case "browser.navigate":
             return v2BrowserNavigate(id: id, params: params, respond: respond)
         case "browser.back":

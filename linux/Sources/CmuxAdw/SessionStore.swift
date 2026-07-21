@@ -78,7 +78,11 @@ enum SessionStore {
                     title: tab.title,
                     customTitle: tab.customTitle,
                     workingDirectory: tab.workingDirectory,
-                    layout: layoutSnapshot(tab.layout),
+                    // A workspace of nothing but inspector panes collapses to
+                    // nil; restore it as a plain terminal rather than losing
+                    // the workspace itself.
+                    layout: layoutSnapshot(tab.layout)
+                        ?? .leaf(kind: "terminal", workingDirectory: tab.workingDirectory, url: ""),
                     focusedLeafIndex: tab.surfaces.firstIndex {
                         $0.surfaceId == tab.focusedSurfaceId
                     } ?? 0
@@ -87,7 +91,12 @@ enum SessionStore {
         )
     }
 
-    private static func layoutSnapshot(_ node: PaneNode) -> LayoutSnapshot {
+    /// Returns nil for panes that must not survive a restart. Inspector
+    /// panes are the only such kind today: WebKit only hands out the
+    /// inspector widget during its own `attach` signal, so there is nothing
+    /// to recreate on restore — persisting one would resurrect an empty
+    /// pane. A split with one pruned side collapses to the surviving side.
+    private static func layoutSnapshot(_ node: PaneNode) -> LayoutSnapshot? {
         switch node {
         case .leaf(let leaf):
             switch leaf.kind {
@@ -100,13 +109,18 @@ enum SessionStore {
                 // Live page URL beats the initial one.
                 let url = SurfaceRegistry.shared.currentURL(for: leaf.surfaceId) ?? initialURL
                 return .leaf(kind: "browser", workingDirectory: "", url: url)
+            case .inspector:
+                return nil
             }
         case .split(let orientation, let first, let second):
-            return .split(
-                orientation: orientation.rawValue,
-                first: layoutSnapshot(first),
-                second: layoutSnapshot(second)
-            )
+            switch (layoutSnapshot(first), layoutSnapshot(second)) {
+            case (nil, nil):
+                return nil
+            case (let only?, nil), (nil, let only?):
+                return only
+            case (let a?, let b?):
+                return .split(orientation: orientation.rawValue, first: a, second: b)
+            }
         }
     }
 

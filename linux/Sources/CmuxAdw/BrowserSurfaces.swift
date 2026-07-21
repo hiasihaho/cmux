@@ -161,21 +161,6 @@ extension ControlCommandHandler {
         return v2BrowserOk(id: id, result: ["title": title])
     }
 
-    func v2BrowserHistory(id: Any?, params: [String: Any], action: String) -> String {
-        guard let webView = browserWebView(params) else {
-            return v2BrowserError(id: id, code: "not_found", message: "Browser surface not found")
-        }
-        switch action {
-        case "back":
-            webkit_web_view_go_back(webView)
-        case "forward":
-            webkit_web_view_go_forward(webView)
-        default:
-            webkit_web_view_reload(webView)
-        }
-        return v2BrowserOk(id: id, result: ["action": action])
-    }
-
     // MARK: helpers (CWebKit-bound)
 
     private func browserWebView(_ params: [String: Any]) -> UnsafeMutablePointer<WebKitWebView>? {
@@ -217,5 +202,107 @@ extension ControlCommandHandler {
             return "{\"ok\":false,\"error\":{\"code\":\"encode_error\",\"message\":\"Failed to encode JSON\"}}"
         }
         return string.replacingOccurrences(of: "\n", with: "\\n")
+    }
+}
+
+// MARK: - browser.inspect (Web Inspector pane, roadmap/06 increment 3)
+
+extension ControlCommandHandler {
+
+    /// Opens DevTools for a browser surface in a split beside it.
+    ///
+    /// Completes asynchronously: WebKit decides where the inspector goes
+    /// (`attach` or `open-window`) on its own schedule, so the split can
+    /// land while the embedding is still pending. Reporting OK at that
+    /// point would claim a DevTools pane that is in fact empty, so the verb
+    /// waits for the real outcome and returns it as `attached`.
+    func v2BrowserInspect(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        guard let target = v2TargetSurfaceForBrowser(params),
+              let webViewPtr = SurfaceRegistry.shared.browser(for: target.surfaceId) else {
+            return respond(v2BrowserError(
+                id: id, code: "not_found", message: "Browser surface not found"
+            ))
+        }
+        let webView = UnsafeMutablePointer<WebKitWebView>(webViewPtr)
+
+        // Developer extras gate the inspector entirely; without this
+        // `get_inspector()` yields an object that never shows anything.
+        if let settings = webkit_web_view_get_settings(webView) {
+            webkit_settings_set_enable_developer_extras(settings, 1)
+        }
+        guard let inspector = webkit_web_view_get_inspector(webView) else {
+            return respond(v2BrowserError(
+                id: id, code: "internal_error", message: "Inspector unavailable for this surface"
+            ))
+        }
+
+        let direction = (params["direction"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "down"
+        guard let newLeaf = split(
+            tab: target.tab,
+            surfaceId: target.surfaceId,
+            direction: direction,
+            kind: .inspector(targetSurfaceId: target.surfaceId)
+        ) else {
+            return respond(v2BrowserError(
+                id: id, code: "internal_error", message: "Failed to create split"
+            ))
+        }
+
+        // Registered BEFORE the split lands so the surface factory can run
+        // it; see InspectorAdoption for why "after the call returns" is not
+        // safe in an Adwaita re-render.
+        let box = InspectorAttachBox(surfaceId: newLeaf.surfaceId)
+        InspectorAdoption.pending[newLeaf.surfaceId] = {
+            guard let container = SurfaceRegistry.shared.containers[newLeaf.surfaceId] else {
+                inspectorLog("no container for surface \(newLeaf.surfaceId)")
+                return
+            }
+            box.container = container
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(inspector), "attach",
+                unsafeBitCast(inspectorAttach, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(),
+                inspectorAttachBoxDestroy, GConnectFlags(0)
+            )
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(inspector), "open-window",
+                unsafeBitCast(inspectorOpenWindow, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(),
+                inspectorAttachBoxDestroy, GConnectFlags(0)
+            )
+            inspectorLog("show() for surface \(newLeaf.surfaceId)")
+            webkit_web_inspector_show(inspector)
+            // show() alone let WebKit pick a separate window; attach()
+            // explicitly requests docking and emits the `attach` signal.
+            webkit_web_inspector_attach(inspector)
+        }
+
+        // If the factory already ran (re-render can beat us), run it now.
+        if SurfaceRegistry.shared.containers[newLeaf.surfaceId] != nil,
+           let pending = InspectorAdoption.pending.removeValue(forKey: newLeaf.surfaceId) {
+            pending()
+        }
+
+        let registry = RefRegistry.shared
+        let deadline = Date().addingTimeInterval(3)
+        func reply() {
+            guard box.attached || Date() >= deadline else {
+                scheduleOnMainLoop(afterMs: 50) { reply() }
+                return
+            }
+            respond(v2BrowserOk(id: id, result: [
+                "workspace_id": target.tab.id.uuidString,
+                "workspace_ref": registry.ref(kind: "workspace", uuid: target.tab.id),
+                "surface_id": newLeaf.surfaceId.uuidString,
+                "surface_ref": registry.ref(kind: "surface", uuid: newLeaf.surfaceId),
+                "pane_id": newLeaf.paneId.uuidString,
+                "pane_ref": registry.ref(kind: "pane", uuid: newLeaf.paneId),
+                "inspected_surface_id": target.surfaceId.uuidString,
+                "inspected_surface_ref": registry.ref(kind: "surface", uuid: target.surfaceId),
+                "created_split": true,
+                "attached": box.attached
+            ]))
+        }
+        reply()
     }
 }

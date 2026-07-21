@@ -922,7 +922,7 @@ runs in the isolated world, so page JS globals are invisible there
 
 Follow-up questions from the CSP session ("do we want CDP? what about the
 console? why did dev say vte?") settled the architecture question. Full
-reasoning + increment list: `roadmap/06-webkit-native-automation.md`.
+reasoning + increment list: `../../roadmap/06-webkit-native-automation.md`.
 Summary of record:
 
 - Our JS-injection verbs are the content-script/WebDriver-classic subset —
@@ -1318,3 +1318,58 @@ macOS parity note: `BrowserPanel.takeSnapshot` uses a default
 `WKSnapshotConfiguration`, i.e. the visible viewport too — so the
 clipping is shared behavior, and `--full-page` is a Linux-side addition
 rather than a port fix.
+
+## 2026-07-21 — Web Inspector pane (roadmap/06 increment 3)
+
+`cmux browser inspect` opens DevTools for a browser surface in a real cmux
+split beside it. Human-confirmed rendering on the dev instance.
+
+**The API is not shaped the way it looks.** Probed empirically before
+writing anything (`inspector-probe.c`, webkitgtk-6.0 2.52.4):
+
+- `webkit_web_inspector_get_web_view()` returns **NULL** both before and
+  after `show()`. The widget exists only *inside* the placement signal
+  handler — so the destination pane must already exist when `show()` is
+  called; there is no "create it, then fetch the widget".
+- The returned object is a `WebKitWebViewBase` with **`WEBKIT_IS_WEB_VIEW`
+  false**. It is a GtkWidget but NOT a WebKitWebView, so it must never go
+  through the browser surface factory, which calls `webkit_web_view_*` on
+  whatever it adopts. Reusing `BrowserAdoption` would have been UB.
+
+**The bug the probe could not catch.** The isolated probe (a web view
+alone in a GtkWindow) emitted `attach`. Inside cmux's pane tree WebKit
+emits **`open-window`** instead — it decides it cannot dock. The first
+implementation claimed `open-window` (returned TRUE) without placing
+anything, which suppressed the window *and* left an empty pane: strictly
+worse than either alone. The human's screenshot is what caught it; the
+app reported success throughout. Both signals now route through one
+placement path, and TRUE is returned **only if placement succeeded**,
+otherwise WebKit keeps its fallback. Lesson filed in LESSONS.md: a probe
+in a simplified environment does not transfer — the surrounding widget
+tree changed WebKit's decision, and nothing in the probe could have
+revealed that.
+
+**Async, like the navigation barrier.** WebKit places the inspector on its
+own schedule, well after the split lands. `browser.inspect` therefore
+completes asynchronously and polls up to 3s, returning `attached:
+true/false` — reporting OK at split time would have claimed a DevTools
+pane that was in fact empty. Verified end state: `attached: true`, widget
+allocation 408x347, `mapped=1`.
+
+**Not persisted, deliberately.** WebKit only surrenders the widget during
+its own signal, so a restored inspector pane would be permanently empty.
+`layoutSnapshot` now returns nil for them and a split with one pruned side
+collapses to the survivor (a workspace of nothing else falls back to a
+terminal, so the workspace itself is never lost).
+
+macOS parity note, checked rather than assumed: macOS cmux **does** have
+DevTools (`BrowserPanel.toggleDeveloperTools/showDeveloperTools`, via
+WKWebView's private `_inspector` through runtime selectors). The
+difference is presentation — theirs is WebKit's own inspector, ours is a
+first-class cmux pane you can move and close like any other — and that we
+use public API. Not a ★ feature; a differently-shaped one.
+
+Also removed here: the superseded synchronous `v2BrowserHistory` in
+BrowserSurfaces.swift. It had been dead since the navigation barrier
+landed (ControlProtocol routes to the async version), but a racy
+implementation sitting in the tree is an invitation to re-route to it.

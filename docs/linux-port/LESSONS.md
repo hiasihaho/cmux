@@ -97,6 +97,20 @@ PORTING or INSIDE-CMUX — not here.
   behavior that looks like something else (a hang, a failed predicate).
   If you must bound something, say so in the response.
 
+- **A probe tells you what an API does in the probe's environment.** The
+  Web Inspector probe (a web view alone in a `GtkWindow`) emitted
+  `attach`; inside cmux's pane tree WebKit emits `open-window` instead —
+  the surrounding widget tree changed its decision, and nothing in the
+  probe could have revealed that. The implementation trusted the probe,
+  claimed the one signal it had seen, and shipped a silently empty pane.
+  Probe to learn the shape of an API, then handle every branch it might
+  take and verify in the real environment. (2026-07-21)
+- **Claiming a callback you do not honor is worse than not handling it.**
+  Returning TRUE from `open-window` suppressed WebKit's own window *and*
+  placed nothing — strictly worse than either outcome alone. Only claim
+  responsibility once the work actually succeeded; otherwise decline and
+  let the library keep its fallback.
+
 ## On dogfooding
 
 - **Exploratory agents answer a different question than regression
