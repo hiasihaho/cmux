@@ -227,9 +227,16 @@ struct CmuxApp: App {
     /// Open Ghostty's built-in find-in-terminal overlay on the focused
     /// pane (Ctrl+Shift+F). VTE panes have no overlay — no-op there.
     private func findInFocusedPane() {
-        #if canImport(CGhosttyEmbed)
         guard let tab = tabs.first(where: { $0.id == selection }),
               let focused = tab.focusedSurface else { return }
+        // Browser panes get WebKit's find controller behind our own bar;
+        // terminal panes get Ghostty's built-in overlay. Same shortcut,
+        // two engines — VTE panes still have neither.
+        if case .browser = focused.kind {
+            BrowserFindRegistry.show(surfaceId: focused.surfaceId)
+            return
+        }
+        #if canImport(CGhosttyEmbed)
         SurfaceRegistry.shared.ghosttySetSearch(for: focused.surfaceId, active: true)
         #endif
     }

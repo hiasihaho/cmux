@@ -282,6 +282,8 @@ struct ControlCommandHandler {
             return v2BrowserEval(id: id, params: params, respond: respond)
         case "browser.snapshot":
             return v2BrowserSnapshot(id: id, params: params, respond: respond)
+        case "browser.find_in_page":
+            return v2BrowserFindInPage(id: id, params: params, respond: respond)
         case "search.panes":
             return v2SearchPanes(id: id, params: params, respond: respond)
         case "browser.wait":

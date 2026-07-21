@@ -96,9 +96,21 @@ enum BrowserSurfaceFactory {
             popupOpenerBoxDestroy, GConnectFlags(0)
         )
 
+        // The pane's container is a box, not the bare web view, so the
+        // find bar (hidden until Ctrl+Shift+F) has somewhere to live above
+        // the page. registerBrowser already keeps the two pointers apart.
+        let containerOrNil = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)
+        guard let container = containerOrNil else { return }
+        gtk_widget_set_hexpand(container, 1)
+        gtk_widget_set_vexpand(container, 1)
+        if let findBar = BrowserFindBar.build(webView: webView, surfaceId: surfaceId) {
+            gtk_box_append(UnsafeMutableRawPointer(container).assumingMemoryBound(to: GtkBox.self), findBar)
+        }
+        gtk_box_append(UnsafeMutableRawPointer(container).assumingMemoryBound(to: GtkBox.self), widget)
+
         SurfaceRegistry.shared.registerBrowser(
             OpaquePointer(webView),
-            container: OpaquePointer(widget),
+            container: OpaquePointer(container),
             for: surfaceId
         )
     }

@@ -2543,6 +2543,32 @@ struct CMUXCLI {
             return
         }
 
+        if subcommand == "find-in-page" || subcommand == "highlight" {
+            let sid = try requireSurface()
+            var params: [String: Any] = ["surface_id": sid]
+            let (_, rest) = parseOption(subArgs, name: "--nothing")
+            if hasFlag(rest, name: "--next") { params["action"] = "next" }
+            else if hasFlag(rest, name: "--previous") { params["action"] = "previous" }
+            else if hasFlag(rest, name: "--clear") { params["action"] = "clear" }
+            if hasFlag(rest, name: "--case-sensitive") { params["case_sensitive"] = true }
+            let query = rest.filter { !$0.hasPrefix("--") }
+                .joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !query.isEmpty { params["query"] = query }
+            if params["action"] == nil && query.isEmpty {
+                throw CLIError(message: "browser find-in-page requires a query (or --next/--previous/--clear)")
+            }
+            let payload = try client.sendV2(method: "browser.find_in_page", params: params)
+            if jsonOutput {
+                print(jsonString(formatIDs(payload, mode: idFormat)))
+            } else {
+                let total = (payload["total"] as? Int) ?? 0
+                let current = (payload["current"] as? Int) ?? 0
+                print(total == 0 ? "No results" : "\(current) of \(total)")
+            }
+            return
+        }
+
         if subcommand == "inspect" || subcommand == "devtools" {
             let sid = try requireSurface()
             var params: [String: Any] = ["surface_id": sid]
@@ -4652,6 +4678,8 @@ struct CMUXCLI {
               press|key|keydown|keyup [--key <key> | <key>] [--snapshot-after]
               select [--selector <css> | <css>] [--value <value> | <value>] [--snapshot-after]
               scroll [--selector <css>] [--dx <n>] [--dy <n>] [--snapshot-after]
+              find-in-page|highlight <text> [--case-sensitive] | --next | --previous | --clear
+                same find controller as Ctrl+Shift+F in a browser pane
               inspect|devtools [--direction <right|down|left|up>]
                 open the Web Inspector (DevTools) for this surface in a split
               screenshot [--out <path>] [--full-page]
@@ -6662,6 +6690,7 @@ struct CMUXCLI {
           browser find nth <index> <selector>   (0-based; negative counts from end)
           browser frame <selector|main>
           browser dialog <accept|dismiss> [text]
+          browser find-in-page <text> [--case-sensitive] | --next | --previous | --clear
           browser inspect|devtools [--direction <right|down|left|up>]
           browser screenshot [--out <path>] [--full-page]
           browser download [wait] [--path <path>] [--timeout-ms <ms>]

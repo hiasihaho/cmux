@@ -1504,3 +1504,55 @@ New suite `linux/tests/pane-search-smoke.sh` (11 assertions, first-run
 green). webdriver-smoke 9/9, browser-navigation-smoke 8/8,
 browser-popup-smoke 6/6 — the last two matter because the split-direction
 change touches `adoptBrowserSplit`, which both use.
+
+## 2026-07-21 — find-in-page for browser panes (roadmap/06 increment 5)
+
+Ctrl+Shift+F worked in terminal panes (Ghostty's overlay) and did nothing
+in browser panes. It now opens a find bar backed by
+`WebKitFindController`, and the same controller is drivable over the
+socket as `cmux browser find-in-page`.
+
+Probed first (`linux/tests/find-probe.c`), which found the trap that
+would otherwise have shipped:
+
+- `search()` reports the **total** match count via `found-text`.
+- `search_next()`/`search_previous()` emit `found-text` too — but with
+  the count argument set to **1**, not the total. Trusting it would make
+  the counter read "1 of 1" on every step. The total is therefore kept
+  from the initial search and the current index tracked in our own state.
+- `failed-to-find-text` is the no-match signal; `search_finish()` clears
+  the highlight.
+
+One probe result was deliberately NOT designed around: three
+`search_next()` calls fired in a single main-loop iteration produced a
+`failed-to-find-text` instead of wrapping. That is almost certainly the
+probe firing async operations without letting WebKit process them, not
+API behaviour — recorded as unexplained rather than treated as fact.
+Wrapping works correctly when stepped one call at a time (asserted).
+
+**Structural change:** a browser pane's container is now a GtkBox holding
+[find bar, web view] instead of the bare web view, since the bar needs
+somewhere to live. `registerBrowser` already kept the container and the
+web view as separate pointers, so nothing else had to change — but this
+touches every browser pane, so all four existing suites were re-run
+(webdriver 9/9, navigation 8/8, popup 6/6, search 11/11) before and after.
+
+**Bug found by the socket verb, not by the UI:** a new search did not
+reset the previous query's `total`, and the verb polls until the count
+settles — so it returned the *old* numbers immediately. `NEEDLE
+--case-sensitive` reported "1 of 3" instead of "1 of 1", and a
+non-existent string reported "1 of 3" instead of "No results". Fixed with
+an explicit `awaitingResult` flag rather than inferring "done" from a
+non-zero count. This is the same stale-read shape as the `goto` barrier
+and the eval-count trap: **polling on a value that has a valid-looking
+stale reading cannot tell "not yet" from "unchanged".**
+
+Adding the socket verb was what made this testable at all — the feature
+is otherwise a GTK widget that only a screenshot can check. It also means
+an agent and the human drive the *same* controller, so highlighting is
+identical rather than a parallel implementation.
+
+New suite `linux/tests/browser-find-smoke.sh` (11 assertions). One of its
+assertions was wrong on the first run — after `--previous` lands on match
+3, `--next` correctly wraps to 1, so the intended mid-sequence check had
+to step off the boundary first. Test error, not a product bug.

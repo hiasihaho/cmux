@@ -97,6 +97,12 @@ Small but real. These are genuine additions, not just different internals:
   text, console capture) address the very same surface — trusted input
   and rich inspection on one pane. macOS cmux has no automation opt-in at
   all.
+- ⚙ **Find-in-page in browser panes** (Ctrl+Shift+F, or `cmux browser
+  find-in-page`). WebKitFindController behind a GTK find bar: match
+  counter, next/previous with wrap, case-sensitive toggle. Parity with
+  macOS's per-pane find (`Sources/Find/SurfaceSearchOverlay.swift`); what
+  Linux adds is that the *same* controller is socket-drivable, so an agent
+  and the human highlight identically instead of via parallel paths.
 - ★ **`cmux search <query>` — text search across every pane at once.**
   One query spans terminal panes (screen/scrollback text) and browser
   panes (rendered `innerText`), returning per-hit `surface_ref` /
