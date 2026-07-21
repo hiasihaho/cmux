@@ -7,7 +7,7 @@ status vs macOS) and **PROGRESS.md** (how each piece was built + verified).
 Legend: **✅ parity** (also in macOS cmux) · **★ beyond macOS** (Linux
 has it, macOS doesn't — verified against `Sources/` on 2026-07-20) ·
 **⚙ Linux-specific implementation** (same user feature, different
-internals).
+internals) · **🟡 partial** (works, with a documented caveat).
 
 ## Terminals
 
@@ -39,6 +39,21 @@ internals).
   (role/name tree + element refs), click/fill/type/select, screenshot,
   ten `find.*` locators, iframe scoping, dialogs, cookies, storage,
   console/error capture, wait. See PARITY for the complete verb list.
+- ⚙ **Works on strict-CSP sites** (GitHub, banks, many SPAs). WebKitGTK
+  applies the page's CSP to main-world evaluation — unlike WKWebView,
+  which exempts user-agent scripts — so a string-evaluating envelope is
+  refused outright there. Automation evaluates in the main world first
+  (macOS-identical behavior) and retries once in a named isolated world
+  (`cmuxAutomation`) on a CSP eval-refusal: same DOM, no main-world CSP.
+  Deviation: on those sites `browser.eval` runs isolated, so **page JS
+  globals are invisible** (macOS sees them everywhere).
+- 🟡 **Console/error capture has a strict-CSP blind spot.** The hooks wrap
+  `window.console` in the page world, armed lazily on first use; on a
+  strict-CSP site that arming lands in the isolated world and captures
+  nothing the page itself logs. Fix is planned as increment 1 of
+  `roadmap/06-webkit-native-automation.md` (document-start user script +
+  script message handler — user scripts are CSP-exempt and eval-free, so
+  capture starts at page load on every site).
 
 ## Agents, notifications, control
 
@@ -84,6 +99,13 @@ focus-intent verbs (`surface.focus`, `browser.focus_webview`),
 `debug.*`. One known limitation of the Ghostty backend: panes in
 never-selected background workspaces spawn their shell on first selection
 (the eager-spawn gap).
+
+Beyond the JS-injection layer, the things page JavaScript can never reach
+— trusted input events, network interception, a real debugger,
+cross-origin frames, CSP-proof console capture — are tracked as a decided
+direction in `roadmap/06-webkit-native-automation.md`: adopt native
+WebKitGTK APIs (WebDriver/BiDi, user scripts, Inspector), explicitly
+*not* a CDP/Chromium engine swap.
 
 ---
 
