@@ -83,6 +83,19 @@ enum BrowserSurfaceFactory {
         // Installed before any load so capture starts at page load.
         installBrowserConsoleCapture(webView, surfaceId: surfaceId)
 
+        // Popup routing (roadmap/06 increment 5). The settings flag is the
+        // load-bearing part: it defaults to FALSE, and while it is off
+        // `create` never fires, so window.open silently does nothing.
+        if let settings = webkit_web_view_get_settings(webView) {
+            webkit_settings_set_javascript_can_open_windows_automatically(settings, 1)
+        }
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(widget), "create",
+            unsafeBitCast(popupCreate, to: GCallback.self),
+            Unmanaged.passRetained(PopupOpenerBox(surfaceId: surfaceId)).toOpaque(),
+            popupOpenerBoxDestroy, GConnectFlags(0)
+        )
+
         SurfaceRegistry.shared.registerBrowser(
             OpaquePointer(webView),
             container: OpaquePointer(widget),

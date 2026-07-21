@@ -867,24 +867,44 @@ struct ControlCommandHandler {
     /// before this function returns, so the pending view must already be
     /// registered or the factory builds its own blank view and the
     /// driver ends up driving an orphan (observed exactly that way).
-    func adoptBrowserSplit(register: (UUID) -> Void) -> UUID? {
-        guard let tab = tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue }),
-              let focused = tab.focusedSurface,
-              let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id })
+    /// Adopts a pre-created web view into a new split.
+    ///
+    /// `nextTo` anchors the split to a specific surface — a popup must land
+    /// beside its opener, which is not necessarily the focused surface and
+    /// may sit in a workspace the human is not looking at. Passing nil
+    /// keeps the original behavior (split the selected workspace's focused
+    /// surface), which is what WebDriver adoption wants.
+    func adoptBrowserSplit(nextTo anchor: UUID? = nil, register: (UUID) -> Void) -> UUID? {
+        let resolved: (tab: TerminalTab, surfaceId: UUID)?
+        if let anchor, let tab = tabs.wrappedValue.first(where: { $0.contains(surfaceId: anchor) }) {
+            resolved = (tab, anchor)
+        } else if let tab = tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue }),
+                  let focused = tab.focusedSurface {
+            resolved = (tab, focused.surfaceId)
+        } else {
+            resolved = nil
+        }
+        guard let resolved,
+              let index = tabs.wrappedValue.firstIndex(where: { $0.id == resolved.tab.id })
         else { return nil }
 
-        let cwd = SurfaceRegistry.shared.currentDirectory(for: focused.surfaceId)
-            ?? tab.workingDirectory
+        let cwd = SurfaceRegistry.shared.currentDirectory(for: resolved.surfaceId)
+            ?? resolved.tab.workingDirectory
         let newLeaf = PaneLeaf(kind: .browser(initialURL: ""), workingDirectory: cwd)
         register(newLeaf.surfaceId)
 
         guard let layout = tabs.wrappedValue[index].layout.splitting(
-            surfaceId: focused.surfaceId,
+            surfaceId: resolved.surfaceId,
             direction: "right",
             newLeaf: newLeaf
         ) else { return nil }
         tabs.wrappedValue[index].layout = layout
-        tabs.wrappedValue[index].focusedSurfaceId = newLeaf.surfaceId
+        // Focus the new pane only within a workspace the human is already
+        // looking at; a popup in a background workspace must not reach out
+        // and move focus (socket focus policy).
+        if resolved.tab.id == selection.wrappedValue {
+            tabs.wrappedValue[index].focusedSurfaceId = newLeaf.surfaceId
+        }
         return newLeaf.surfaceId
     }
 

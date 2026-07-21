@@ -57,6 +57,18 @@ struct CmuxApp: App {
             _ = surfaceId
             return true
         }
+        // window.open / target="_blank" land in a split beside their opener
+        // rather than vanishing (roadmap/06 increment 5). Runs on the main
+        // loop from WebKit's `create` signal, so it takes the same dispatch
+        // guard as socket commands.
+        PopupRouting.adopt = { view, openerSurfaceId in
+            SocketDispatchGuard.active = true
+            defer { SocketDispatchGuard.active = false }
+            let surfaceId = handler.adoptBrowserSplit(nextTo: openerSurfaceId) { pendingId in
+                BrowserAdoption.pending[pendingId] = view
+            }
+            return surfaceId != nil
+        }
         BrowserWebDriver.enableIfRequested()
 
         // Structural changes save immediately (scene body); this periodic

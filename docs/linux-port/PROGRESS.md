@@ -1373,3 +1373,70 @@ Also removed here: the superseded synchronous `v2BrowserHistory` in
 BrowserSurfaces.swift. It had been dead since the navigation barrier
 landed (ControlProtocol routes to the async version), but a racy
 implementation sitting in the tree is an invitation to re-route to it.
+
+## 2026-07-21 — popup routing: window.open lands in a pane (roadmap/06 increment 5)
+
+`window.open()` and `target="_blank"` now open a browser pane beside their
+opener instead of doing nothing. Human-confirmed rendering.
+
+**The hole was a default.** `javascript-can-open-windows-automatically`
+defaults to **FALSE**, and while it is off WebKit never emits `create` at
+all — so popups produced no pane, no error, and `window.open` returning
+null. OAuth flows, payment popups and "open in new tab" links all
+dead-ended silently. Same family as today's other finds: it looked like
+something else and reported nothing.
+
+Probed first (`linux/tests/popup-probe.c`), which corrected three things
+before they became bugs:
+
+- `webkit_web_view_new_with_related_view()` **does not exist in
+  WebKitGTK 6.0**. The opener relationship is a **construct-only**
+  `related-view` property, so it must go through
+  `g_object_new_with_properties` (the variadic `g_object_new` is unusable
+  from Swift) — the same shape as WebDriver's
+  `is-controlled-by-automation`. Sharing the web process is what keeps
+  `window.opener` alive; verified `true` on a `window.open` popup.
+- **WebKit loads the target URL into the view we return.** The probe
+  deliberately loaded nothing and `ready-to-show` still reported the
+  target URI. Loading it ourselves would fetch every popup twice.
+- Returning NULL is a clean block — the page simply sees `window.open`
+  return null.
+
+`adoptBrowserSplit` gained a `nextTo:` anchor: a popup must land beside
+its **opener**, which is not necessarily the focused surface and may live
+in a workspace the human is not looking at. It also now only moves focus
+when the anchor's workspace is already selected, so a background popup
+cannot reach out and steal focus (socket focus policy).
+
+**Burst budget.** Enabling the setting disables the popup blocker, so a
+page can ask for panes in a loop. Routing them into visible panes is
+friendlier than hidden windows, but it is still an unbounded request from
+the page: 5 popups per opener per 10s, excess declined and logged.
+Verified 8 requested → 5 created. Compare roadmap/05 — page- or
+agent-drivable resource growth is the same class of problem.
+
+**Known limitation (from the human's screenshot, not visible in the CLI
+output):** every popup splits "right" off its opener, so each one halves
+the remaining width. Two popups are comfortable; five are slivers. The
+burst cap bounds the damage but does not fix the layout. Options if this
+becomes annoying: split the larger dimension instead of always right,
+reuse an existing popup pane for the same opener, or route popups to a
+sibling workspace. Deliberately not guessed at yet.
+
+Verified end to end: opener + `window.open` pane + `target=_blank` pane
+with correct URLs; `window.opener` true for `window.open`, null for
+`target=_blank` (correct — modern browsers imply `noopener` there).
+New suite `linux/tests/browser-popup-smoke.sh` (6 assertions);
+webdriver-smoke 9/9 and browser-navigation-smoke 8/8 still pass, which
+matters here because popup routing changed `adoptBrowserSplit`, the same
+helper WebDriver adoption uses.
+
+macOS parity, checked rather than assumed (the first draft of the
+FEATURES entry claimed this as a Linux-only feature and was wrong):
+macOS **does** route popups, in
+`BrowserPanel.webView(_:createWebViewWith:…)`, and its logic is currently
+**richer than ours** — it weighs middle-click intent, modifier flags and
+open-externally rules to choose new-tab vs new-window vs hand off to the
+system browser. The Linux path handles the plain cases only. Worth
+porting that decision logic later; the burst budget is the one piece
+Linux has that macOS does not.

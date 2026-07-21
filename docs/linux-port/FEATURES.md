@@ -97,6 +97,16 @@ Small but real. These are genuine additions, not just different internals:
   text, console capture) address the very same surface — trusted input
   and rich inspection on one pane. macOS cmux has no automation opt-in at
   all.
+- ⚙ **Popups become panes.** `window.open()` and `target="_blank"` open a
+  browser pane beside their opener, sharing the opener's web process so
+  `window.opener` keeps working — instead of being silently dropped (the
+  WebKitGTK default emits no `create` signal at all, so nothing happened).
+  **Parity, and macOS's version is currently richer**: its
+  `BrowserPanel.webView(_:createWebViewWith:…)` also weighs middle-click
+  intent, modifier flags and open-externally rules to decide new-tab vs
+  new-window, none of which the Linux path does yet. What Linux adds is a
+  per-opener burst budget (5 per 10s), needed because enabling popups
+  turns the popup blocker off.
 - ⚙ **Web Inspector in a cmux pane** (`cmux browser inspect`). Full
   DevTools — elements, network, debugger, console — hosted as a real cmux
   split you can move and close like any other pane, via public WebKitGTK

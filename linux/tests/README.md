@@ -9,6 +9,8 @@ socket and session file).
 |---|---|
 | [`browser-navigation-smoke.sh`](browser-navigation-smoke.sh) | The navigation barrier: goto/back/forward/reload must never let a following eval read the previous document; plus load_state, wait-flag chaining, honest timeouts |
 | [`webdriver-smoke.sh`](webdriver-smoke.sh) | The whole WebDriver stack: automation opt-in, attach mode, split adoption, trusted input, and cmux+WebDriver sharing one surface — plus a live strict-CSP run against github.com |
+| [`browser-popup-smoke.sh`](browser-popup-smoke.sh) | Popup routing: window.open and target=_blank land in panes, window.opener survives, burst budget holds |
+| [`popup-probe.c`](popup-probe.c) | Standalone probe for `WebKitWebView::create` — which settings gate it, who loads the URL, what returning NULL does |
 | [`inspector-probe.c`](inspector-probe.c) | Standalone probe that answers what `webkit_web_inspector_get_web_view()` returns and when — how the Web Inspector pane was designed. **Read its caveat below before trusting a probe like this.** |
 | [`ghostty-embed-smoke.c`](ghostty-embed-smoke.c) | Minimal C harness that hosts a Ghostty surface in a plain GtkApplication (proves the embedding shim independent of cmux) |
 | [`ghostty-resize-bisect.sh`](ghostty-resize-bisect.sh) | X11 screenshot-diff detector for the (fixed) post-resize freeze; kept for reference — see the caveats in its header |
@@ -119,3 +121,33 @@ probe, claimed `open-window` without placing anything, and produced a
 silently empty pane. **A probe tells you what an API does in the probe's
 environment.** Handle every signal it might send, and verify in the real
 one.
+
+## browser-popup-smoke.sh
+
+```sh
+linux/tests/browser-popup-smoke.sh          # 6 assertions, cleans up
+linux/tests/browser-popup-smoke.sh --keep   # leave the instance up
+```
+
+Guards the fix for popups silently doing nothing. Note assertion 5's
+wording: the burst budget is per opener per 10s, so earlier assertions in
+the same run have usually already spent part of it — the check is "no more
+than the cap", not an exact count.
+
+## popup-probe.c
+
+```sh
+gcc linux/tests/popup-probe.c -o /tmp/popup-probe \
+    $(pkg-config --cflags --libs gtk4 webkitgtk-6.0) && /tmp/popup-probe
+```
+
+Answers, for WebKitGTK 6.0: `javascript-can-open-windows-automatically`
+defaults FALSE and while it is off `create` never fires;
+`webkit_web_view_new_with_related_view` no longer exists (`related-view`
+is construct-only); WebKit loads the target URL into the view you return,
+so loading it yourself fetches twice; returning NULL blocks cleanly.
+
+Both triggers in the probe are **synthetic** clicks
+(`is_user_gesture=0`), so it does not tell you how a genuine user gesture
+behaves with the setting off — an untested branch, stated here rather
+than assumed away.
