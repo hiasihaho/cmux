@@ -1982,3 +1982,34 @@ like the same symptom:
 Also confirmed while checking: the human's daily session file is intact
 and still schema v2, because the daily runs the pre-v3 binary. It migrates
 on their next restart — the migration path is asserted.
+
+## 2026-07-21 — pane zoom (macOS "Toggle Pane Zoom")
+
+Second of the four. Ctrl+Shift+Z, a toolbar button, and `cmux zoom-pane`
+(`pane.zoom`) — macOS has the command but no socket verb, so this is the
+now-familiar pattern: expose UI features over the socket too, which makes
+them testable without a screenshot and usable by an agent.
+
+Implementation is a single model field, `TerminalTab.zoomedSurfaceId`.
+When set, `sync()` builds only that pane instead of the split tree; the
+other containers stay unparented but alive (the registry holds strong
+refs), so un-zooming puts them back rather than respawning shells. Zoom is
+part of the skeleton signature, or toggling would not rebuild.
+
+Two behavioural choices worth recording:
+
+- **Zooming a different pane switches to it** rather than un-zooming.
+  "Zoom this one" is the intent; un-zooming would cost a second keystroke
+  to get where the user asked to go.
+- **Zoom is deliberately not persisted.** It is momentary "let me see
+  this" state, and restoring into it would hide panes the user had
+  forgotten they had. Asserted, so a future session-schema change cannot
+  quietly start persisting it.
+
+Verified geometrically and visually: browser pane 404px → 818px → 404px,
+and the screenshot shows the pane filling the content area with the
+terminal gone. New suite `pane-zoom-smoke.sh` (7 assertions) — noticeably
+short because `lib.sh` now carries the setup; it also exercises the
+`screenshot` helper as a real assertion.
+
+Suites: 7 suites, 72 assertions, 0 failed.

@@ -178,6 +178,11 @@ struct CmuxApp: App {
                         }
                         .keyboardShortcut("f".ctrl().shift())
                         .tooltip("Find in terminal (Ctrl+Shift+F)")
+                        Button(icon: .custom(name: "view-fullscreen-symbolic")) {
+                            controlHandler.toggleZoom(tabId: selection, surfaceId: nil)
+                        }
+                        .keyboardShortcut("z".ctrl().shift())
+                        .tooltip("Zoom pane (Ctrl+Shift+Z)")
                     } end: {
                         Button(icon: .custom(name: "software-update-urgent-symbolic")) {
                             simulateAttention()

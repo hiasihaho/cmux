@@ -37,6 +37,7 @@ measured by diffing the two capability lists, not estimated.
 | surface.move / reorder / refresh / clear_history | ❌ | |
 | surface.health / action / drag_to_split / trigger_flash | ❌ | |
 | pane.create / list / focus / surfaces | ✅ | panes hold several surfaces behind an AdwTabView strip since 2026-07-21; `surface_count`/`surface_refs`/`selected_surface_ref` report the real list |
+| pane.zoom | ✅ | Linux-only socket verb for macOS's Toggle Pane Zoom command |
 | pane.break / join / last / resize / swap | ❌ | pane.resize would pair well with divider persistence |
 
 ### browser — navigation & automation
@@ -126,7 +127,7 @@ are implemented on both**, 47 are macOS-only, and a further 29 macOS
 | Browser find-in-page | ✅ | WebKitFindController behind a GTK find bar (Ctrl+Shift+F), match counter, next/prev with wrap, case toggle; also socket-drivable (`browser find-in-page`) so an agent and the human share one controller |
 | Terminal find overlay | ✅ | Ghostty panes: built-in search overlay via the shim (Ctrl+Shift+F / header magnifier) — needle entry, next/prev, highlight, Esc-to-close all native. VTE panes: no overlay (VTE search API unused) |
 | Browser URL / address bar | ❌ | macOS browser panes have an editable address bar (`Sources/Panels/BrowserPanelView.swift`, `debug.browser.address_bar_focused`). Linux navigates only via `browser goto` / links — a human cannot type a URL into a pane |
-| Pane zoom ("focus mode") | ❌ | macOS `toggleSplitZoom` ("Toggle Pane Zoom", `TabManager.toggleSplitZoom`) temporarily expands one pane to fill the workspace, tmux-style. Nothing equivalent on Linux |
+| Pane zoom ("focus mode") | ✅ | Ctrl+Shift+Z, toolbar button, and `cmux zoom-pane` / `pane.zoom` over the socket (macOS has the command but no socket verb). Zooming a *different* pane switches to it rather than un-zooming; deliberately not persisted |
 | Browser screencast (capture mode) | ❌ | macOS exposes `browser.screencast.start` / `.stop` over the socket — continuous frame capture, distinct from the one-shot `browser.screenshot` we have |
 | Browser tabs as a socket surface | ✅ | `browser.tab.list / new / switch / close` (2026-07-21), addressing the real per-pane tab model. `list` reports each tab's index **within its pane** plus `selected`/`focused`; `new` resolves its anchor the way macOS does (explicit pane → explicit surface → focused surface) |
 | Command palette | ❌ | |

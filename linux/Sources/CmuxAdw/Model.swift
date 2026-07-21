@@ -258,6 +258,11 @@ struct TerminalTab: Identifiable, Equatable {
     /// Set when an AI agent in this tab is waiting for input — the Linux
     /// equivalent of cmux's notification rings on macOS.
     var needsAttention: Bool
+    /// While set, this surface's pane fills the workspace and the rest of
+    /// the split tree is not built (macOS `toggleSplitZoom`). Deliberately
+    /// NOT persisted: zoom is a momentary "let me see this" state, and
+    /// restoring into it would hide panes the user forgot they had.
+    var zoomedSurfaceId: UUID?
 
     init(
         id: UUID = UUID(),
@@ -273,6 +278,7 @@ struct TerminalTab: Identifiable, Equatable {
         self.layout = .leaf(leaf)
         self.focusedSurfaceId = leaf.surfaceId
         self.needsAttention = needsAttention
+        self.zoomedSurfaceId = nil
     }
 
     /// The workspace's panes. Named `surfaces` historically, when a pane

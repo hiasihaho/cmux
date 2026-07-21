@@ -1537,6 +1537,25 @@ struct CMUXCLI {
                 }
             }
 
+        case "zoom-pane":
+            var params: [String: Any] = [:]
+            let (wsOpt, r1) = parseOption(commandArgs, name: "--workspace")
+            let (sfOpt, _) = parseOption(r1, name: "--surface")
+            if let wsOpt { params["workspace_id"] = try resolveWorkspaceId(wsOpt, client: client) }
+            if let sfOpt, let resolved = try normalizeSurfaceHandle(sfOpt, client: client) {
+                params["surface_id"] = resolved
+            } else if wsOpt == nil,
+                      let env = ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"],
+                      let resolved = try normalizeSurfaceHandle(env, client: client) {
+                params["surface_id"] = resolved
+            }
+            let payload = try client.sendV2(method: "pane.zoom", params: params)
+            if jsonOutput {
+                print(jsonString(formatIDs(payload, mode: idFormat)))
+            } else {
+                print(((payload["zoomed"] as? Bool) == true) ? "OK zoomed" : "OK unzoomed")
+            }
+
         case "capture-pane",
              "resize-pane",
              "pipe-pane",
@@ -6709,6 +6728,8 @@ struct CMUXCLI {
           resize-pane --pane <id|ref> [--workspace <id|ref>] (-L|-R|-U|-D) [--amount <n>]
           pipe-pane --command <shell-command> [--workspace <id|ref>] [--surface <id|ref>]
           wait-for [-S|--signal] <name> [--timeout <seconds>]
+          zoom-pane [--workspace <id|ref>] [--surface <id|ref>]
+            toggle a pane filling the workspace (Ctrl+Shift+Z)
           swap-pane --pane <id|ref> --target-pane <id|ref> [--workspace <id|ref>]
           break-pane [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--no-focus]
           join-pane --target-pane <id|ref> [--workspace <id|ref>] [--pane <id|ref>] [--surface <id|ref>] [--no-focus]

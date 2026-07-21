@@ -20,6 +20,7 @@ SUITES=(
     pane-search-smoke
     browser-find-smoke
     session-persistence-smoke
+    pane-zoom-smoke
 )
 
 if [ $# -gt 0 ]; then

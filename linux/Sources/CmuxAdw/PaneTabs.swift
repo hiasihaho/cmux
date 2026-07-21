@@ -296,3 +296,57 @@ let paneTabsClosePage: @convention(c) (
     state.onClosed(state.tabId, state.paneId, state.surfaceIds[index])
     return 1   // GDK_EVENT_STOP: the model drives the actual removal
 }
+
+// MARK: - pane.zoom
+
+extension ControlCommandHandler {
+
+    /// `pane.zoom` — mirrors macOS's "Toggle Pane Zoom" command. Exposed
+    /// over the socket as well as the shortcut so the feature is testable
+    /// without a screenshot, and so an agent can use it.
+    func v2PaneZoom(id: Any?, params: [String: Any]) -> String {
+        let registry = RefRegistry.shared
+        let surfaceId: UUID? = (params["surface_id"] as? String)
+            .flatMap { UUID(uuidString: $0) ?? registry.resolve($0) }
+        let wsId = (params["workspace_id"] as? String)
+            .flatMap { UUID(uuidString: $0) ?? registry.resolve($0) }
+            ?? surfaceId.flatMap { sid in tabs.wrappedValue.first { $0.contains(surfaceId: sid) }?.id }
+            ?? selection.wrappedValue
+        guard let tab = tabs.wrappedValue.first(where: { $0.id == wsId }) else {
+            return v2ZoomError(id: id, code: "not_found", message: "Workspace not found")
+        }
+        guard let zoomed = toggleZoom(tabId: tab.id, surfaceId: surfaceId) else {
+            // Nil means it un-zoomed; distinguish that from "no such pane".
+            guard tab.focusedSurface != nil else {
+                return v2ZoomError(id: id, code: "not_found", message: "Pane not found")
+            }
+            return v2ZoomOk(id: id, result: [
+                "workspace_id": tab.id.uuidString,
+                "workspace_ref": registry.ref(kind: "workspace", uuid: tab.id),
+                "zoomed": false
+            ])
+        }
+        return v2ZoomOk(id: id, result: [
+            "workspace_id": tab.id.uuidString,
+            "workspace_ref": registry.ref(kind: "workspace", uuid: tab.id),
+            "surface_id": zoomed.uuidString,
+            "surface_ref": registry.ref(kind: "surface", uuid: zoomed),
+            "zoomed": true
+        ])
+    }
+
+    fileprivate func v2ZoomOk(id: Any?, result: [String: Any]) -> String {
+        v2ZoomEncode(["id": id ?? NSNull(), "ok": true, "result": result])
+    }
+    fileprivate func v2ZoomError(id: Any?, code: String, message: String) -> String {
+        v2ZoomEncode(["id": id ?? NSNull(), "ok": false, "error": ["code": code, "message": message]])
+    }
+    fileprivate func v2ZoomEncode(_ object: [String: Any]) -> String {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object),
+              let string = String(data: data, encoding: .utf8) else {
+            return "{\"ok\":false,\"error\":{\"code\":\"encode_error\",\"message\":\"Failed to encode JSON\"}}"
+        }
+        return string.replacingOccurrences(of: "\n", with: "\\n")
+    }
+}

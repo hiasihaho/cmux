@@ -443,6 +443,8 @@ struct ControlCommandHandler {
             return v2PaneFocus(id: id, params: params)
         case "pane.surfaces":
             return v2PaneSurfaces(id: id, params: params)
+        case "pane.zoom":
+            return v2PaneZoom(id: id, params: params)
         case "browser.open_split":
             return v2BrowserOpenSplit(id: id, params: params)
         case "browser.tab.list":
@@ -924,6 +926,24 @@ struct ControlCommandHandler {
             tabs.wrappedValue[index].focusedSurfaceId = surface.surfaceId
         }
         return surface.surfaceId
+    }
+
+    /// Toggles pane zoom (macOS `toggleSplitZoom`): the target's pane
+    /// fills the workspace, or returns to the split tree if it already
+    /// does. Zooming a different pane while one is zoomed switches to it
+    /// rather than un-zooming, which is what "zoom this one" means.
+    @discardableResult
+    func toggleZoom(tabId: UUID, surfaceId: UUID?) -> UUID? {
+        guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }) else { return nil }
+        let target = surfaceId ?? tabs.wrappedValue[index].focusedSurface?.surfaceId
+        guard let target, tabs.wrappedValue[index].contains(surfaceId: target) else { return nil }
+        let current = tabs.wrappedValue[index].zoomedSurfaceId
+        let zoomed = (current != nil && tabs.wrappedValue[index]
+            .panes.first { $0.contains(surfaceId: target) }?
+            .contains(surfaceId: current!) == true) ? nil : target
+        tabs.wrappedValue[index].zoomedSurfaceId = zoomed
+        if zoomed != nil { tabs.wrappedValue[index].focusedSurfaceId = target }
+        return zoomed
     }
 
     /// A tab strip changed selection.

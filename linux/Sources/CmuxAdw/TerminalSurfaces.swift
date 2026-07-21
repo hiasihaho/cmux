@@ -271,7 +271,10 @@ struct TerminalStackWidget: AdwaitaWidget {
 
         // (Re)build pane skeletons where the layout shape changed.
         for tab in tabs {
+            // Zoom changes which widgets are in the tree, so it belongs in
+            // the signature or toggling would not rebuild.
             let signature = tab.layout.shapeSignature
+                + "|zoom:" + (tab.zoomedSurfaceId?.uuidString ?? "-")
             let existing = gtk_stack_get_child_by_name(stack, tab.id.uuidString)
             guard shapes[tab.id] != signature || existing == nil else { continue }
 
@@ -307,7 +310,20 @@ struct TerminalStackWidget: AdwaitaWidget {
                OpaquePointer(parent) == stack {
                 gtk_stack_remove(stack, existing)
             }
-            if let root = buildNode(tab.layout, tabId: tab.id) {
+            // Zoomed: build only that pane. The other containers stay
+            // unparented but alive (the registry holds strong refs), so
+            // un-zooming puts them back rather than respawning them.
+            let rootNode: UnsafeMutablePointer<GtkWidget>?
+            if let zoomed = tab.zoomedSurfaceId,
+               let pane = tab.panes.first(where: { $0.contains(surfaceId: zoomed) }) {
+                rootNode = PaneTabs.build(
+                    pane: pane, tabId: tab.id,
+                    onSelected: onTabSelected, onClosed: onTabClosed
+                )
+            } else {
+                rootNode = buildNode(tab.layout, tabId: tab.id)
+            }
+            if let root = rootNode {
                 gtk_stack_add_named(stack, root, tab.id.uuidString)
                 restoreDividerPositions(root, path: "", from: dividers)
                 balanceFreshDividers(root, path: "", restored: dividers, tabId: tab.id)

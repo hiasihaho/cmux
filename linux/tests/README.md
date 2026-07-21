@@ -34,6 +34,7 @@ success.
 | [`run-all.sh`](run-all.sh) | Runs every suite sequentially and summarizes; separates failures from setup errors |
 | [`lib.sh`](lib.sh) | Shared setup/teardown, Xvfb, assertions, `screenshot`, `wait_for_shell` |
 | [`webdriver-smoke.sh`](webdriver-smoke.sh) | The whole WebDriver stack: automation opt-in, attach mode, split adoption, trusted input, and cmux+WebDriver sharing one surface — plus a live strict-CSP run against github.com |
+| [`pane-zoom-smoke.sh`](pane-zoom-smoke.sh) | Pane zoom: geometry, toggle, switching panes, not persisted, screenshot |
 | [`session-persistence-smoke.sh`](session-persistence-smoke.sh) | Schema v3: v2 migration, multi-tab panes round-tripping as tabs, selected tab, browser URLs, navigable restored history |
 | [`browser-find-smoke.sh`](browser-find-smoke.sh) | Find-in-page: counts, next/previous wrap, case sensitivity, no-match recovery |
 | [`find-probe.c`](find-probe.c) | Standalone probe for WebKitFindController signal semantics |
