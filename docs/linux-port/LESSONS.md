@@ -111,6 +111,49 @@ PORTING or INSIDE-CMUX — not here.
   responsibility once the work actually succeeded; otherwise decline and
   let the library keep its fallback.
 
+## The verification loop that worked
+
+Six features shipped on 2026-07-21 (navigation barrier, screenshot fixes,
+Web Inspector pane, popup routing, cross-pane search, find-in-page,
+per-pane tabs). Every one of them had a real bug caught before or shortly
+after landing, and the same five-step loop caught them. It is written
+down because the order matters more than any individual step.
+
+1. **Probe the API in isolation first.** A throwaway C harness against the
+   real library, answering the questions the docs do not:
+   `inspector-probe.c`, `popup-probe.c`, `find-probe.c`. Each one
+   invalidated an assumption that would otherwise have shipped —
+   `get_web_view()` is NULL outside its signal;
+   `new_with_related_view` no longer exists;
+   `found-text` reports the total only on the first search.
+   **But see the caveat in LESSONS: a probe tells you what an API does in
+   the probe's environment.** The inspector probe's answer did not
+   transfer into the pane tree.
+2. **Add a socket verb, even for a UI feature.** This is the step that is
+   easy to skip and pays the most. `browser.inspect` and
+   `browser.find_in_page` made GTK widgets *machine-checkable*; both
+   promptly exposed stale-state bugs (`attached: false`; "1 of 3" for a
+   query with no matches) that the UI would have hidden. It also means an
+   agent and the human drive the same code path rather than two.
+3. **Write a regression suite with proven discriminating power.** Not
+   "it passed" but "it would have failed before the fix" — the popup suite
+   prints the pre-fix behaviour's failure count alongside the fixed one.
+4. **Ask the human for the pixels.** Screen capture is not available to
+   the agent here (see the memory note), and twice the programmatic checks
+   reported success while the screenshot showed an empty inspector pane and
+   unusably cramped popup panes. Numbers cannot see layout.
+5. **Re-run every suite, not just the new one.** These features share
+   `adoptBrowserSplit`, the surface factory and the pane container. The
+   tab refactor legitimately broke four popup assertions — which is a
+   signal to *update the test deliberately*, stating that the behaviour
+   changed, not to quietly make it pass.
+
+Then document, and correct the overclaims: three separate FEATURES.md
+entries were written as "beyond macOS" and demoted to parity after
+actually checking `Sources/` — macOS has DevTools, popup routing and
+per-pane find. The check takes a minute; the wrong claim survives for
+years.
+
 ## On dogfooding
 
 - **Exploratory agents answer a different question than regression
