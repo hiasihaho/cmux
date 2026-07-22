@@ -2589,3 +2589,21 @@ kind is worth a capabilities sweep against the merged CLI at some point.
 
 ui-commands-smoke.sh: 8 assertions, all keyboard paths driven by real
 xdotool keystrokes.
+
+### promote.sh: the binary-promotion checkpoint, wrapped (2026-07-22)
+
+Promotion used to be a hand-run ritual (verify on dev, announce, human
+restarts). `linux/scripts/promote.sh` wraps it: build → optional suite
+(`--test` refuses to promote a red build) → force a `session.save` (new
+socket verb with final-save semantics, so scrollback is captured
+unthrottled even though the stop is a SIGTERM, which never runs the
+close-request exit save) → stop the target by environ match → start via
+start.sh. Restore brings everything back; `claude --continue` resumes
+the session.
+
+Self-hosting guard: the script identifies the shell's own instance by
+socket and refuses to promote the instance it lives in — tested both
+ways (simulated inside-dev shell refused; this session's real shell
+would be refused for daily). `--slot dev2` runs the identical code path
+against a disposable instance, which is how the script itself was
+verified end-to-end (marker survived the promote).

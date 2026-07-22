@@ -17,9 +17,13 @@ hosting you is `linux/.build/debug/cmux-adw`.
   running app is unaffected.
 - **Binary promotion protocol**: new binaries are verified on an isolated
   dev instance (below). Promoting to the daily instance requires a restart —
-  that is a *user-approved checkpoint*: announce it, let the human close and
-  relaunch (session persistence restores the layout; `claude --continue` in
-  the pane resumes you), never force it.
+  that is a *user-approved checkpoint*: announce it, never force it. The
+  wrapped flow is `linux/scripts/promote.sh` (run it from a dev pane or a
+  plain terminal — it refuses to run from inside the instance it kills):
+  forces a `session.save` (final-save semantics), stops the daily, starts
+  it on the new binary; session restore brings the layout and scrollback
+  back, `claude --continue` resumes the session. `--slot dev2` exercises
+  the same code path against a disposable instance.
 
 ## The isolated dev instance
 

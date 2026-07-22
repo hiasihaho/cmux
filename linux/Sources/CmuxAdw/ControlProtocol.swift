@@ -363,6 +363,7 @@ struct ControlCommandHandler {
                     "surface.list", "surface.create", "surface.send_text",
                     "surface.send_key", "surface.read_text", "surface.split",
                     "surface.close", "surface.focus", "surface.trigger_flash",
+                    "session.save",
                     "pane.create", "pane.list", "pane.focus", "pane.surfaces",
                     "browser.open_split", "browser.navigate", "browser.url.get",
                     "browser.back", "browser.forward", "browser.reload",
@@ -443,6 +444,8 @@ struct ControlCommandHandler {
             return v2PaneFocus(id: id, params: params)
         case "surface.focus":
             return v2SurfaceFocus(id: id, params: params)
+        case "session.save":
+            return v2SessionSave(id: id)
         case "surface.trigger_flash":
             return v2SurfaceTriggerFlash(id: id, params: params)
         case "pane.surfaces":
@@ -1360,6 +1363,21 @@ struct ControlCommandHandler {
     }
 
     // MARK: v2 envelope helpers
+
+    /// Forces a full session save with final-save semantics (scrollback
+    /// read unthrottled). The promotion script calls this before
+    /// restarting the daily instance, so a scripted restart loses nothing
+    /// even on binaries whose close path predates the exit save.
+    private func v2SessionSave(id: Any?) -> String {
+        SessionStore.isFinalSave = true
+        SessionStore.saveIfChanged(
+            tabs: tabs.wrappedValue,
+            selection: selection.wrappedValue,
+            tabCounter: tabCounter.wrappedValue
+        )
+        SessionStore.isFinalSave = false
+        return v2Ok(id: id, result: ["saved": true])
+    }
 
     func v2Ok(id: Any?, result: [String: Any]) -> String {
         v2Encode(["id": id ?? NSNull(), "ok": true, "result": result])
