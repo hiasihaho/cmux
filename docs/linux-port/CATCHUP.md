@@ -268,6 +268,12 @@ linux/scripts/dogfood.sh "focus…" [min]      # QA agent cycle (CMUX_SOCKET_PAT
 - **CONCEPTS.md** — how cmux is *meant*: the official-docs
   distillation (crawled 2026-07-22 via the port's own browser stack);
   read before deciding whether/how to build a macOS feature.
+- **kb/** — the deep knowledge base (docs + guides + 15 blog posts +
+  changelog, crawled 2026-07-22 by an agent driving the port's own
+  browser): per-topic distillations incl. `claude-with-cmux.md` (the
+  intended Claude workflow), `tmux-compat.md` (shim↔verb↔port table),
+  full config schema, notification contract, resume matrix. Start at
+  `kb/INDEX.md`.
 - **UX-PARITY.md** — how it looks and feels vs macOS (dual code survey
   2026-07-22): per-surface verdicts (✅/🎨/❓/❌), decision queue,
   recorded decisions. Update in the same commit as any visible UI
