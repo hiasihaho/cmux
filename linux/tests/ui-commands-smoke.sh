@@ -199,4 +199,50 @@ echo "$hl_missing" | grep -q "not found" \
     || bad "highlight missing" "$hl_missing"
 expect "find-in-page still works under its own name" "1 of 1" "$(cx browser --surface "$B2" find-in-page press 2>&1 | head -1)"
 
+# ------------------------------- GAPS batch 4: surface.move / reorder
+info "gaps batch 4: move-surface and reorder-surface"
+# The T pane currently has 1 surface; give it a second, then reorder.
+cx tab-action --action new-browser-right --surface "$T" --url about:blank >/dev/null 2>&1; sleep 2
+order_before=$(cx --json list-panes --workspace "$WS" | python3 -c '
+import json,sys
+for p in json.load(sys.stdin)["panes"]:
+    if len(p["surface_refs"]) > 1: print(",".join(p["surface_refs"])); break')
+cx reorder-surface --surface "$T" --index 1 >/dev/null 2>&1; sleep 1
+order_after=$(cx --json list-panes --workspace "$WS" | python3 -c '
+import json,sys
+for p in json.load(sys.stdin)["panes"]:
+    if len(p["surface_refs"]) > 1: print(",".join(p["surface_refs"])); break')
+[ -n "$order_before" ] && [ "$order_before" != "$order_after" ] \
+    && ok "reorder-surface changes the tab order ($order_before → $order_after)" \
+    || bad "surface.reorder" "order unchanged: $order_after"
+
+# Move the browser tab into the other pane of the split.
+MOVER=$(echo "$order_after" | tr ',' '\n' | grep -v "^$T$" | head -1)
+move_out=$(cx move-surface --surface "$MOVER" --pane "$RIGHT" 2>&1 | head -1)
+sleep 2
+now_in=$(cx --json list-panes --workspace "$WS" | python3 -c '
+import json,sys
+for p in json.load(sys.stdin)["panes"]:
+    if "'"$MOVER"'" in p["surface_refs"]: print(p["ref"]); break')
+expect "move-surface lands the tab in the target pane" "$RIGHT" "$now_in"
+
+# Cross-workspace: a LIVE terminal keeps running across the move.
+cx send --surface "$T" 'echo MOVE_SURVIVOR_XYZ\n' >/dev/null 2>&1; sleep 2
+move_ws_out=$(cx move-surface --surface "$T" --workspace "$WS2" 2>&1 | head -1)
+echo "        (move said: $move_ws_out)"
+sleep 2
+cx select-workspace --workspace "$WS2" >/dev/null 2>&1
+# Poll, don't sleep: the reparented surface needs a map + draw cycle,
+# and a fixed 3s flaked once under full-suite load.
+alive=0
+for _ in $(seq 1 20); do
+    alive=$(cx read-screen --surface "$T" 2>/dev/null | grep -c MOVE_SURVIVOR_XYZ)
+    [ "${alive:-0}" -ge 1 ] && break
+    sleep 0.5
+done
+[ "${alive:-0}" -ge 1 ] \
+    && ok "cross-workspace move keeps the terminal alive" \
+    || bad "surface.move cross-workspace" "marker gone after move"
+cx select-workspace --workspace "$WS" >/dev/null 2>&1; sleep 1
+
 finish

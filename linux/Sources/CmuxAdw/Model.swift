@@ -213,6 +213,50 @@ indirect enum PaneNode: Equatable {
         }
     }
 
+    /// Inserts a surface into the pane `paneId` at `index` (clamped;
+    /// nil = end) and selects it — surface.move's insertion half.
+    func addingTab(_ surface: PaneSurface, toPane paneId: UUID, at index: Int?) -> PaneNode? {
+        switch self {
+        case .leaf(var leaf):
+            guard leaf.paneId == paneId else { return nil }
+            let position = min(max(index ?? leaf.surfaces.count, 0), leaf.surfaces.count)
+            leaf.surfaces.insert(surface, at: position)
+            leaf.selectedIndex = position
+            return .leaf(leaf)
+        case .split(let orientation, let first, let second):
+            if let replaced = first.addingTab(surface, toPane: paneId, at: index) {
+                return .split(orientation: orientation, first: replaced, second: second)
+            }
+            if let replaced = second.addingTab(surface, toPane: paneId, at: index) {
+                return .split(orientation: orientation, first: first, second: replaced)
+            }
+            return nil
+        }
+    }
+
+    /// Moves `surfaceId` to `index` within its own pane's tab list
+    /// (clamped) — surface.reorder. Selection follows the moved surface.
+    func reorderingTab(surfaceId: UUID, to index: Int) -> PaneNode? {
+        switch self {
+        case .leaf(var leaf):
+            guard let from = leaf.surfaces.firstIndex(where: { $0.surfaceId == surfaceId })
+            else { return nil }
+            let surface = leaf.surfaces.remove(at: from)
+            let position = min(max(index, 0), leaf.surfaces.count)
+            leaf.surfaces.insert(surface, at: position)
+            leaf.selectedIndex = position
+            return .leaf(leaf)
+        case .split(let orientation, let first, let second):
+            if let replaced = first.reorderingTab(surfaceId: surfaceId, to: index) {
+                return .split(orientation: orientation, first: replaced, second: second)
+            }
+            if let replaced = second.reorderingTab(surfaceId: surfaceId, to: index) {
+                return .split(orientation: orientation, first: first, second: replaced)
+            }
+            return nil
+        }
+    }
+
     /// Removes the leaf holding `surfaceId`; the sibling subtree takes the
     /// removed node's place. Returns nil when this node itself disappears.
     ///

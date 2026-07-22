@@ -2711,3 +2711,22 @@ first. Dropping the alias un-shadowed upstream's subcommand; the server
 side is a fifteen-line entry in the existing selector-verb envelope (2s
 outline), which contributed the retry and not-found diagnostics for
 free. UPSTREAM.md §4c flags the CLI fix for the next upstream PR.
+
+### GAPS batch 4: surface.move + surface.reorder (2026-07-22)
+
+The `/cmux` skill's fast-start verbs. Both are pure model mutations —
+`reorderingTab` and `addingTab(toPane:at:)` in the layout tree — because
+the pane-tab reconciliation already does all the widget work: it closes
+the page on the source strip (isReconciling guards the surface), and
+unparent-appends the SAME container on the target strip. That reuse is
+why a cross-workspace move keeps the terminal running: the suite sends a
+marker, moves the pane to another workspace, selects it, and reads the
+marker back through the same shell process. Position resolution
+(index/before/after) is shared between the two verbs and computed
+against the list without the moving surface (standard move semantics).
+Moving the last surface out of a workspace closes it — after the insert
+has safely landed.
+
+One suite lesson re-learned: "poll, don't sleep" — the cross-workspace
+assertion flaked once at a fixed 3s under full-suite load; the
+reparented surface needs a map+draw cycle before read-screen sees it.

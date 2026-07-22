@@ -410,6 +410,7 @@ struct ControlCommandHandler {
                     "surface.close", "surface.focus", "surface.trigger_flash",
                     "session.save", "settings.open", "system.tree",
                     "pane.last", "surface.clear_history", "tab.action",
+                    "surface.reorder", "surface.move",
                     "notification.jump_to_unread", "notification.mark_read",
                     "notification.dismiss", "notification.open",
                     "window.current", "window.focus", "browser.zoom.set",
@@ -504,6 +505,10 @@ struct ControlCommandHandler {
             return v2SurfaceClearHistory(id: id, params: params)
         case "tab.action", "surface.action":
             return v2TabAction(id: id, params: params)
+        case "surface.reorder":
+            return v2SurfaceReorder(id: id, params: params)
+        case "surface.move":
+            return v2SurfaceMove(id: id, params: params)
         case "notification.jump_to_unread":
             return v2NotificationJumpToUnread(id: id)
         case "notification.mark_read":
@@ -1061,6 +1066,148 @@ struct ControlCommandHandler {
             return v2Error(id: id, code: "invalid_params", message: "Unknown tab action")
         }
         return v2Ok(id: id, result: result)
+    }
+
+    /// Shared position resolution for reorder/move: explicit `index`, or
+    /// relative to a reference surface in the TARGET pane. Positions are
+    /// computed against the list WITHOUT the moving surface (standard
+    /// move-semantics: remove first, then insert).
+    private func resolveTabPosition(
+        params: [String: Any], in pane: PaneLeaf, excluding moving: UUID
+    ) -> Int? {
+        let remaining = pane.surfaces.filter { $0.surfaceId != moving }
+        if let index = params["index"] as? Int {
+            return min(max(index, 0), remaining.count)
+        }
+        func position(of raw: String?, offset: Int) -> Int? {
+            guard let raw,
+                  let refId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw),
+                  let at = remaining.firstIndex(where: { $0.surfaceId == refId }) else { return nil }
+            return at + offset
+        }
+        if let before = position(of: params["before_surface_id"] as? String, offset: 0) { return before }
+        if let after = position(of: params["after_surface_id"] as? String, offset: 1) { return after }
+        return nil
+    }
+
+    private func v2SurfaceReorder(id: Any?, params: [String: Any]) -> String {
+        guard let raw = params["surface_id"] as? String,
+              let surfaceId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw),
+              let tab = tabs.wrappedValue.first(where: { $0.contains(surfaceId: surfaceId) }),
+              let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id }),
+              let pane = tab.panes.first(where: { p in p.surfaces.contains { $0.surfaceId == surfaceId } })
+        else {
+            return v2Error(id: id, code: "not_found", message: "Surface not found")
+        }
+        guard let position = resolveTabPosition(params: params, in: pane, excluding: surfaceId) else {
+            return v2Error(id: id, code: "invalid_params", message: "reorder requires index, before, or after")
+        }
+        guard let layout = tabs.wrappedValue[index].layout
+            .reorderingTab(surfaceId: surfaceId, to: position) else {
+            return v2Error(id: id, code: "internal_error", message: "Reorder failed")
+        }
+        tabs.wrappedValue[index].layout = layout
+        return v2Ok(id: id, result: [
+            "workspace_id": tab.id.uuidString,
+            "surface_id": surfaceId.uuidString,
+            "pane_id": pane.paneId.uuidString,
+            "index": position,
+        ])
+    }
+
+    /// Moves a surface (tab) into another pane — possibly in another
+    /// workspace. Purely a model mutation: the pane-tab reconciliation
+    /// closes the page on the source strip (isReconciling guards the
+    /// surface itself) and unparent-appends the SAME container on the
+    /// target strip, so the terminal or browser keeps running across the
+    /// move.
+    private func v2SurfaceMove(id: Any?, params: [String: Any]) -> String {
+        guard let raw = params["surface_id"] as? String,
+              let surfaceId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw),
+              let sourceTab = tabs.wrappedValue.first(where: { $0.contains(surfaceId: surfaceId) }),
+              let sourceIndex = tabs.wrappedValue.firstIndex(where: { $0.id == sourceTab.id }),
+              let sourcePane = sourceTab.panes.first(where: { p in p.surfaces.contains { $0.surfaceId == surfaceId } }),
+              let surface = sourcePane.surfaces.first(where: { $0.surfaceId == surfaceId })
+        else {
+            return v2Error(id: id, code: "not_found", message: "Surface not found")
+        }
+
+        // Target pane: explicit pane_id, else the target workspace's
+        // focused pane.
+        var targetTabIndex: Int?
+        var targetPane: PaneLeaf?
+        if let paneRaw = params["pane_id"] as? String,
+           let paneId = UUID(uuidString: paneRaw) ?? RefRegistry.shared.resolve(paneRaw) {
+            for (tabIdx, tab) in tabs.wrappedValue.enumerated() {
+                if let pane = tab.panes.first(where: { $0.paneId == paneId }) {
+                    targetTabIndex = tabIdx
+                    targetPane = pane
+                    break
+                }
+            }
+        } else if let wsId = v2WorkspaceUUID(params),
+                  let tabIdx = tabs.wrappedValue.firstIndex(where: { $0.id == wsId }) {
+            let tab = tabs.wrappedValue[tabIdx]
+            targetTabIndex = tabIdx
+            targetPane = tab.panes.first { p in
+                p.surfaces.contains { $0.surfaceId == tab.focusedSurfaceId }
+            } ?? tab.panes.first
+        }
+        guard let targetTabIndex, let targetPane else {
+            return v2Error(id: id, code: "invalid_params", message: "move requires a target pane or workspace")
+        }
+
+        if targetPane.paneId == sourcePane.paneId {
+            // Same pane: this is a reorder.
+            return v2SurfaceReorder(id: id, params: params)
+        }
+        let position = resolveTabPosition(params: params, in: targetPane, excluding: surfaceId)
+
+        // Remove from the source. nil = the source workspace has no panes
+        // left; it closes after the surface is safely inserted elsewhere.
+        let sourceRemainder = tabs.wrappedValue[sourceIndex].layout.removing(surfaceId: surfaceId)
+        if sourceIndex == targetTabIndex {
+            guard let sourceRemainder,
+                  let layout = sourceRemainder.addingTab(surface, toPane: targetPane.paneId, at: position) else {
+                return v2Error(id: id, code: "internal_error", message: "Move failed")
+            }
+            tabs.wrappedValue[sourceIndex].layout = layout
+        } else {
+            guard let targetLayout = tabs.wrappedValue[targetTabIndex].layout
+                .addingTab(surface, toPane: targetPane.paneId, at: position) else {
+                return v2Error(id: id, code: "internal_error", message: "Move failed")
+            }
+            tabs.wrappedValue[targetTabIndex].layout = targetLayout
+            if let sourceRemainder {
+                tabs.wrappedValue[sourceIndex].layout = sourceRemainder
+                // The moved surface may have been the source's focus.
+                if tabs.wrappedValue[sourceIndex].focusedSurfaceId == surfaceId,
+                   let fallback = tabs.wrappedValue[sourceIndex].panes.first?.selected.surfaceId {
+                    tabs.wrappedValue[sourceIndex].focusedSurfaceId = fallback
+                }
+            } else {
+                // Moving the last surface out empties the workspace.
+                removeWorkspace(at: sourceIndex)
+            }
+        }
+
+        let registry = RefRegistry.shared
+        let targetTabId = tabs.wrappedValue.first { $0.contains(surfaceId: surfaceId) }?.id
+        if (params["focus"] as? Bool) == true, let targetTabId {
+            if selection.wrappedValue != targetTabId { select(targetTabId) }
+            if let idx = tabs.wrappedValue.firstIndex(where: { $0.id == targetTabId }) {
+                tabs.wrappedValue[idx].focusedSurfaceId = surfaceId
+            }
+        }
+        refreshTitle(tabId: targetTabId ?? sourceTab.id)
+        return v2Ok(id: id, result: [
+            "workspace_id": (targetTabId ?? sourceTab.id).uuidString,
+            "workspace_ref": registry.ref(kind: "workspace", uuid: targetTabId ?? sourceTab.id),
+            "surface_id": surfaceId.uuidString,
+            "surface_ref": registry.ref(kind: "surface", uuid: surfaceId),
+            "pane_id": targetPane.paneId.uuidString,
+            "pane_ref": registry.ref(kind: "pane", uuid: targetPane.paneId),
+        ])
     }
 
     private func v2PaneFocus(id: Any?, params: [String: Any]) -> String {

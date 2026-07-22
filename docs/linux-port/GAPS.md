@@ -28,7 +28,6 @@ Effort: **S** ≤ half a session · **M** one session · **L** multi-session.
 
 | Gap | Symptom / value | Source | Effort |
 |---|---|---|---|
-| `surface.move` / `surface.reorder` | `cmux move-surface` / `reorder-surface` error — the `/cmux` skill's fast-start uses both; agents moving tabs between panes hit it | sweep + skill-walk | M |
 | `pane.resize` | `cmux resize-pane -L/-R/-U/-D` errors; PaneDividers already owns positions | sweep-v2 | M |
 | `pane.swap` / `pane.break` / `pane.join` | tmux-compat commands in our own CLI help; break/join = move a surface out of / into a pane, swap = exchange two panes' content | sweep-v2 | M |
 | `surface.respawn` | `cmux respawn-pane` errors; needs kill+restart of the shell in the same pane (both backends) | sweep-v2 | M |
