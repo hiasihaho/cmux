@@ -71,6 +71,15 @@ pages on same-id widget replacement. GHOSTTY-SHIM.md increment 3 has
 the C API; the shim branch is `linux-gtk-embed` (fork
 hiasihaho/ghostty).
 
+**Done 2026-07-22 (late): CLAUDE CODE AGENT TEAMS WORKS ON LINUX** —
+a real teammate spawned as a native split, full lifecycle verified
+(PARITY row, PROGRESS story, `tmux-compat-smoke.sh` guard). Two server
+additions did it: `surface.current` + identify's `focused` block. Also
+that session: the JS console (`browser.console.show`, Ctrl+Shift+J) and
+a second shared-CLI shadowing find (UPSTREAM §4d). Gate: 13 suites,
+163 assertions green. All of it reaches the daily at the next
+`promote.sh --no-build`.
+
 **The resume path** (rows in GAPS *Now* with full detail):
 
 1. ✅ **Browser JS console** — DONE 2026-07-22 late (`browser.console.show`,

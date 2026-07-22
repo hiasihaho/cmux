@@ -48,6 +48,13 @@ PARITY.md as of 2026-07-22.
 | `has-session` (`has`) / `show-options` (`show`) / `select-layout` | answered/absorbed client-side | ✅ (CLI-local) |
 | `set-option`, `set-window-option`, `source-file`, `refresh-client`, `attach-session`, `detach-client` | accepted as **no-ops** | ✅ (no-op) |
 
+**VERIFIED 2026-07-22 (late):** a real `cmux claude-teams` run on the port
+spawned a teammate as a native split, captured its output, and shut it
+down cleanly. Two server additions were needed beyond this table:
+`surface.current` and `system.identify`'s `focused` block (PARITY, and
+`linux/tests/tmux-compat-smoke.sh`). The historical prediction below
+stands confirmed.
+
 **Implication for the port:** every socket verb the shim needs exists on Linux.
 The launchers (`cmux claude-teams`, `codex-teams`, `omc`, `omo`, `omx`) and
 `__tmux-compat` itself are shared-CLI code that already compiles on Linux —

@@ -53,6 +53,7 @@ SUITES=(
     vte-scrollback-smoke
     settings-smoke
     ui-commands-smoke
+    tmux-compat-smoke
 )
 
 if [ $# -gt 0 ]; then

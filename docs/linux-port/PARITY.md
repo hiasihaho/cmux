@@ -99,6 +99,9 @@ are implemented on both**, 47 are macOS-only, and a further 29 macOS
 | Method | Status | Notes |
 |---|---|---|
 | notification.create / list / clear | ✅ | + desktop delivery, withdraw on workspace close |
+| **Claude Code agent teams** (`cmux claude-teams` + tmux shim) | ✅ | end-to-end verified 2026-07-22: a real Claude teammate spawned as a native split, ran its command, was captured and shut down. The launchers and `__tmux-compat` are shared-CLI code; the server side needed exactly two additions — `surface.current` and the `focused` block in `system.identify` (the launcher builds the shim's TMUX identity from it; without it spawns die with "Could not determine current tmux pane/window"). Guarded by `tmux-compat-smoke.sh`. codex-teams / omc / omo / omx ride the same surface, unverified individually |
+| surface.current | ✅ | macOS wire shape (window/workspace/pane/surface ids + refs + surface_type); the tmux shim resolves every list/target/send through it |
+| system.identify `focused` block | ✅ | macOS's exact envelope, additive next to the port's flat fields |
 | notification.create_for_caller / jump_to_unread / mark_read / dismiss / open | ✅ | the 2026-07-22 capabilities sweep: upstream's CLI sends these for notify/jump-to-unread/mark-notification-read/dismiss-notification/open-notification |
 | settings.open / browser.zoom.set / browser.devtools.toggle / window.current | ✅ | sweep fixes — devtools.toggle aliases browser.inspect |
 | browser.console.show | ✅ | `browser devtools console` + Ctrl+Shift+J (2026-07-22). macOS flips WebKit's inspector to its Console tab via private selectors; WebKitGTK has no public tab flip (the inspector widget is not a WebKitWebView), so the Linux contract is "DevTools pane exists and is focused" — creates the split once, focuses on repeat calls (unlike browser.inspect, which always splits). Esc inside the inspector toggles the quick console on any tab |

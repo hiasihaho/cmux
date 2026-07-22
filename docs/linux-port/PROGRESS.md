@@ -3030,3 +3030,34 @@ resurfaced in passing: the list-panes-after-restore watch-list quirk
 
 ui-commands-smoke grew three assertions (creates once / focuses
 thereafter / verb answers OK): 42 in the suite.
+
+### Claude Code agent teams runs on the Linux port (2026-07-22, late)
+
+The kb prediction ("nearly free") held. The staged probe:
+
+1. **Zero-cost shim probe** — `cmux claude-teams --version` proved the
+   wrapper + shim write work on Linux; driving `cmux __tmux-compat`
+   directly from a pane found the mutating verbs (split-window,
+   new-window) already working and everything else failing on ONE
+   missing verb: `surface.current`. Implemented in macOS's wire shape;
+   full round trip green (list-panes/send-keys/capture-pane/kill-pane).
+2. **The real run then failed differently** — Claude's harness died
+   with "Could not determine current tmux pane/window". A traced shim
+   showed the env was `default,0,0` / `%1`: the launcher builds the
+   shim's TMUX identity from `system.identify`'s `focused` block, and
+   the port's identify was flat — no focused block at all. Added in
+   macOS's exact envelope (additive; flat fields kept).
+3. **Second real run: complete lifecycle in ~30s.** Teammate spawned as
+   a native split five seconds after launch, both panes carrying live
+   OSC mission titles ("⠐ Spawn teammate…" / "⠐ Run shell command…"),
+   marker echoed, lead captured it via capture-pane, kill-pane closed
+   the split, lead reported success and idled.
+
+Traps recorded: (a) the launcher owns `~/.cmuxterm/claude-teams-bin/` —
+hand-editing the shim there breaks the next launch with a Cocoa
+file-exists error; delete the dir and let it regenerate. (b) The
+`--dangerously-skip-permissions` confirmation dialog must be answered
+in-pane before anything happens — a headless driver has to send "2\n".
+
+`tmux-compat-smoke.sh` (5 assertions) pins both server contracts and
+the in-pane round trip, Claude-free. 13 suites, 163 assertions green.

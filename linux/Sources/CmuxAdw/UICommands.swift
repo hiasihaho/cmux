@@ -149,6 +149,49 @@ extension ControlCommandHandler {
         ])
     }
 
+    // MARK: surface.current (the tmux shim's pane resolver)
+
+    /// Mirrors macOS `surfaceCurrent` (ControlCommandCoordinator+Surface):
+    /// the focused surface of the addressed workspace, full ref envelope.
+    /// The tmux-compat shim calls this before every list/target/send
+    /// operation, so its absence silently broke the entire read half of
+    /// `cmux claude-teams` on Linux while the mutating half (split-window,
+    /// new-window) worked — found by the 2026-07-22 shim probe.
+    func v2SurfaceCurrent(id: Any?, params: [String: Any]) -> String {
+        let wsId = (params["workspace_id"] as? String)
+            .flatMap { UUID(uuidString: $0) ?? RefRegistry.shared.resolve($0) }
+            ?? selection.wrappedValue
+        guard let tab = tabs.wrappedValue.first(where: { $0.id == wsId }) else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not found")
+        }
+        let registry = RefRegistry.shared
+        var result: [String: Any] = [
+            "window_id": ControlCommandHandler.windowId.uuidString,
+            "window_ref": registry.ref(kind: "window", uuid: ControlCommandHandler.windowId),
+            "workspace_id": tab.id.uuidString,
+            "workspace_ref": registry.ref(kind: "workspace", uuid: tab.id)
+        ]
+        if let leaf = tab.focusedSurface {
+            // The focused surface if the leaf really holds it; else the
+            // leaf's selected tab — same "current" the human sees.
+            let surfaceId = leaf.contains(surfaceId: tab.focusedSurfaceId)
+                ? tab.focusedSurfaceId : leaf.surfaceId
+            let kind = leaf.surfaces.first { $0.surfaceId == surfaceId }?.kind ?? leaf.kind
+            result["pane_id"] = leaf.paneId.uuidString
+            result["pane_ref"] = registry.ref(kind: "pane", uuid: leaf.paneId)
+            result["surface_id"] = surfaceId.uuidString
+            result["surface_ref"] = registry.ref(kind: "surface", uuid: surfaceId)
+            result["surface_type"] = kind.typeName
+        } else {
+            result["pane_id"] = NSNull()
+            result["pane_ref"] = NSNull()
+            result["surface_id"] = NSNull()
+            result["surface_ref"] = NSNull()
+            result["surface_type"] = NSNull()
+        }
+        return v2Ok(id: id, result: result)
+    }
+
     // MARK: verbs found missing by the capabilities sweep (quiet renames)
 
     func v2NotificationJumpToUnread(id: Any?) -> String {

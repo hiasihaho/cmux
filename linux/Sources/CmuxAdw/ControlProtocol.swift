@@ -412,7 +412,7 @@ struct ControlCommandHandler {
                     "workspace.next", "workspace.previous", "workspace.last",
                     "surface.list", "surface.create", "surface.send_text",
                     "surface.send_key", "surface.read_text", "surface.split",
-                    "surface.close", "surface.focus", "surface.trigger_flash",
+                    "surface.close", "surface.current", "surface.focus", "surface.trigger_flash",
                     "session.save", "settings.open", "system.tree",
                     "pane.last", "surface.clear_history", "tab.action",
                     "surface.reorder", "surface.move",
@@ -501,6 +501,8 @@ struct ControlCommandHandler {
             return v2PaneList(id: id, params: params)
         case "pane.focus":
             return v2PaneFocus(id: id, params: params)
+        case "surface.current":
+            return v2SurfaceCurrent(id: id, params: params)
         case "surface.focus":
             return v2SurfaceFocus(id: id, params: params)
         case "session.save":
@@ -648,6 +650,37 @@ struct ControlCommandHandler {
             if !caller.isEmpty {
                 result["caller"] = block
             }
+        }
+        // The `focused` block, in macOS's exact shape (`v2Identify` in
+        // TerminalController.swift): the selected workspace's focused pane
+        // and surface, with the full ref envelope. The claude-teams
+        // launcher reads focused.workspace_id + focused.pane_id to build
+        // the tmux shim's identity — without this block it silently fell
+        // back to a "default,0,0" fake TMUX env and every teammate spawn
+        // died with "Could not determine current tmux pane/window"
+        // (2026-07-22 teams probe). The flat fields above stay for
+        // existing Linux callers.
+        if let tab = tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue }) {
+            var focused: [String: Any] = [
+                "window_id": Self.windowId.uuidString,
+                "window_ref": registry.ref(kind: "window", uuid: Self.windowId),
+                "workspace_id": tab.id.uuidString,
+                "workspace_ref": registry.ref(kind: "workspace", uuid: tab.id)
+            ]
+            if let leaf = tab.focusedSurface {
+                let surfaceId = leaf.contains(surfaceId: tab.focusedSurfaceId)
+                    ? tab.focusedSurfaceId : leaf.surfaceId
+                let kind = leaf.surfaces.first { $0.surfaceId == surfaceId }?.kind ?? leaf.kind
+                focused["pane_id"] = leaf.paneId.uuidString
+                focused["pane_ref"] = registry.ref(kind: "pane", uuid: leaf.paneId)
+                focused["surface_id"] = surfaceId.uuidString
+                focused["surface_ref"] = registry.ref(kind: "surface", uuid: surfaceId)
+                focused["surface_type"] = kind.typeName
+                focused["is_browser_surface"] = kind.typeName == "browser"
+            }
+            result["focused"] = focused
+        } else {
+            result["focused"] = NSNull()
         }
         return v2Ok(id: id, result: result)
     }
