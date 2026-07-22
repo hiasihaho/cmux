@@ -28,7 +28,7 @@ Effort: **S** ≤ half a session · **M** one session · **L** multi-session.
 
 | Gap | Symptom / value | Source | Effort |
 |---|---|---|---|
-| Browser JS console pane | macOS `showBrowserJavaScriptConsole` opens a console directly (distinct from DevTools); `browser devtools console` sends `browser.console.show` | CATCHUP item 5 | M |
+| Browser JS console | macOS builds **no console UI** — it reveals WebKit's inspector and flips it to its Console tab via private selectors (UX survey 2026-07-22, `BrowserPanel.swift:6742`). Linux target: our DevTools split + console-tab activation on `WebKitWebInspector`; `browser devtools console` sends `browser.console.show` | CATCHUP item 5 + UX survey | S–M |
 | Bare Ghostty pane relocation respawns the shell | break/join (and move) of a never-tabbed Ghostty pane restarts its shell — cwd survives, scrollback and processes do not. Forensics 2026-07-22 (PROGRESS): container refcount reaches the parent's-last-ref state despite the registry's ref; one extra ref keeps the shell but leaks the io thread. Tabbed panes relocate safely (reconciliation path). Belongs to roadmap/05 lifecycle hardening; `debug.surfaces` is the probe | GAPS batch 5 | M |
 | Pane-tab drag-reorder desyncs the model | AdwTabBar lets the user drag tabs but no `page-reordered` handler updates the model — a drag silently diverges UI from model (reorder exists only as the `surface.reorder` verb). Wire the signal or disable the drag | UX survey 2026-07-22 | S |
 
@@ -42,6 +42,7 @@ binary all pass. Re-add to Now with a repro if it resurfaces.
 | Gap | Notes | Effort |
 |---|---|---|
 | Test-harness roadmap (remainder) | the four S-items landed 2026-07-22 (`run.sh` front door, freshness preflight, flake-hunter, assertion ledger); remaining: timing trend, interactive picker (deferred), `cmux doctor`, dual-backend ghostty gate, CI — inventory + invest-when rules in `linux/tests/README.md` §Harness roadmap | S–M each |
+| UX-parity ❌ cluster | from [UX-PARITY.md](UX-PARITY.md) 2026-07-22, no decision needed (missing, not deviations): unfocused-split dimming (the biggest orientation gap), GtkShortcutsWindow (Ctrl+?), notification card rows, surface-tab type icons, tab-bar end-action buttons, sidebar hover-close + context menu. The ❓ rows wait on the human's decision queue in that file | S each, batchable |
 | Ephemeral browser panes | `webkit_network_session_new_ephemeral`; roadmap/07 leftover | S |
 | OSC 777 / OSC 99 notification ingestion | docs promise both terminal notify protocols (docs/notifications); verify what the ghostty shim / VTE already surface, then wire to the notification store. Verify-first | docs crawl 2026-07-22 → CONCEPTS.md | S |
 | Agent-native session resume on restore | macOS hooks capture the agent's session id and restore relaunches `claude --resume <id>` (17 agents documented). The port restores shells only — this very session was resumed by hand-carrying ids in text files. `cmux hooks setup` exists in the merged CLI; server + restore side missing | docs crawl 2026-07-22 → CONCEPTS.md | M |
