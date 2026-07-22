@@ -75,6 +75,28 @@ struct ControlCommandHandler {
             return currentWorkspace()
         case "current_window":
             return ControlCommandHandler.windowId.uuidString
+        case "list_windows":
+            // Single window until the multi-window phase.
+            return "* 0: \(ControlCommandHandler.windowId.uuidString) cmux"
+        case "focus_window":
+            if let window = UIDialogs.mainWindowWidget() {
+                gtk_window_present(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self))
+            }
+            return "OK"
+        case "refresh_surfaces":
+            // The Linux view sync is continuous; there is no stale state to
+            // rebuild. OK keeps `cmux refresh-surfaces` scriptable.
+            return "OK"
+        case "reload_config":
+            // cmux.json is mtime-gated and re-read on every access, so
+            // invalidating the cache IS the reload. Ghostty's own config is
+            // read by the embedded surfaces at spawn — new terminals pick
+            // it up; live refresh of existing ones is shim work (TBD).
+            LinuxSettings.invalidate()
+            return "OK reloaded cmux.json (ghostty config applies to new terminals)"
+        case "notify_target_async":
+            // Same as notify_target; the CLI variant just does not wait.
+            return notifyTarget(args)
         case "close_workspace":
             return closeWorkspace(args)
         case "send":

@@ -48,6 +48,17 @@ for f in SERVER_FILES:
     served |= set(re.findall(r'method == "([a-z_][a-z0-9_.]*)"', src))
 
 missing = sorted(m for m in sent - served if "." in m)
+
+# The v1 dimension: verbs sent as plain socket lines (sendV1Command).
+# Found the hard way — `list-windows` and `reload-config` were quietly
+# broken while the v2-only sweep reported all clear.
+v1_sent = set()
+for f in glob.glob("CLI/*.swift"):
+    src = open(f).read()
+    v1_sent |= set(re.findall(r'sendV1Command\("([a-z_]+)', src))
+    v1_sent |= set(re.findall(r'socketCmd\s*=\s*"([a-z_]+)"', src))
+v1_served = set(re.findall(r'case "([a-z_]+)":', open("linux/Sources/CmuxAdw/ControlProtocol.swift").read()))
+v1_missing = sorted(v1_sent - v1_served)
 print(f"CLI sends {len(sent)} v2 methods; server dispatches {len(served & sent)} of them; missing: {len(missing)}")
 groups = defaultdict(list)
 for m in missing:
@@ -55,6 +66,11 @@ for m in missing:
 for prefix in sorted(groups):
     print(f"\n[{prefix}] ({len(groups[prefix])})")
     for m in groups[prefix]:
+        print(f"  {m}")
+
+if v1_missing:
+    print(f"\n[v1 verbs] ({len(v1_missing)})")
+    for m in v1_missing:
         print(f"  {m}")
 
 sys.exit(0)

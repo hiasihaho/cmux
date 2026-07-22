@@ -2639,3 +2639,22 @@ Result: 212 sendable methods, 150 initially missing. Classified:
 
 ui-commands-smoke grew the verb round trip (mark/open/dismiss, zoom,
 devtools alias): 13 assertions.
+
+### The sweep's blind spot: v1 verbs (2026-07-22)
+
+Exercising the upstream `/cmux` skill against the port immediately hit
+two commands the v2 sweep had declared clean: `list-windows` and
+`reload-config` both speak **v1** — plain socket lines via
+`sendV1Command`, a dimension the sweep never scanned. Fixed five:
+`list_windows` (single window until the multi-window phase),
+`reload_config` (invalidates the settings cache; honest reply notes that
+ghostty config applies to new terminals only), `focus_window` (presents
+the window), `refresh_surfaces` (OK — the Linux view sync is continuous,
+nothing stale to rebuild), `notify_target_async` (alias of
+notify_target). The remaining six v1 gaps are multi-window and macOS
+test-harness internals, honestly erroring.
+
+capabilities-sweep.py now scans both protocol generations. The lesson
+generalizes: a coverage tool's blind spot looks exactly like a clean
+report — the skill doubled as a test plan precisely because it walks
+the surface a *user* walks.

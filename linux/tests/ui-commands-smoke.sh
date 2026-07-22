@@ -141,4 +141,13 @@ echo "$dev_out" | grep -q "^OK" \
     && ok "browser devtools alias (devtools.toggle → inspect)" \
     || bad "devtools alias" "$dev_out"
 
+# v1 verbs the skill's fast-start uses (caught by exercising /cmux: the
+# v2-only sweep missed the v1 dimension entirely).
+info "v1 verbs from the sweep's blind spot"
+lw=$(cx list-windows 2>&1 | head -1)
+echo "$lw" | grep -qE '^\* 0: [0-9A-F-]+ cmux' \
+    && ok "list-windows answers (single window)" \
+    || bad "list-windows" "$lw"
+expect "reload-config reloads cmux.json" "OK" "$(cx reload-config 2>&1 | head -1 | cut -d' ' -f1)"
+
 finish

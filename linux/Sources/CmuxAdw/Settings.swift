@@ -82,6 +82,14 @@ enum LinuxSettings {
         cachedMtime = nil   // next read sees the new values
     }
 
+    /// Drops the cache so the next access re-reads the file — the v1
+    /// `reload_config` verb, though the mtime gate makes explicit reloads
+    /// rarely necessary.
+    static func invalidate() {
+        cachedMtime = nil
+        cached = [:]
+    }
+
     // MARK: the settings
 
     /// Scrollback persistence budget in characters; 0 keeps everything.
