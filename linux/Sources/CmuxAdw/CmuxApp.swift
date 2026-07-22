@@ -263,6 +263,40 @@ struct CmuxApp: App {
         .defaultSize(width: 1100, height: 750)
         .quitShortcut()
         .closeShortcut()
+        // Window-level commands (no header buttons — these are keyboard
+        // muscle memory, not discoverable chrome). Same implementations as
+        // the socket verbs, per the shared-behavior rule.
+        .keyboardShortcut("Left".ctrl().shift()) { _ in
+            controlHandler.focusDirectional("left")
+        }
+        .keyboardShortcut("Right".ctrl().shift()) { _ in
+            controlHandler.focusDirectional("right")
+        }
+        .keyboardShortcut("Up".ctrl().shift()) { _ in
+            controlHandler.focusDirectional("up")
+        }
+        .keyboardShortcut("Down".ctrl().shift()) { _ in
+            controlHandler.focusDirectional("down")
+        }
+        .keyboardShortcut("u".ctrl().shift()) { _ in
+            _ = controlHandler.jumpToUnread()
+        }
+        // Not F2: the focused terminal legitimately consumes it (function
+        // keys belong to shell apps), so the shortcut never fires. The
+        // Ctrl+Shift family is reserved for cmux everywhere else already.
+        .keyboardShortcut("e".ctrl().shift()) { _ in
+            let handler = controlHandler
+            guard let tab = tabs.first(where: { $0.id == selection }) else { return }
+            UIDialogs.renameWorkspace(currentTitle: tab.customTitle ?? tab.title) { title in
+                handler.renameWorkspace(tabId: tab.id, title: title)
+            }
+        }
+        .keyboardShortcut("o".ctrl().shift()) { _ in
+            let handler = controlHandler
+            UIDialogs.openFolder { path in
+                handler.newWorkspace(cwd: path)
+            }
+        }
     }
 
     /// Selecting a tab in the sidebar also clears its attention state,

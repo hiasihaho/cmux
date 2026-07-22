@@ -362,7 +362,7 @@ struct ControlCommandHandler {
                     "workspace.next", "workspace.previous", "workspace.last",
                     "surface.list", "surface.create", "surface.send_text",
                     "surface.send_key", "surface.read_text", "surface.split",
-                    "surface.close",
+                    "surface.close", "surface.focus", "surface.trigger_flash",
                     "pane.create", "pane.list", "pane.focus", "pane.surfaces",
                     "browser.open_split", "browser.navigate", "browser.url.get",
                     "browser.back", "browser.forward", "browser.reload",
@@ -441,6 +441,10 @@ struct ControlCommandHandler {
             return v2PaneList(id: id, params: params)
         case "pane.focus":
             return v2PaneFocus(id: id, params: params)
+        case "surface.focus":
+            return v2SurfaceFocus(id: id, params: params)
+        case "surface.trigger_flash":
+            return v2SurfaceTriggerFlash(id: id, params: params)
         case "pane.surfaces":
             return v2PaneSurfaces(id: id, params: params)
         case "pane.zoom":
@@ -477,6 +481,8 @@ struct ControlCommandHandler {
             return v2NotificationCreateFor(id: id, params: params, requireWorkspace: false)
         case "notification.create_for_target":
             return v2NotificationCreateFor(id: id, params: params, requireWorkspace: true)
+        case "notification.create_for_caller":
+            return v2NotificationCreateForCaller(id: id, params: params)
         case "notification.list":
             let items: [[String: Any]] = notifications.wrappedValue.map { notification in
                 [
@@ -1256,6 +1262,57 @@ struct ControlCommandHandler {
     /// workspace+surface targeting with the macOS param/result shapes.
     /// `create_for_surface` falls back to the selected workspace;
     /// `create_for_target` requires workspace_id.
+    /// Upstream's evolved notify flow (2026 CLI): target the CALLER's
+    /// workspace/surface, resolved from the params the CLI collects —
+    /// `preferred_workspace_id`/`preferred_surface_id` when the caller
+    /// knows them (CMUX_WORKSPACE_ID env), else the caller block, else the
+    /// selected workspace. Found by ui-commands-smoke: `cmux notify`
+    /// silently stopped working after the catch-up merge renamed the
+    /// method it sends.
+    private func v2NotificationCreateForCaller(id: Any?, params: [String: Any]) -> String {
+        var tabId: UUID?
+        if let raw = params["preferred_workspace_id"] as? String {
+            tabId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw)
+        }
+        if tabId == nil, let caller = params["caller"] as? [String: Any],
+           let raw = caller["workspace_id"] as? String {
+            tabId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw)
+        }
+        let tab = tabId.flatMap { candidate in tabs.wrappedValue.first { $0.id == candidate } }
+            ?? tabs.wrappedValue.first { $0.id == selection.wrappedValue }
+        guard let tab, let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id }) else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not found")
+        }
+        var surfaceId: UUID?
+        if let raw = (params["preferred_surface_id"] as? String)
+            ?? ((params["caller"] as? [String: Any])?["surface_id"] as? String) {
+            surfaceId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw)
+        }
+        notifications.wrappedValue.append(TerminalNotification(
+            tabId: tab.id,
+            surfaceId: surfaceId,
+            title: (params["title"] as? String) ?? "Notification",
+            subtitle: (params["subtitle"] as? String) ?? "",
+            body: (params["body"] as? String) ?? ""
+        ))
+        tabs.wrappedValue[index].needsAttention = true
+        // Desktop delivery only for tabs the user isn't looking at,
+        // approximating macOS's suppress-when-focused behavior.
+        if tab.id != selection.wrappedValue {
+            DesktopNotifier.send(
+                id: "cmux-\(tab.id.uuidString)",
+                title: (params["title"] as? String) ?? "Notification",
+                body: [(params["subtitle"] as? String) ?? "", (params["body"] as? String) ?? ""]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " — ")
+            )
+        }
+        return v2Ok(id: id, result: [
+            "workspace_id": tab.id.uuidString,
+            "notification_created": true
+        ])
+    }
+
     private func v2NotificationCreateFor(id: Any?, params: [String: Any], requireWorkspace: Bool) -> String {
         guard let surfaceRaw = params["surface_id"] as? String,
               let surfaceId = UUID(uuidString: surfaceRaw) ?? RefRegistry.shared.resolve(surfaceRaw) else {
@@ -1304,11 +1361,11 @@ struct ControlCommandHandler {
 
     // MARK: v2 envelope helpers
 
-    private func v2Ok(id: Any?, result: [String: Any]) -> String {
+    func v2Ok(id: Any?, result: [String: Any]) -> String {
         v2Encode(["id": id ?? NSNull(), "ok": true, "result": result])
     }
 
-    private func v2Error(id: Any?, code: String, message: String) -> String {
+    func v2Error(id: Any?, code: String, message: String) -> String {
         v2Encode(["id": id ?? NSNull(), "ok": false, "error": ["code": code, "message": message]])
     }
 

@@ -2550,3 +2550,42 @@ window opens on Ctrl+comma, config file never clobbered by reads.
 Note for CAdw work: interface types (GListModel) have no struct in
 CAdw's view — pass what CAdw's own functions return directly instead of
 casting through the system headers' names.
+
+### Keyboard reachability: five commands a person could not press (2026-07-22)
+
+CATCHUP item 5, the "what can a person actually reach" list:
+
+- **Directional pane focus** (Ctrl+Shift+arrows) — nearest pane by real
+  widget geometry (`gtk_widget_compute_bounds` against the window root;
+  axis distance primary, cross-axis drift as tie-breaker ×2 so "left"
+  never jumps diagonally past a straight neighbor). List order cannot
+  express "the pane to the left" once splits nest. No-op under zoom.
+- **surface.focus** (parity verb) — selects the workspace, raises the
+  pane tab when the surface is a background tab, moves focus. The
+  focus-grab itself rides the existing view-sync (one mutation path).
+- **surface.trigger_flash** (parity verb + `cmux trigger-flash`) — a
+  double opacity dip on the pane container; reads clearly on terminals
+  and browsers without any CSS machinery.
+- **Rename workspace** (Ctrl+Shift+E) — AdwAlertDialog with a prefilled
+  entry, Enter activates Rename; same pinned-custom-title path as
+  `workspace.rename`. NOT F2: the focused terminal legitimately consumes
+  function keys, so an F2 window shortcut simply never fires —
+  discovered by pressing it under Xvfb and watching nothing happen.
+  `adw_dialog_set_focus` before present, or typing goes to the terminal
+  behind the dialog.
+- **Jump to unread** (Ctrl+Shift+U) + **Open folder as workspace**
+  (Ctrl+Shift+O, GtkFileDialog folder picker).
+
+All bound at the window level (`Window.keyboardShortcut`) — no chrome
+buttons; these are muscle memory, not discoverable UI.
+
+**The regression the suite caught for free:** `cmux notify` had silently
+stopped working since the catch-up merge — upstream's CLI now sends
+`notification.create_for_caller`, a method our server never implemented.
+Every agent Stop/Notification hook was failing quietly. Implemented with
+caller/preferred-workspace resolution + desktop delivery; the
+jump-to-unread test was the tripwire. Protocol drift of exactly this
+kind is worth a capabilities sweep against the merged CLI at some point.
+
+ui-commands-smoke.sh: 8 assertions, all keyboard paths driven by real
+xdotool keystrokes.

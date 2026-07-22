@@ -25,6 +25,7 @@ SUITES=(
     browser-profile-smoke
     vte-scrollback-smoke
     settings-smoke
+    ui-commands-smoke
 )
 
 if [ $# -gt 0 ]; then

@@ -100,7 +100,16 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    demonstrably more flexible — as with session state, where WebKitGTK's
    native blob beats macOS's shadow-stack emulation.
 
-5. **Keyboard/UI commands still to do.** macOS binds 28 commands; Linux
+5. **Keyboard/UI commands** — mostly DONE 2026-07-22: directional pane
+   focus (Ctrl+Shift+arrows, geometry-based), rename-workspace dialog
+   (Ctrl+Shift+E — NOT F2, terminals eat function keys), jump-to-unread
+   (Ctrl+Shift+U), open-folder workspace (Ctrl+Shift+O), flash
+   (surface.trigger_flash + CLI). Still open: browser JS console pane,
+   multi-window. ALSO: `notification.create_for_caller` implemented —
+   `cmux notify` had silently regressed after the merge (upstream
+   renamed the method); agent hooks were failing quietly.
+
+   **(historical) Keyboard/UI commands still to do.** macOS binds 28 commands; Linux
    now binds 12. The gap is what a person can *reach*, which a verb-level
    test suite cannot see — every suite was green while the browser pane
    had no way in.
