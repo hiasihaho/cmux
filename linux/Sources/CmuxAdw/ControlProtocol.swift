@@ -409,7 +409,7 @@ struct ControlCommandHandler {
                     "surface.send_key", "surface.read_text", "surface.split",
                     "surface.close", "surface.focus", "surface.trigger_flash",
                     "session.save", "settings.open", "system.tree",
-                    "pane.last", "surface.clear_history",
+                    "pane.last", "surface.clear_history", "tab.action",
                     "notification.jump_to_unread", "notification.mark_read",
                     "notification.dismiss", "notification.open",
                     "window.current", "window.focus", "browser.zoom.set",
@@ -502,6 +502,8 @@ struct ControlCommandHandler {
             return v2PaneLast(id: id, params: params)
         case "surface.clear_history":
             return v2SurfaceClearHistory(id: id, params: params)
+        case "tab.action", "surface.action":
+            return v2TabAction(id: id, params: params)
         case "notification.jump_to_unread":
             return v2NotificationJumpToUnread(id: id)
         case "notification.mark_read":
@@ -960,6 +962,105 @@ struct ControlCommandHandler {
             "surface_id": target.surfaceId.uuidString,
             "cleared": true,
         ])
+    }
+
+    /// The tab-strip mutations our model supports, mirroring macOS's
+    /// `tab.action` (same param names, same unknown-action error shape
+    /// listing supported_actions). rename pins a per-surface title the
+    /// way workspace.rename pins the workspace's.
+    private static let tabActionSupported = [
+        "rename", "clear_name",
+        "close_left", "close_right", "close_others",
+        "new_terminal_right", "new_browser_right",
+        "reload",
+    ]
+
+    private func v2TabAction(id: Any?, params: [String: Any]) -> String {
+        guard let action = (params["action"] as? String)?
+            .lowercased().replacingOccurrences(of: "-", with: "_"),
+            !action.isEmpty else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing action")
+        }
+        // Target: explicit surface/tab id, else the workspace's focused
+        // surface (workspace explicit or selected).
+        var surfaceId: UUID?
+        if let raw = (params["surface_id"] as? String) ?? (params["tab_id"] as? String) {
+            surfaceId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw)
+        }
+        let tab: TerminalTab?
+        if let surfaceId {
+            tab = tabs.wrappedValue.first { $0.contains(surfaceId: surfaceId) }
+        } else if let wsId = v2WorkspaceUUID(params) {
+            tab = tabs.wrappedValue.first { $0.id == wsId }
+        } else {
+            tab = tabs.wrappedValue.first { $0.id == selection.wrappedValue }
+        }
+        guard let tab else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not found")
+        }
+        let target = surfaceId ?? tab.focusedSurface?.surfaceId
+        guard let target,
+              let pane = tab.panes.first(where: { p in p.surfaces.contains { $0.surfaceId == target } }),
+              let position = pane.surfaces.firstIndex(where: { $0.surfaceId == target }) else {
+            return v2Error(id: id, code: "not_found", message: "Tab not found")
+        }
+        let registry = RefRegistry.shared
+        var result: [String: Any] = [
+            "workspace_id": tab.id.uuidString,
+            "surface_id": target.uuidString,
+            "surface_ref": registry.ref(kind: "surface", uuid: target),
+            "action": action,
+        ]
+
+        switch action {
+        case "rename":
+            guard let title = (params["title"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
+                return v2Error(id: id, code: "invalid_params", message: "Missing or invalid title")
+            }
+            PaneTabs.customTitles[target] = title
+            PaneTabs.refreshAllTitles(tabs: tabs.wrappedValue)
+            result["title"] = title
+        case "clear_name":
+            PaneTabs.customTitles.removeValue(forKey: target)
+            PaneTabs.refreshAllTitles(tabs: tabs.wrappedValue)
+        case "close_left", "close_right", "close_others":
+            let victims: [PaneSurface]
+            switch action {
+            case "close_left": victims = Array(pane.surfaces[..<position])
+            case "close_right": victims = Array(pane.surfaces[(position + 1)...])
+            default: victims = pane.surfaces.filter { $0.surfaceId != target }
+            }
+            for victim in victims {
+                closeSurface(tabId: tab.id, surfaceId: victim.surfaceId)
+            }
+            result["closed"] = victims.count
+        case "new_terminal_right", "new_browser_right":
+            let kind: SurfaceKind = action == "new_browser_right"
+                ? .browser(initialURL: (params["url"] as? String) ?? "")
+                : .terminal
+            guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id }) else {
+                return v2Error(id: id, code: "not_found", message: "Workspace not found")
+            }
+            let cwd = SurfaceRegistry.shared.currentDirectory(for: target) ?? tab.workingDirectory
+            let surface = PaneSurface(kind: kind, workingDirectory: cwd)
+            guard let layout = tabs.wrappedValue[index].layout.addingTab(surface, nextTo: target) else {
+                return v2Error(id: id, code: "internal_error", message: "Failed to add tab")
+            }
+            tabs.wrappedValue[index].layout = layout
+            if (params["focus"] as? Bool) ?? true, tab.id == selection.wrappedValue {
+                tabs.wrappedValue[index].focusedSurfaceId = surface.surfaceId
+            }
+            result["new_surface_id"] = surface.surfaceId.uuidString
+            result["new_surface_ref"] = registry.ref(kind: "surface", uuid: surface.surfaceId)
+        case "reload":
+            guard SurfaceRegistry.shared.reloadBrowser(for: target) else {
+                return v2Error(id: id, code: "invalid_params", message: "reload targets a browser tab")
+            }
+        default:
+            return v2Error(id: id, code: "invalid_params", message: "Unknown tab action")
+        }
+        return v2Ok(id: id, result: result)
     }
 
     private func v2PaneFocus(id: Any?, params: [String: Any]) -> String {

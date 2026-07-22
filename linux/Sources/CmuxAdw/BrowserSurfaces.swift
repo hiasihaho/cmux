@@ -3,6 +3,15 @@ import CWebKit
 import Foundation
 
 extension SurfaceRegistry {
+    /// Reloads a browser surface (tab.action reload) — here because only
+    /// CWebKit-bound files may touch WebKit types.
+    @discardableResult
+    func reloadBrowser(for surfaceId: UUID) -> Bool {
+        guard let webView = browsers[surfaceId] else { return false }
+        webkit_web_view_reload(UnsafeMutablePointer<WebKitWebView>(webView))
+        return true
+    }
+
     /// Live page URL of a browser surface.
     func currentURL(for surfaceId: UUID) -> String? {
         guard let webView = browsers[surfaceId],

@@ -34,6 +34,8 @@ enum SessionStore {
         var id: String
         var type: String
         var workingDirectory: String
+        /// User-pinned tab title (`tab.action rename`); absent = derived.
+        var title: String?
         var browser: BrowserSnapshot?
         /// Terminal screen text, replayed on restore so a restored pane
         /// shows what was on it. Optional, so files written before this
@@ -185,7 +187,9 @@ enum SessionStore {
                 ScrollbackStore.capture(surfaceId: surface.surfaceId, force: isFinalSave)
                 surfaces.append(SurfaceSnapshot(
                     id: surface.surfaceId.uuidString, type: "terminal",
-                    workingDirectory: cwd, browser: nil, scrollback: nil
+                    workingDirectory: cwd,
+                    title: PaneTabs.customTitles[surface.surfaceId],
+                    browser: nil, scrollback: nil
                 ))
             case .browser(let initialURL):
                 var browser = BrowserSessionState.capture(
@@ -197,6 +201,7 @@ enum SessionStore {
                 surfaces.append(SurfaceSnapshot(
                     id: surface.surfaceId.uuidString, type: "browser",
                     workingDirectory: "",
+                    title: PaneTabs.customTitles[surface.surfaceId],
                     browser: browser
                 ))
             }
@@ -280,6 +285,9 @@ enum SessionStore {
             var byId: [String: PaneSurface] = [:]
             for entry in workspace.surfaces {
                 let id = UUID(uuidString: entry.id) ?? UUID()
+                if let pinned = entry.title, !pinned.isEmpty {
+                    PaneTabs.customTitles[id] = pinned
+                }
                 let kind: SurfaceKind
                 if entry.type == "browser" {
                     kind = .browser(initialURL: entry.browser?.url ?? "")

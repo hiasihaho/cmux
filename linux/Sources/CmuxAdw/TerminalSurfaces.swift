@@ -325,6 +325,7 @@ struct TerminalStackWidget: AdwaitaWidget {
             SurfaceRegistry.shared.unregister(surfaceId)
             TerminalScrollbackStore.forget(surfaceId)
             BrowserProfileAssignments.forget(surfaceId)
+            PaneTabs.customTitles.removeValue(forKey: surfaceId)
         }
         // Same for tab views whose pane is gone, or a closed pane keeps its
         // AdwTabView (and the containers inside it) alive forever.

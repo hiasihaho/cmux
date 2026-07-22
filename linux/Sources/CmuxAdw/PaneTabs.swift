@@ -77,7 +77,13 @@ enum PaneTabs {
     }
 
     /// Tab labels: the page title for browsers, the directory for shells.
+    /// User-pinned tab titles (`tab.action rename`); while set, OSC/URL
+    /// updates stop overwriting — the per-surface analog of the
+    /// workspace's customTitle. Persisted in the v3 session snapshot.
+    static var customTitles: [UUID: String] = [:]
+
     static func tabTitle(for surface: PaneSurface) -> String {
+        if let pinned = customTitles[surface.surfaceId] { return pinned }
         switch surface.kind {
         case .browser:
             if let title = SurfaceRegistry.shared.currentBrowserTitle(for: surface.surfaceId),
@@ -212,7 +218,8 @@ final class PaneTabsView {
 
     func refreshTitle(surfaceId: UUID) {
         guard let page = pages[surfaceId] else { return }
-        let title = SurfaceRegistry.shared.currentBrowserTitle(for: surfaceId)
+        let title = PaneTabs.customTitles[surfaceId]
+            ?? SurfaceRegistry.shared.currentBrowserTitle(for: surfaceId)
             ?? SurfaceRegistry.shared.currentURL(for: surfaceId)
             ?? "Browser"
         adw_tab_page_set_title(page, title)

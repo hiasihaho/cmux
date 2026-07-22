@@ -2681,3 +2681,19 @@ The restore-selection quirk did NOT reproduce on the current binary
 GAPS.md rather than fixing ghosts.
 
 ui-commands-smoke: 19 assertions.
+
+### GAPS batch 2: tab.action (2026-07-22)
+
+`cmux tab-action` / `rename-tab` work now — the last S row of the Now
+table. Supported keys mirror macOS's names: rename/clear_name pin a
+per-surface title (a `PaneTabs.customTitles` store with precedence over
+OSC/URL titles, persisted as `SurfaceSnapshot.title`, cleaned on
+unregister), close_left/close_right/close_others walk the pane's surface
+list through the existing close path, new_terminal_right and
+new_browser_right reuse the popup-adoption `addingTab` insertion, and
+reload goes through a registry helper because only CWebKit-bound files
+may touch WebKit types (the module-boundary rule held: ControlProtocol
+cannot even name WebKitWebView). Unsupported keys (duplicate, pin,
+mark_read, move/detach, full-width) error with macOS's shape.
+
+ui-commands-smoke: 22 assertions.

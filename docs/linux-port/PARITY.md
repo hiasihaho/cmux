@@ -42,6 +42,7 @@ measured by diffing the two capability lists, not estimated.
 | pane.create / list / focus / surfaces | ✅ | panes hold several surfaces behind an AdwTabView strip since 2026-07-21; `surface_count`/`surface_refs`/`selected_surface_ref` report the real list |
 | pane.zoom | ✅ | Linux-only socket verb for macOS's Toggle Pane Zoom command |
 | pane.last | ✅ | tmux last-pane toggle; history fed by the GTK focus funnel (2026-07-22) |
+| tab.action / surface.action | 🟡 | rename/clear_name (pinned per-surface titles, persisted), close_left/right/others, new_terminal_right/new_browser_right, reload (2026-07-22). Not yet: duplicate, pin/unpin, mark_read/unread, move/detach-to-workspace, toggle_full_width — macOS's remaining action keys |
 | pane.break / join / resize / swap | ❌ | pane.resize would pair well with divider persistence |
 
 ### browser — navigation & automation

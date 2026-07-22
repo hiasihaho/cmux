@@ -173,4 +173,19 @@ expect "last-pane returns to the previous pane" "$LEFT_PANE" "$(focused_pane "$W
 cx last-pane --workspace "$WS" >/dev/null 2>&1; sleep 1
 expect "last-pane again toggles back" "$RIGHT" "$(focused_pane "$WS")"
 
+# --------------------------------------------- GAPS batch 2: tab.action
+info "gaps batch 2: tab.action (rename, add, close-others)"
+expect "rename-tab pins a title" "OK" "$(cx rename-tab --surface "$T" "Pinned By Test" 2>&1 | head -1 | cut -d' ' -f1)"
+cx tab-action --action new-browser-right --surface "$T" --url about:blank >/dev/null 2>&1; sleep 2
+tabs_now=$(cx --json list-panes --workspace "$WS" | python3 -c '
+import json,sys
+print(max(p["surface_count"] for p in json.load(sys.stdin)["panes"]))')
+[ "${tabs_now:-1}" -ge 2 ] && ok "new-browser-right adds a tab ($tabs_now in pane)" \
+                          || bad "tab.action new-browser-right" "surface_count=$tabs_now"
+cx tab-action --action close-others --surface "$T" >/dev/null 2>&1; sleep 2
+tabs_after=$(cx --json list-panes --workspace "$WS" | python3 -c '
+import json,sys
+print(max(p["surface_count"] for p in json.load(sys.stdin)["panes"]))')
+expect "close-others trims back to one" "1" "$tabs_after"
+
 finish
