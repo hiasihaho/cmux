@@ -2658,3 +2658,26 @@ capabilities-sweep.py now scans both protocol generations. The lesson
 generalizes: a coverage tool's blind spot looks exactly like a clean
 report — the skill doubled as a test plan precisely because it walks
 the surface a *user* walks.
+
+### GAPS batch 1: tree, clear-history, last-pane (2026-07-22)
+
+First pass over the new GAPS.md Now table, three S-effort verbs:
+
+- **system.tree** — one-call topology (windows → workspaces → panes →
+  surfaces with type/title/url) plus active and caller paths. The CLI's
+  own tree renderer consumed the payload unchanged, markers and all —
+  the payload shape was read from the CLI first, not guessed.
+- **surface.clear_history** — one escape serves both backends: ED 3
+  (CSI 3 J) fed as terminal *output* through the shared writeDisplay
+  path erases scrollback and only scrollback. No per-backend API needed.
+- **pane.last** — tmux last-pane, toggle semantics. History is fed by
+  the GTK focus-enter funnel; the subtlety worth remembering: the note
+  must happen BEFORE the handler's no-change guard, because verb-driven
+  focus updates the model first and the GTK echo then hits the guard —
+  the early return was starving the history of exactly those entries.
+
+The restore-selection quirk did NOT reproduce on the current binary
+(four attempts, both selection shapes) — moved to a watch note in
+GAPS.md rather than fixing ghosts.
+
+ui-commands-smoke: 19 assertions.

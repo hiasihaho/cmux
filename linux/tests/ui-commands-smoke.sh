@@ -150,4 +150,27 @@ echo "$lw" | grep -qE '^\* 0: [0-9A-F-]+ cmux' \
     || bad "list-windows" "$lw"
 expect "reload-config reloads cmux.json" "OK" "$(cx reload-config 2>&1 | head -1 | cut -d' ' -f1)"
 
+# --------------------------------------------- GAPS batch 1 (2026-07-22)
+info "gaps batch 1: tree, clear-history, last-pane"
+tree_out=$(cx tree 2>&1)
+echo "$tree_out" | grep -q "workspace workspace:" && echo "$tree_out" | grep -q "◀ active" \
+    && ok "tree renders topology with active markers" \
+    || bad "system.tree" "$(echo "$tree_out" | head -2)"
+
+cx send --surface "$T" 'echo CLEARME_MARK; seq 1 100\n' >/dev/null 2>&1; sleep 2
+before_clear=$(cx read-screen --surface "$T" --scrollback 2>/dev/null | grep -c CLEARME_MARK)
+cx clear-history --surface "$T" >/dev/null 2>&1; sleep 1
+after_clear=$(cx read-screen --surface "$T" --scrollback 2>/dev/null | grep -c CLEARME_MARK)
+[ "${before_clear:-0}" -ge 1 ] && [ "${after_clear:-0}" -eq 0 ] \
+    && ok "clear-history erases scrollback (marker $before_clear → 0)" \
+    || bad "surface.clear_history" "before=$before_clear after=$after_clear"
+
+# last-pane toggles between the two most recent panes (tmux semantics).
+cx focus-pane --pane "$LEFT_PANE" --workspace "$WS" >/dev/null 2>&1; sleep 1
+cx focus-pane --pane "$RIGHT" --workspace "$WS" >/dev/null 2>&1; sleep 1
+cx last-pane --workspace "$WS" >/dev/null 2>&1; sleep 1
+expect "last-pane returns to the previous pane" "$LEFT_PANE" "$(focused_pane "$WS")"
+cx last-pane --workspace "$WS" >/dev/null 2>&1; sleep 1
+expect "last-pane again toggles back" "$RIGHT" "$(focused_pane "$WS")"
+
 finish

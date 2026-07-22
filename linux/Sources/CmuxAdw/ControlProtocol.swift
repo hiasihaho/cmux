@@ -30,6 +30,27 @@ final class SelectionHistory {
     }
 }
 
+/// Most-recently-focused pane per workspace — `pane.last` (tmux
+/// `last-pane`) pops the previous distinct pane. Fed by the GTK
+/// focus-enter funnel in CmuxApp.
+final class PaneFocusHistory {
+    static let shared = PaneFocusHistory()
+    private var stacks: [UUID: [UUID]] = [:]
+
+    func note(tabId: UUID, paneId: UUID) {
+        var stack = stacks[tabId] ?? []
+        stack.removeAll { $0 == paneId }
+        stack.append(paneId)
+        stacks[tabId] = stack
+    }
+
+    func previous(tabId: UUID, excluding paneId: UUID?, in tab: TerminalTab) -> UUID? {
+        (stacks[tabId] ?? []).reversed().first { candidate in
+            candidate != paneId && tab.panes.contains { $0.paneId == candidate }
+        }
+    }
+}
+
 /// Implements the cmux control-socket wire protocol (the verb subset that
 /// maps onto the Phase-0/1 tab model). Formats follow the macOS
 /// `TerminalController` handlers byte-for-byte so the shared CLI works
@@ -387,7 +408,8 @@ struct ControlCommandHandler {
                     "surface.list", "surface.create", "surface.send_text",
                     "surface.send_key", "surface.read_text", "surface.split",
                     "surface.close", "surface.focus", "surface.trigger_flash",
-                    "session.save", "settings.open",
+                    "session.save", "settings.open", "system.tree",
+                    "pane.last", "surface.clear_history",
                     "notification.jump_to_unread", "notification.mark_read",
                     "notification.dismiss", "notification.open",
                     "window.current", "window.focus", "browser.zoom.set",
@@ -474,6 +496,12 @@ struct ControlCommandHandler {
             return v2SurfaceFocus(id: id, params: params)
         case "session.save":
             return v2SessionSave(id: id)
+        case "system.tree":
+            return v2SystemTree(id: id, params: params)
+        case "pane.last":
+            return v2PaneLast(id: id, params: params)
+        case "surface.clear_history":
+            return v2SurfaceClearHistory(id: id, params: params)
         case "notification.jump_to_unread":
             return v2NotificationJumpToUnread(id: id)
         case "notification.mark_read":
@@ -802,6 +830,135 @@ struct ControlCommandHandler {
                 "type": leaf.kind.typeName,
                 "title": tab.title
             ]]
+        ])
+    }
+
+    /// One-call topology: windows → workspaces → panes → surfaces, plus
+    /// the active path (selection + focused surface) and the caller's own
+    /// position — `cmux tree`, the agent's map of the app.
+    private func v2SystemTree(id: Any?, params: [String: Any]) -> String {
+        let registry = RefRegistry.shared
+        func surfaceNode(_ surface: PaneSurface) -> [String: Any] {
+            var node: [String: Any] = [
+                "id": surface.surfaceId.uuidString,
+                "ref": registry.ref(kind: "surface", uuid: surface.surfaceId),
+            ]
+            switch surface.kind {
+            case .browser:
+                node["type"] = "browser"
+                if let url = SurfaceRegistry.shared.currentURL(for: surface.surfaceId) {
+                    node["url"] = url
+                }
+                if let title = SurfaceRegistry.shared.currentBrowserTitle(for: surface.surfaceId) {
+                    node["title"] = title
+                }
+            case .inspector:
+                node["type"] = "inspector"
+            case .terminal:
+                node["type"] = "terminal"
+                if let title = SurfaceRegistry.shared.currentTerminalTitle(for: surface.surfaceId) {
+                    node["title"] = title
+                }
+            }
+            return node
+        }
+        let workspaces: [[String: Any]] = tabs.wrappedValue.map { tab in
+            [
+                "id": tab.id.uuidString,
+                "ref": registry.ref(kind: "workspace", uuid: tab.id),
+                "title": tab.customTitle ?? tab.title,
+                "panes": tab.panes.map { pane in
+                    [
+                        "id": pane.paneId.uuidString,
+                        "ref": registry.ref(kind: "pane", uuid: pane.paneId),
+                        "surfaces": pane.surfaces.map(surfaceNode),
+                    ] as [String: Any]
+                },
+            ]
+        }
+        let window: [String: Any] = [
+            "id": ControlCommandHandler.windowId.uuidString,
+            "ref": registry.ref(kind: "window", uuid: ControlCommandHandler.windowId),
+            "workspaces": workspaces,
+        ]
+        var active: [String: Any] = [
+            "window_id": ControlCommandHandler.windowId.uuidString,
+            "window_ref": registry.ref(kind: "window", uuid: ControlCommandHandler.windowId),
+        ]
+        if let tab = tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue }) {
+            active["workspace_id"] = tab.id.uuidString
+            active["workspace_ref"] = registry.ref(kind: "workspace", uuid: tab.id)
+            if let focused = tab.focusedSurface {
+                active["surface_id"] = focused.surfaceId.uuidString
+                active["surface_ref"] = registry.ref(kind: "surface", uuid: focused.surfaceId)
+                active["pane_id"] = focused.paneId.uuidString
+                active["pane_ref"] = registry.ref(kind: "pane", uuid: focused.paneId)
+            }
+        }
+        var caller: [String: Any] = [:]
+        if let callerParams = params["caller"] as? [String: Any] {
+            if let raw = callerParams["workspace_id"] as? String,
+               let wsId = UUID(uuidString: raw) ?? registry.resolve(raw),
+               let tab = tabs.wrappedValue.first(where: { $0.id == wsId }) {
+                caller["workspace_id"] = tab.id.uuidString
+                caller["workspace_ref"] = registry.ref(kind: "workspace", uuid: tab.id)
+                if let raw = callerParams["surface_id"] as? String,
+                   let sfId = UUID(uuidString: raw) ?? registry.resolve(raw),
+                   let leaf = tab.panes.first(where: { p in p.surfaces.contains { $0.surfaceId == sfId } }) {
+                    caller["surface_id"] = sfId.uuidString
+                    caller["surface_ref"] = registry.ref(kind: "surface", uuid: sfId)
+                    caller["pane_id"] = leaf.paneId.uuidString
+                    caller["pane_ref"] = registry.ref(kind: "pane", uuid: leaf.paneId)
+                }
+            }
+        }
+        return v2Ok(id: id, result: [
+            "windows": [window],
+            "active": active,
+            "caller": caller,
+        ])
+    }
+
+    /// tmux `last-pane`: focus the previously focused pane of the
+    /// workspace, from the history the GTK focus funnel maintains.
+    private func v2PaneLast(id: Any?, params: [String: Any]) -> String {
+        let tabId = v2WorkspaceUUID(params) ?? selection.wrappedValue
+        guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }) else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not found")
+        }
+        let tab = tabs.wrappedValue[index]
+        let currentPane = tab.focusedSurface?.paneId
+        guard let previous = PaneFocusHistory.shared.previous(
+            tabId: tabId, excluding: currentPane, in: tab
+        ), let pane = tab.panes.first(where: { $0.paneId == previous }) else {
+            return v2Error(id: id, code: "not_found", message: "No previous pane")
+        }
+        let target = pane.surfaces[safe: pane.selectedIndex] ?? pane.surfaces[0]
+        tabs.wrappedValue[index].focusedSurfaceId = target.surfaceId
+        refreshTitle(tabId: tabId)
+        return v2Ok(id: id, result: [
+            "workspace_id": tabId.uuidString,
+            "pane_id": pane.paneId.uuidString,
+            "pane_ref": RefRegistry.shared.ref(kind: "pane", uuid: pane.paneId),
+            "surface_id": target.surfaceId.uuidString,
+        ])
+    }
+
+    /// `cmux clear-history` — erases the scrollback of a terminal surface.
+    /// One escape works on both backends: ED 3 (CSI 3 J, the xterm
+    /// extension) fed as terminal OUTPUT clears scrollback and only
+    /// scrollback — the visible screen stays, matching macOS.
+    private func v2SurfaceClearHistory(id: Any?, params: [String: Any]) -> String {
+        guard let target = v2TargetSurface(params) else {
+            return v2Error(id: id, code: "not_found", message: "Surface not found")
+        }
+        guard SurfaceRegistry.shared.writeDisplay(for: target.surfaceId, text: "\u{1B}[3J") else {
+            return v2Error(id: id, code: "unavailable", message: "Surface has no terminal to clear")
+        }
+        return v2Ok(id: id, result: [
+            "workspace_id": target.tab.id.uuidString,
+            "surface_id": target.surfaceId.uuidString,
+            "cleared": true,
         ])
     }
 

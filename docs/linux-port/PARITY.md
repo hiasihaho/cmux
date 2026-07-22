@@ -21,7 +21,7 @@ measured by diffing the two capability lists, not estimated.
 | Method | Status | Notes |
 |---|---|---|
 | system.ping / capabilities / identify | ✅ | capabilities reflects real method list since phase 5b |
-| system.tree | ❌ | |
+| system.tree | ✅ | one-call topology with active/caller markers (2026-07-22); the CLI's tree renderer works unchanged |
 | window.list | ✅ | single window; stable app-lifetime id |
 | window.create / close / current / focus | ❌ | multi-window is a later phase |
 | workspace.list / create / select / current / close | ✅ | create honors `focus:false` (background) |
@@ -35,12 +35,14 @@ measured by diffing the two capability lists, not estimated.
 | surface.list / create / close / split | ✅ | |
 | surface.send_text / send_key / read_text | ✅ | dispatch by surface kind (VTE + ghostty). Ghostty panes: raw PTY writes; read_text with full scrollback (`--scrollback`) on BOTH backends since 2026-07-22 (VTE reads the retained buffer via get_text_range_format); exited shells error `unavailable` |
 | surface.focus | ✅ | selects workspace, raises pane tab, moves focus (2026-07-22); `current` still ❌ |
-| surface.move / reorder / refresh / clear_history | ❌ | |
+| surface.clear_history | ✅ | ED 3 fed as output — one escape, both backends (2026-07-22) |
+| surface.move / reorder / refresh | ❌ | |
 | surface.trigger_flash | ✅ | double opacity dip on the pane container (2026-07-22) |
 | surface.health / action / drag_to_split | ❌ | |
 | pane.create / list / focus / surfaces | ✅ | panes hold several surfaces behind an AdwTabView strip since 2026-07-21; `surface_count`/`surface_refs`/`selected_surface_ref` report the real list |
 | pane.zoom | ✅ | Linux-only socket verb for macOS's Toggle Pane Zoom command |
-| pane.break / join / last / resize / swap | ❌ | pane.resize would pair well with divider persistence |
+| pane.last | ✅ | tmux last-pane toggle; history fed by the GTK focus funnel (2026-07-22) |
+| pane.break / join / resize / swap | ❌ | pane.resize would pair well with divider persistence |
 
 ### browser — navigation & automation
 

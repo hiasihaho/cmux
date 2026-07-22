@@ -458,8 +458,19 @@ struct CmuxApp: App {
     /// Clicking into a surface makes it the workspace's focused surface;
     /// the tab title follows it.
     private func handleSurfaceFocused(_ tabId: UUID, _ surfaceId: UUID) {
-        guard let index = tabs.firstIndex(where: { $0.id == tabId }),
-              tabs[index].focusedSurfaceId != surfaceId else { return }
+        guard let index = tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        // GTK's focus-enter is the one funnel every focus change passes
+        // through — user clicks AND verb-driven changes (the view sync
+        // grabs focus after model updates, which echoes back here). The
+        // history note must come BEFORE the no-change guard: for
+        // verb-driven changes the model already matches, and the early
+        // return would starve pane.last of exactly those entries.
+        if let pane = tabs[index].panes.first(where: { p in
+            p.surfaces.contains { $0.surfaceId == surfaceId }
+        }) {
+            PaneFocusHistory.shared.note(tabId: tabId, paneId: pane.paneId)
+        }
+        guard tabs[index].focusedSurfaceId != surfaceId else { return }
         tabs[index].focusedSurfaceId = surfaceId
         controlHandler.refreshTitle(tabId: tabId)
     }

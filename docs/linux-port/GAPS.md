@@ -30,17 +30,18 @@ Effort: **S** ≤ half a session · **M** one session · **L** multi-session.
 |---|---|---|---|
 | `surface.move` / `surface.reorder` | `cmux move-surface` / `reorder-surface` error — the `/cmux` skill's fast-start uses both; agents moving tabs between panes hit it | sweep + skill-walk | M |
 | `tab.action` | `cmux tab-action` (select/close/close-others on pane tabs) errors; per-pane tabs exist, the verb doesn't | sweep-v2 | S |
-| `surface.clear_history` | `cmux clear-history` errors; both backends can clear (VTE reset, ghostty needs shim look) | sweep-v2 | S |
-| `pane.last` | `cmux last-pane` errors; SelectionHistory pattern exists for workspaces, panes need the same | sweep-v2 | S |
 | `pane.resize` | `cmux resize-pane -L/-R/-U/-D` errors; PaneDividers already owns positions | sweep-v2 | M |
 | `pane.swap` / `pane.break` / `pane.join` | tmux-compat commands in our own CLI help; break/join = move a surface out of / into a pane, swap = exchange two panes' content | sweep-v2 | M |
-| `system.tree` | `cmux tree` errors — agents use it as the one-call topology read | sweep-v2 | S |
 | `surface.respawn` | `cmux respawn-pane` errors; needs kill+restart of the shell in the same pane (both backends) | sweep-v2 | M |
-| list-panes after restore | `list-panes` with no `--workspace` says "Workspace not found" until a workspace is selected — restored selection not resolving as default | parked 2026-07-22 | S |
 | Live Ghostty config reload | `reload-config` honestly says "new terminals only"; macOS refreshes in place. Needs a shim call to re-read config on existing surfaces | skill-walk | M |
 | Browser JS console pane | macOS `showBrowserJavaScriptConsole` opens a console directly (distinct from DevTools); `browser devtools console` sends `browser.console.show` | CATCHUP item 5 | M |
 | `browser.highlight` / `addscript` / `addstyle` / `addinitscript` | agent-facing helpers; small WebKit calls (user script injection exists for console capture already) | parity-diff | S |
 | Eager background spawn | panes in never-shown workspaces start their shell only on first selection; agents sending to them get `unavailable` | CATCHUP item 1 | M |
+
+**Watch list** (observed once, not reproducible on the current binary):
+`list-panes` with no `--workspace` said "Workspace not found" after a
+restore (2026-07-22, old binary); four repro attempts on the current
+binary all pass. Re-add to Now with a repro if it resurfaces.
 
 ## Next — real features, planned
 
