@@ -2774,3 +2774,100 @@ What the debugging bought, beyond the verbs:
   seed for a future `cmux doctor` suite.
 
 ui-commands-smoke: 35 assertions.
+
+### The harness batch: run.sh, freshness, flake hunter, assertion ledger (2026-07-22)
+
+The four S-items from the harness roadmap (linux/tests/README.md), cut
+ahead of the remaining parity rows because every later batch runs
+through this tooling. Interactivity was explicitly deferred — flags
+only, so agents and CI can never hang on a prompt.
+
+- **`run.sh`** is the front door: the gate, `--list` (rendered from
+  suites.tsv), single suites with `-smoke` optional, `--keep`,
+  `--build` (CMUX_GHOSTTY=1), and the flake hunter.
+- **Freshness preflight**: suites test `.build/debug/` binaries as-is,
+  so a forgotten build silently tests yesterday's code — the class of
+  lie no assertion can catch. `lib.sh` warns per run, the gate checks
+  once up front and suppresses the per-suite copies
+  (CMUX_TEST_NO_FRESHNESS_WARN). `find -L` follows the CmuxCLI/CLI
+  symlink so shared-CLI edits count. Warn, never fail: deliberately
+  testing an old binary (a bisect) stays legitimate.
+- **Flake hunter**: `--repeat N` / `--until-fail [--max N]` on one
+  suite, per-iteration tally + duration, full log of every red
+  iteration kept in /tmp/cmux-flakehunt/. The night before, "is this a
+  flake or a regression" cost hand-re-runs; now it is one flag.
+- **Assertion-count ledger** (suites.tsv): the gate FAILS a suite whose
+  executed count drops below its ledger row — an early exit that skips
+  half a file can no longer read as green (same class as macOS's
+  "Executed 0 tests" unwired-test trap). Counts update in the same
+  commit as intentional changes, so shrinkage is visible in diffs.
+  Suites with skips are waived: a skip collapses whole assertion
+  blocks, so the count is only meaningful on skip-free runs. Per-suite
+  durations print in the gate as a side effect.
+
+The batch's own shakedown produced three findings, two of them caught
+by the new tooling itself:
+
+- **Freshness false positive, fixed:** per-binary comparison cries wolf
+  — SwiftPM legitimately skips relinking a product a change doesn't
+  reach (a CmuxAdw edit never relinks the CLI), so the CLI binary
+  looked permanently stale. Compare sources against the NEWEST binary
+  only: its mtime is "when the last build ran".
+- **The merged CLI prints legacy-alias notices** ("'new-workspace' is
+  now an alias…") into captured output; `cx()` sets CMUX_QUIET=1 now.
+- **Poll for completeness, not first evidence.** Converting the vte
+  capture leg to poll-with-forced-saves (`force_save` in lib.sh — raw
+  v2 session.save, promote.sh's call) first broke the suite
+  DETERMINISTICALLY: breaking when the marker appeared saved a
+  mid-`seq` snapshot, and the staircase assertion failed on the
+  missing tail. The flake hunter caught it in one command (4/4 red at
+  9s where ~60s was normal — the duration column alone was
+  diagnostic). Poll condition = marker AND seq's last line; the suite
+  ended both robust and ~4× faster (13s).
+
+**The gate-flake hunt the batch turned into.** Three consecutive full
+gates went red in the restart-replay family while every suite was
+green in isolation — first vte-scrollback (3 red), then again (2 red),
+then bisecting the gate into halves MOVED the red to
+session-persistence (22/3). That movement was the tell: not a culprit
+suite, but a nondeterministic class. Two harness fixes made it
+diagnosable: run-all now keeps every suite's FULL output under
+/tmp/cmux-gate-logs/ (the summary filter was discarding the failure
+diagnostics), and the bg-split leg's instrumentation line printed
+"(files holding the marker before restart: 1)" — proving the loss was
+CAPTURE-side: the timed save ran before the second pane's output
+landed, so one pane's scrollback file never held the marker and the
+replay assertion blamed the restart. The cure across every capture
+point in both suites: **verify state, don't schedule it** — poll the
+scrollback files for the marker (forcing saves while polling) BEFORE
+killing the instance, and never trust a sleep to mean "captured".
+
+Then the verification polls themselves kept flaking, and the kept-log
+diagnostics (empty scrollback dir + healthy `debug.surfaces` right
+after three forced saves) finally named the saboteur: a **leaked
+scratch instance from the previous night's batch-5 work** (`swptest`,
+session in /tmp) was still alive — and because
+`ScrollbackStore.directory` is `dirname(sessionPath)/scrollback`,
+every `/tmp`-session instance SHARES one directory and
+`prune(keeping:)` runs on every save. The leaked instance's 15s timer
+deleted the suites' capture files whenever it fired inside a capture
+window — which suite went red depended on whose window it hit: the
+whole "moving red" (vte → session-persistence → settings, capture-side,
+sometimes "none bytes") was one process. Three durable outcomes: the
+product fix (per-session scrollback dir) is a GAPS Now row; lib.sh
+pre-flight now WARNS about any foreign /tmp-session cmux-adw
+(`warn_if_foreign_tmp_instance`); and suites stamp a capture epoch
+(`mark_capture_epoch` / `fresh_marker_files`) so only this run's files
+count — including the exit-save leg, which could false-PASS on a stale
+file. The operational lesson is older than the code: **clean up your
+scratch instances** — INSIDE-CMUX already said so, and this is what a
+day of ignoring it costs. Also on the way: `v2()` promoted from
+ui-commands into lib.sh (shared raw-JSON sender with a timeout), and
+pane-zoom/browser-profile turned out to share PAGE_PORT 8418 — and
+therefore an X display — a latent --keep collision now split.
+
+Verified: freshness logic four-case tested in isolation (stale / fresh
+/ missing / suppressed); flake hunter proven on a real red (4/4 with
+kept logs) and a real green (4/4 at stable duration); full gate green
+after the capture-verification hardening; ledger seeded from a live
+gate and its drop-detection proven by inflating one row.

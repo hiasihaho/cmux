@@ -5,10 +5,37 @@ all are safe to run beside the human's daily instance — each starts its own
 cmux with a distinct `CMUX_APP_ID`, socket, session file **and X display**.
 
 ```sh
-linux/tests/run-all.sh            # every suite, one summary
-linux/tests/run-all.sh find popup # only suites matching those words
-linux/tests/browser-find-smoke.sh --keep   # one suite, leave it up to poke
+linux/tests/run.sh                # full gate: freshness check, every suite, ledger
+linux/tests/run.sh find popup     # only suites matching those words
+linux/tests/run.sh --list         # what exists, what each covers, expected counts
+linux/tests/run.sh --suite ui-commands --keep       # one suite, leave it up to poke
+linux/tests/run.sh --suite vte-scrollback --repeat 10   # flake hunter: timed runs
+linux/tests/run.sh --suite session-persistence --until-fail   # run until red
+linux/tests/run.sh --build        # CMUX_GHOSTTY=1 swift build first, then the gate
 ```
+
+`run.sh` is the front door — flags only, no prompts, so agents and CI
+never hang on a menu. `run-all.sh` stays the sequential gate executor
+underneath (calling it, or a suite script, directly still works).
+Three tripwires ride along (2026-07-22):
+
+- **Freshness:** suites test `.build/debug/` binaries as-is, so a
+  forgotten `swift build` silently tests yesterday's code. Every run
+  warns when a binary is older than the newest `.swift` source
+  (including the shared CLI via the `CmuxCLI/CLI` symlink).
+- **The assertion-count ledger** ([`suites.tsv`](suites.tsv)): a suite
+  whose executed assertion count drops below its ledger row FAILS the
+  gate — an early exit that skips half a file can no longer read as
+  green. Update the count in the same commit as any intentional change;
+  suites with skips are waived (skips collapse whole blocks).
+- **Flake hunting:** `--repeat N` / `--until-fail` time every iteration
+  and keep the full log of each red one under `/tmp/cmux-flakehunt/`,
+  so "is this a flake or a regression" is one flag instead of an
+  evening.
+- **Kept gate logs:** the gate writes every suite's full output to
+  `/tmp/cmux-gate-logs/<suite>.log` — the summary shows only
+  PASS/FAIL lines, and a red suite's diagnostics are useless if the
+  gate throws them away (2026-07-22: they were being thrown away).
 
 Suites share [`lib.sh`](lib.sh), which holds the setup, teardown and every
 lesson that cost a debugging round — pre-flight port cleanup, killing by
@@ -31,8 +58,10 @@ success.
 | Script | What it covers |
 |---|---|
 | [`browser-navigation-smoke.sh`](browser-navigation-smoke.sh) | The navigation barrier: goto/back/forward/reload must never let a following eval read the previous document; plus load_state, wait-flag chaining, honest timeouts |
-| [`run-all.sh`](run-all.sh) | Runs every suite sequentially and summarizes; separates failures from setup errors |
-| [`lib.sh`](lib.sh) | Shared setup/teardown, Xvfb, assertions, `screenshot`, `wait_for_shell` |
+| [`run.sh`](run.sh) | The front door: gate, `--list`, single suites, `--repeat`/`--until-fail` flake hunting, `--build`. Flags only, no prompts |
+| [`run-all.sh`](run-all.sh) | Runs every suite sequentially and summarizes; separates failures from setup errors; enforces the assertion-count ledger |
+| [`suites.tsv`](suites.tsv) | Suite inventory + assertion-count ledger — update counts in the same commit as intentional changes |
+| [`lib.sh`](lib.sh) | Shared setup/teardown, Xvfb, assertions, `screenshot`, `wait_for_shell`, `v2` (raw JSON), `force_save`, capture-epoch verification (`mark_capture_epoch`/`fresh_marker_files`), freshness + foreign-instance warnings |
 | [`webdriver-smoke.sh`](webdriver-smoke.sh) | The whole WebDriver stack: automation opt-in, attach mode, split adoption, trusted input, and cmux+WebDriver sharing one surface — plus a live strict-CSP run against github.com |
 | [`browser-urlbar-smoke.sh`](browser-urlbar-smoke.sh) | Address bar: mirrors navigation, typed loopback/domain/search resolution — driven with xdotool on the private display |
 | [`pane-zoom-smoke.sh`](pane-zoom-smoke.sh) | Pane zoom: geometry, toggle, switching panes, not persisted, screenshot |
@@ -69,15 +98,21 @@ inventory. GAPS.md carries one pointer row; the reasoning lives here.
 4. **Never speculatively.** Ideas wait here until a rule above fires;
    an unused harness feature is maintenance debt with no rent paid.
 
+**Landed 2026-07-22** (the four S-items, one batch): the unified
+`run.sh` front door (flags only — the interactive TTY picker stays
+deferred until the flag surface settles), the binary-freshness
+preflight (`lib.sh` + gate, `--build` to fix inline), flake-hunter mode
+(`--repeat`/`--until-fail`), and the assertion-count ledger
+(`suites.tsv`, drop = gate failure). Per-suite durations print in the
+gate as a side effect — the *trend* half of the timing idea remains
+below.
+
 **The inventory:**
 
 | Idea | What / why | Effort |
 |---|---|---|
-| Unified entry point (`run.sh`) | One front door for the whole harness: `--list` (suites, one-line coverage, per-suite requirements), pattern filtering, `--keep`, `--repeat N`, `--until-fail`. **Flags first, prompts as sugar:** an interactive picker appears only with no args on a TTY — agents, CI, and scripts always get non-interactive behavior, never a menu waiting for input. *Decision 2026-07-22: the picker itself is deferred — flags only until the flag surface has settled* | S |
-| Binary-freshness preflight | Suites test `.build/debug/cmux-adw` as-is; forgetting `swift build` silently tests yesterday's binary and every verdict lies. Warn when the binary is older than the newest source file under `linux/Sources`, with a `--build` flag to fix it inline | S |
-| Flake-hunter mode | `--repeat N` / `--until-fail` with per-iteration timing on one suite. The 2026-07-22 load-flake hunt re-ran suites by hand to build confidence; statistical confidence should be one flag | S |
-| Assertion-count ledger | Expected per-suite assertion counts in a manifest; `run-all` warns when a count *drops*. An early `exit 0` that skips half a suite currently reads as green — the same class as macOS's "Executed 0 tests" trap (unwired test files, see CLAUDE.md) | S |
-| Per-suite timing trend | `run-all` already times the gate; recording per-suite durations and flagging a suite at >2× its usual time would name load flakes as load flakes the moment they happen, instead of after a debugging round | S |
+| Per-suite timing trend | Durations print per suite now; *recording* them and flagging a suite at >2× its usual time would name load flakes as load flakes the moment they happen, instead of after a debugging round | S |
+| Interactive picker | The deferred half of the front door: a suite picker when `run.sh` runs bare on a TTY — never for agents/CI, who always get flags | S |
 | Preflight doctor (`cmux doctor`) | Merge lib.sh's environment checks (deps, ports, display) with the `debug.surfaces` verb (GAPS batch 5) into one command that says why an environment will or won't work — for the harness, the dogfood loop, and eventually users | M |
 | Dual-backend gate | Run the full suite matrix under `CMUX_TERM=ghostty`. This is the precondition for flipping the default terminal backend (shim increment 3): the flip happens when the ghostty-mode gate is as green as the VTE one | M |
 | CI | The suites are already headless-capable (Xvfb, private displays, own instances, sequential by design) — a GitHub Actions Linux runner could run the gate per push. Open questions: WebKitGTK/dependency provisioning and the ~6–7 min gate runtime | M–L |

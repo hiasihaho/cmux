@@ -35,12 +35,26 @@ WS=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
 cx select-workspace --workspace "$WS" >/dev/null
 T=$(first_surface_ref "$WS")
 if [ -n "$T" ] && wait_for_shell "$T"; then
+    mark_capture_epoch
     cx send --surface "$T" 'seq 1 2000\n' >/dev/null 2>&1
-    sleep 3
-    cx new-workspace --cwd /tmp --background >/dev/null 2>&1   # force a save
-    sleep 3
+    # Poll for VERIFIED capture, forcing saves — a timed save under gate
+    # load produced "none bytes" (2026-07-22). The tail line is the
+    # completeness signal: a partial mid-seq capture would pass the
+    # ≤ bound vacuously. (The limit truncates the TOP, so line 2000
+    # survives truncation.) Only post-epoch files count, and the size
+    # bound is measured on the matching file — a stale big file from
+    # another suite would fail the bound for the wrong reason.
     sbdir="$(dirname "$SESSION")/scrollback"
-    largest=$(stat -c%s "$sbdir"/*.txt 2>/dev/null | sort -n | tail -1)
+    largest=""
+    for i in $(seq 1 30); do
+        [ $(( i % 6 )) -eq 1 ] && force_save
+        hit=$(find "$sbdir" -name '*.txt' -newer "$CAPTURE_STAMP" -exec grep -l '^2000' {} + 2>/dev/null | head -1)
+        if [ -n "$hit" ]; then
+            largest=$(stat -c%s "$hit" 2>/dev/null)
+            break
+        fi
+        sleep 0.5
+    done
     # 4096 chars + ANSI-safety slack; without the limit this is ~10KB+.
     if [ -n "$largest" ] && [ "$largest" -le 6000 ]; then
         ok "file limit bounds the capture ($largest bytes ≤ 6000)"

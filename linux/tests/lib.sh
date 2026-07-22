@@ -25,7 +25,10 @@
 #  - **Kill by exact name.** `pkill -f <pattern>` matches the agent's own
 #    command line and has killed the running shell more than once.
 #  - **Poll, don't sleep.** A fixed sleep is a latent flake that fails
-#    looking like a product bug.
+#    looking like a product bug. And poll for COMPLETENESS, not first
+#    evidence: wait for ALL markers (and force the state change you
+#    wait on — force_save), or a half-captured snapshot fails a later
+#    assertion with a misleading name.
 #  - **Run on a private X display.** A Ghostty surface spawns its shell on
 #    first *map*, so on a real desktop terminal assertions depend on
 #    whether the window happens to be visible. Xvfb removes that variable
@@ -45,6 +48,49 @@ APP_ID="com.manaflow.cmux.$APP_ID_SUFFIX"
 SOCK="/tmp/cmux-$APP_ID_SUFFIX.sock"
 SESSION="/tmp/cmux-$APP_ID_SUFFIX-session.json"
 LOG="/tmp/cmux-$APP_ID_SUFFIX.log"
+
+# A stale binary silently tests yesterday's code and every verdict lies.
+# Warn, never fail — deliberately testing an old binary is legitimate
+# (a bisect, say). run-all.sh checks once itself and suppresses this
+# per-suite copy. `find -L` follows the CmuxCLI/CLI symlink, so the
+# shared CLI sources count too.
+warn_if_stale_binary() {
+    [ "${CMUX_TEST_NO_FRESHNESS_WARN:-0}" = "1" ] && return 0
+    local bin missing=0
+    for bin in "$APP" "$CLI"; do
+        [ -x "$bin" ] || { echo "  WARN  $(basename "$bin") missing — cd linux && CMUX_GHOSTTY=1 swift build" >&2; missing=1; }
+    done
+    [ "$missing" = 1 ] && return 0
+    # Compare sources against the NEWEST binary only: SwiftPM
+    # legitimately skips relinking a product a change doesn't reach (a
+    # CmuxAdw edit never relinks the CLI), so per-binary comparison
+    # cries wolf forever. The newest binary's mtime is "when the last
+    # build ran" — sources newer than THAT mean no build ran at all.
+    local newest="$APP" newer
+    [ "$CLI" -nt "$APP" ] && newest="$CLI"
+    newer=$(find -L "$ROOT/Sources" -name '*.swift' -newer "$newest" -print -quit 2>/dev/null)
+    [ -n "$newer" ] && echo "  WARN  binaries predate $(basename "$newer") — this run tests STALE code; cd linux && CMUX_GHOSTTY=1 swift build" >&2
+    return 0
+}
+warn_if_stale_binary
+
+# A FOREIGN instance whose session lives in /tmp shares /tmp/scrollback
+# with every suite — and the app prunes that dir on each save, deleting
+# the suites' capture files mid-run. A leaked scratch instance did
+# exactly this on 2026-07-22 and produced a day of moving gate flakes.
+# Warn loudly; killing someone else's instance is not the harness's call.
+warn_if_foreign_tmp_instance() {
+    local pid path
+    for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+        path=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null \
+            | grep '^CMUX_SESSION_PATH=/tmp/' | cut -d= -f2)
+        [ -n "$path" ] || continue
+        [ "$path" = "$SESSION" ] && continue
+        echo "  WARN  foreign cmux-adw (pid $pid, session $path) shares /tmp/scrollback — its periodic prune WILL corrupt capture assertions; stop it before trusting this run" >&2
+    done
+    return 0
+}
+warn_if_foreign_tmp_instance
 
 # A private display per suite so several can run without colliding; derived
 # from the fixture port, which is already unique per suite.
@@ -134,7 +180,50 @@ start_instance() {
 
 # Talks to this suite's instance, with the agent's own pane identity
 # scrubbed so a command never targets the human's session by accident.
-cx() { env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID CMUX_SOCKET_PATH=$SOCK "$CLI" "$@"; }
+# CMUX_QUIET silences the merged CLI's legacy-alias notices, which would
+# otherwise pollute captured output.
+cx() { env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID CMUX_QUIET=1 CMUX_SOCKET_PATH=$SOCK "$CLI" "$@"; }
+
+# Sends one raw v2 JSON line to this suite's instance and prints the
+# reply — for verbs the CLI has no subcommand for yet.
+v2() {
+    python3 - "$SOCK" "$1" <<'PY'
+import socket, sys
+s = socket.socket(socket.AF_UNIX)
+s.settimeout(15)
+try:
+    s.connect(sys.argv[1])
+    s.sendall((sys.argv[2] + "\n").encode())
+    data = b""
+    while not data.endswith(b"\n"):
+        chunk = s.recv(65536)
+        if not chunk:
+            break
+        data += chunk
+    print(data.decode().strip())
+except Exception as e:
+    print('{"error":"%s"}' % e)
+    sys.exit(1)
+PY
+}
+
+# Forces a session save (same call promote.sh uses — no CLI subcommand).
+# Returns 0 when the server reports saved.
+force_save() { v2 '{"id":1,"method":"session.save"}' | grep -q '"saved"'; }
+
+# Capture verification must only trust files written AFTER the leg
+# began: /tmp/scrollback is shared by every /tmp-session instance, the
+# app prunes it on each save, and a stale file from a previous run
+# satisfies a marker grep instantly — breaking the verification poll
+# before this run's capture completed (2026-07-22, the bg-split leg).
+mark_capture_epoch() {
+    CAPTURE_STAMP="/tmp/cmux-$APP_ID_SUFFIX-capture-stamp"
+    touch "$CAPTURE_STAMP"
+}
+# fresh_marker_files <dir> <pattern>: count post-epoch files holding pattern.
+fresh_marker_files() {
+    find "$1" -name '*.txt' -newer "$CAPTURE_STAMP" -exec grep -l "$2" {} + 2>/dev/null | wc -l
+}
 
 # Serves $1 on PAGE_PORT. `--directory` rather than `cd X && …`: with the
 # latter, $! is the wrapper subshell and cleanup orphans the real server.

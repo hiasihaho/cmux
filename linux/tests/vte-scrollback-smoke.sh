@@ -29,12 +29,30 @@ fi
 info "capture: full buffer, not just the viewport"
 # Enough output that the marker scrolls out of the visible screen — the
 # capture must include scrollback for it to survive.
+mark_capture_epoch
 cx send --surface "$T" 'echo VTE_SB_MARKER_XYZ; seq 1 200\n' >/dev/null 2>&1
-sleep 2
-cx new-workspace --cwd /tmp --background >/dev/null 2>&1   # force a save
-sleep 3
+# Poll, don't sleep — and keep forcing saves while polling: under
+# full-gate load the output can land in the buffer AFTER a save already
+# ran, so a single forced save can miss the marker (3 red assertions in
+# the 2026-07-22 gate; green in isolation). The poll condition is
+# capture COMPLETENESS (marker + seq's final line), not the marker
+# alone — breaking on the marker saves a mid-seq snapshot and the
+# staircase assertion then fails on the missing tail. Only post-epoch
+# files count: the scrollback dir is shared and stale files satisfy
+# the greps instantly.
 sbdir="$(dirname "$SESSION")/scrollback"
-stored=$(grep -l VTE_SB_MARKER_XYZ "$sbdir"/*.txt 2>/dev/null | wc -l)
+stored=0
+for i in $(seq 1 30); do
+    [ $(( i % 6 )) -eq 1 ] && force_save
+    for fp in $(find "$sbdir" -name '*.txt' -newer "$CAPTURE_STAMP" 2>/dev/null); do
+        if grep -q VTE_SB_MARKER_XYZ "$fp" && grep -q '^200' "$fp"; then
+            stored=1
+            break
+        fi
+    done
+    [ "$stored" -gt 0 ] && break
+    sleep 0.5
+done
 [ "${stored:-0}" -gt 0 ] \
     && ok "marker beyond the viewport is captured to the file" \
     || bad "vte capture" "no scrollback file holds the marker"
@@ -49,14 +67,25 @@ TB=$(first_surface_ref "$WSB")
 [ -n "$TB" ] && wait_for_shell "$TB" 30
 # Poll, don't sleep: replay latency varies with load.
 screen=""
-for _ in $(seq 1 20); do
+for _ in $(seq 1 30); do
     screen=$(cx read-screen --surface "$TB" --scrollback 2>/dev/null || cx read-screen --surface "$TB" 2>/dev/null)
     echo "$screen" | grep -q VTE_SB_MARKER_XYZ && break
     sleep 0.5
 done
-echo "$screen" | grep -q VTE_SB_MARKER_XYZ \
-    && ok "marker is back after the restart" \
-    || bad "vte replay" "marker not present after restart"
+if echo "$screen" | grep -q VTE_SB_MARKER_XYZ; then
+    ok "marker is back after the restart"
+else
+    bad "vte replay" "marker not present after restart"
+    # Gate-only failure under investigation (2026-07-22): green in
+    # isolation and in adjacent-pair runs. Say WHY next time.
+    echo "  -- diag workspaces: $(cx list-workspaces 2>&1 | tr '\n' ' ')"
+    echo "  -- diag target: WSB=$WSB TB=$TB"
+    echo "  -- diag debug.surfaces:"
+    v2 '{"id":9,"method":"debug.surfaces"}' | head -c 600 | sed 's/^/     /'
+    echo
+    echo "  -- diag screen tail:"
+    echo "$screen" | tail -6 | sed 's/^/     /'
+fi
 
 # The replayed 1..200 lines must start at column 0 — a staircase would
 # indent them (LF without CR).

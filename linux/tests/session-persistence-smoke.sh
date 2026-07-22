@@ -192,10 +192,12 @@ BR=$(cx --json list-panes --workspace "$WS3" 2>/dev/null | python3 -c '
 import json,sys
 p=json.load(sys.stdin)["panes"]; print(p[1]["surface_refs"][0] if len(p)>1 else "")')
 width_half=$(cx browser --surface "$BR" eval 'window.innerWidth' 2>/dev/null)
-cx new-workspace --cwd /tmp --background >/dev/null 2>&1   # force a save
-sleep 2
-
-captured=$(python3 -c "
+# Poll for the persisted condition, forcing saves — a timed save under
+# gate load reads a stale session file (the 2026-07-22 flake class).
+captured="no"
+for i in $(seq 1 20); do
+    [ $(( i % 5 )) -eq 1 ] && force_save
+    captured=$(python3 -c "
 import json
 d=json.load(open('$SESSION'))
 def walk(n):
@@ -204,6 +206,9 @@ def walk(n):
         yield from walk(n['split']['first']); yield from walk(n['split']['second'])
 vals=[v for w in d['workspaces'] for v in walk(w['layout']) if v is not None]
 print('yes' if vals else 'no')" 2>/dev/null)
+    [ "$captured" = "yes" ] && break
+    sleep 0.5
+done
 expect "a divider fraction is persisted" "yes" "$captured"
 
 # Move it well off centre and restart: the pane must come back wider.
@@ -234,6 +239,9 @@ else
 fi
 
 # A v3 file written before dividers were persisted must still load.
+# Expect the count we actually had — hardcoding it broke when the
+# save-forcer workspace disappeared (2026-07-22).
+count_before=$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')
 python3 -c "
 import json
 d=json.load(open('$SESSION'))
@@ -246,7 +254,7 @@ json.dump(d, open('$SESSION','w'))" 2>/dev/null
 kill_instance
 start_instance || exit 2
 sleep 2
-expect "v3 files without dividerPosition still restore" "3" \
+expect "v3 files without dividerPosition still restore" "$count_before" \
     "$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')"
 
 # --------------------------------------------------- terminal cwd tracking
@@ -265,14 +273,19 @@ cx select-workspace --workspace "$WS4" >/dev/null
 T4=$(first_surface_ref "$WS4")
 if [ -n "$T4" ] && wait_for_shell "$T4"; then
     cx send --surface "$T4" 'cd /etc\n' >/dev/null 2>&1
-    sleep 2
-    cx new-workspace --cwd /tmp --background >/dev/null 2>&1   # force a save
-    sleep 2
-    tracked=$(python3 -c "
+    # Poll for the persisted condition, forcing saves (2026-07-22
+    # flake class: a timed save reads a stale session file).
+    tracked="no"
+    for i in $(seq 1 20); do
+        [ $(( i % 5 )) -eq 1 ] && force_save
+        tracked=$(python3 -c "
 import json
 d=json.load(open('$SESSION'))
 dirs=[s['workingDirectory'] for w in d['workspaces'] for s in w['surfaces'] if s['type']=='terminal']
 print('yes' if '/etc' in dirs else 'no:' + ','.join(dirs))" 2>/dev/null)
+        [ "$tracked" = "yes" ] && break
+        sleep 0.5
+    done
     expect "a cd is captured into the session" "yes" "$tracked"
     # grep -c prints 0 AND exits 1 when there are no matches, so a
     # `|| echo 0` fallback appends a second zero ("0\n0").
@@ -295,15 +308,23 @@ WS5=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
 cx select-workspace --workspace "$WS5" >/dev/null
 T5=$(first_surface_ref "$WS5")
 if [ -n "$T5" ] && wait_for_shell "$T5"; then
+    mark_capture_epoch
     cx send --surface "$T5" 'echo SCROLLBACK_MARKER_XYZ\n' >/dev/null 2>&1
-    sleep 2
-    cx new-workspace --cwd /tmp --background >/dev/null 2>&1   # force a save
-    sleep 2
+    # Poll for VERIFIED capture with forced saves — under multi-suite
+    # load a single timed save can run before the output landed
+    # (2026-07-22: exactly this leg went red that way). Only post-epoch
+    # files count: stale ones from earlier runs satisfy the grep.
     # Scrollback lives OUTSIDE the session document: that file is
     # rewritten on every model change, so inline text made every line of
     # output rewrite everything (~327KB per save before this).
     sbdir="$(dirname "$SESSION")/scrollback"
-    stored=$(grep -l SCROLLBACK_MARKER_XYZ "$sbdir"/*.txt 2>/dev/null | wc -l)
+    stored=0
+    for i in $(seq 1 30); do
+        [ $(( i % 6 )) -eq 1 ] && force_save
+        stored=$(fresh_marker_files "$sbdir" SCROLLBACK_MARKER_XYZ)
+        [ "${stored:-0}" -gt 0 ] && break
+        sleep 0.5
+    done
     [ "${stored:-0}" -gt 0 ] && ok "screen text is captured to its own file" \
                              || bad "scrollback capture" "no file under $sbdir holds the marker"
     inline=$(grep -c SCROLLBACK_MARKER_XYZ "$SESSION" 2>/dev/null)
@@ -314,8 +335,13 @@ if [ -n "$T5" ] && wait_for_shell "$T5"; then
     sleep 3
     T5B=$(first_surface_ref "$WS5")
     [ -n "$T5B" ] && wait_for_shell "$T5B" 30
-    sleep 2
-    replayed=$(cx read-screen --surface "$T5B" 2>/dev/null | grep -c SCROLLBACK_MARKER_XYZ)
+    # Poll, don't sleep: replay latency varies with load.
+    replayed=0
+    for _ in $(seq 1 20); do
+        replayed=$(cx read-screen --surface "$T5B" 2>/dev/null | grep -c SCROLLBACK_MARKER_XYZ)
+        [ "${replayed:-0}" -gt 0 ] && break
+        sleep 0.5
+    done
     [ "${replayed:-0}" -gt 0 ] \
         && ok "screen text is replayed after a restart ($replayed line(s))" \
         || bad "scrollback replay" "marker not on screen after restart"
@@ -351,14 +377,33 @@ if [ -n "$T6" ] && wait_for_shell "$T6"; then
     refs6=$(cx --json list-panes --workspace "$WS6" 2>/dev/null | python3 -c '
 import json,sys
 print(" ".join(r for p in json.load(sys.stdin)["panes"] for r in p["surface_refs"]))')
+    mark_capture_epoch
     for r in $refs6; do
         wait_for_shell "$r" && cx send --surface "$r" 'echo BGWS_MARKER_XYZ\n' >/dev/null 2>&1
     done
     sleep 3
     # Leave WS6 UNSELECTED across the restart — the whole point.
     cx select-workspace --workspace workspace:1 >/dev/null 2>&1
-    sleep 3
-    echo "        (files holding the marker before restart: $(grep -l BGWS_MARKER_XYZ "$(dirname "$SESSION")/scrollback"/*.txt 2>/dev/null | wc -l))"
+    # Poll for VERIFIED capture of BOTH panes before killing the
+    # instance (2026-07-22: a timed save caught only one pane under
+    # load; the instrumentation line below is how the loss surfaced).
+    sbdir6="$(dirname "$SESSION")/scrollback"
+    held=0
+    for i in $(seq 1 30); do
+        [ $(( i % 6 )) -eq 1 ] && force_save
+        held=$(fresh_marker_files "$sbdir6" BGWS_MARKER_XYZ)
+        [ "${held:-0}" -ge 2 ] && break
+        sleep 0.5
+    done
+    echo "        (files holding the marker before restart: $held)"
+    if [ "${held:-0}" -lt 2 ]; then
+        echo "  -- diag scrollback dir:"
+        ls -la "$sbdir6" 2>&1 | tail -8 | sed 's/^/     /'
+        echo "  -- diag refs6=$refs6 WS6=$WS6"
+        echo "  -- diag debug.surfaces:"
+        v2 '{"id":9,"method":"debug.surfaces"}' | head -c 800 | sed 's/^/     /'
+        echo
+    fi
     kill_instance
     start_instance || exit 2
     # Longer than the poll chain's own ~10s lifetime, so a fix that merely
@@ -417,6 +462,7 @@ if [ "$USE_XVFB" = "1" ] && command -v xdotool >/dev/null 2>&1 \
     start_instance || exit 2
     T7=$(first_surface_ref workspace:1)
     if [ -n "$T7" ] && wait_for_shell "$T7"; then
+        mark_capture_epoch
         cx send --surface "$T7" 'echo EXIT_SAVE_MARKER_XYZ\n' >/dev/null 2>&1
         sleep 1   # well inside both the 15s pass and the 2s read throttle
         WIN=$(DISPLAY="$XDISPLAY" xdotool search --name '^cmux$' | head -1)
@@ -431,7 +477,9 @@ if [ "$USE_XVFB" = "1" ] && command -v xdotool >/dev/null 2>&1 \
         fired=$(grep -c "exit save firing" "$LOG" 2>/dev/null)
         expect "close-request ran the final save" "1" "${fired:-0}"
         sbdir="$(dirname "$SESSION")/scrollback"
-        saved=$(grep -l EXIT_SAVE_MARKER_XYZ "$sbdir"/*.txt 2>/dev/null | wc -l)
+        # Post-epoch files only — a stale marker file from a previous
+        # run would false-PASS this.
+        saved=$(fresh_marker_files "$sbdir" EXIT_SAVE_MARKER_XYZ)
         [ "${saved:-0}" -gt 0 ] \
             && ok "output from 1s before the close is on disk" \
             || bad "exit save" "marker not in any file under $sbdir"

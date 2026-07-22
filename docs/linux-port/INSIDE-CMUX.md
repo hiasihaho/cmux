@@ -43,9 +43,13 @@ refuses to start a second one while the daily socket responds.) The raw
 env-var pattern behind it, if you ever need it manually:
 
 ```sh
+# SESSION goes in the state dir, NEVER /tmp: the scrollback store lives
+# in dirname(session)/scrollback and is pruned on every save, so a
+# /tmp-session instance deletes every test suite's capture files
+# (2026-07-22: a leaked one caused a day of moving gate flakes).
 CMUX_APP_ID=com.manaflow.cmux.dev \
 CMUX_SOCKET_PATH=/tmp/cmux-dev.sock \
-CMUX_SESSION_PATH=/tmp/cmux-dev-session.json \
+CMUX_SESSION_PATH=~/.local/state/cmux/dev-session.json \
 nohup linux/.build/debug/cmux-adw >/tmp/cmux-dev.log 2>&1 &
 # kill ONLY it: match CMUX_APP_ID in /proc/<pid>/environ, never by name
 for pid in $(pgrep -x cmux-adw); do

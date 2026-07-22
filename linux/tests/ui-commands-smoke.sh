@@ -18,21 +18,7 @@ require_tools xdotool
 start_xvfb
 start_instance || exit 2
 
-# Raw v2 for verbs the CLI has no subcommand for yet.
-v2() {
-    python3 - "$SOCK" "$1" <<'PY'
-import json, socket, sys
-s = socket.socket(socket.AF_UNIX)
-s.connect(sys.argv[1])
-s.sendall((sys.argv[2] + "\n").encode())
-data = b""
-while not data.endswith(b"\n"):
-    chunk = s.recv(65536)
-    if not chunk: break
-    data += chunk
-print(data.decode().strip())
-PY
-}
+# v2() — the raw JSON sender — comes from lib.sh.
 
 focused_pane() {
     cx list-panes --workspace "$1" 2>/dev/null | grep "\[focused\]" | grep -oE 'pane:[0-9]+' | head -1

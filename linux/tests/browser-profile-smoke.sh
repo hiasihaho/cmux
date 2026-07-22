@@ -8,7 +8,10 @@
 # Exit: 0 all passed, 1 an assertion failed, 2 setup problem.
 SUITE_NAME="browser-profile-smoke"
 APP_ID_SUFFIX="proftest"
-PAGE_PORT=8418
+# 8424, not 8418: pane-zoom-smoke owns 8418, and PAGE_PORT also derives
+# the private X display — two suites sharing one means a stale --keep
+# run of one can break the other.
+PAGE_PORT=8424
 source "$(dirname "$0")/lib.sh"
 
 # Profiles live beside the session file; a previous run's store/data would
