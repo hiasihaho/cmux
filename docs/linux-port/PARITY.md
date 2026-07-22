@@ -37,6 +37,7 @@ measured by diffing the two capability lists, not estimated.
 | surface.focus | ✅ | selects workspace, raises pane tab, moves focus (2026-07-22); `current` still ❌ |
 | surface.clear_history | ✅ | ED 3 fed as output — one escape, both backends (2026-07-22) |
 | surface.move / reorder | ✅ | tab moves across panes AND workspaces as pure model mutations — the pane-tab reconciliation reparents the live widget, so terminals keep running across the move (2026-07-22). refresh still ❌ |
+| surface.respawn | 🟡 | `respawn-pane` (tmux `-k` semantics) works on VTE panes 2026-07-22: old child killed via the spawn-callback pid, command respawns in the SAME VteTerminal, scrollback survives. Ghostty panes refuse honestly (shim owns their spawn; roadmap/05 with live config reload) |
 | surface.trigger_flash | ✅ | double opacity dip on the pane container (2026-07-22) |
 | surface.health / action / drag_to_split | ❌ | |
 | pane.create / list / focus / surfaces | ✅ | panes hold several surfaces behind an AdwTabView strip since 2026-07-21; `surface_count`/`surface_refs`/`selected_surface_ref` report the real list |

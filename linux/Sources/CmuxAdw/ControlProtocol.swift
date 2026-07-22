@@ -412,7 +412,7 @@ struct ControlCommandHandler {
                     "pane.last", "surface.clear_history", "tab.action",
                     "surface.reorder", "surface.move",
                     "pane.swap", "pane.break", "pane.join", "pane.resize",
-                    "debug.surfaces",
+                    "surface.respawn", "debug.surfaces",
                     "notification.jump_to_unread", "notification.mark_read",
                     "notification.dismiss", "notification.open",
                     "window.current", "window.focus", "browser.zoom.set",
@@ -499,6 +499,8 @@ struct ControlCommandHandler {
             return v2SurfaceFocus(id: id, params: params)
         case "session.save":
             return v2SessionSave(id: id)
+        case "surface.respawn":
+            return v2SurfaceRespawn(id: id, params: params)
         case "debug.surfaces":
             // The doctor verb: widget-lifecycle state of every surface
             // (backend, parent type, realized/mapped, refcount, readable).
@@ -979,6 +981,43 @@ struct ControlCommandHandler {
     /// One escape works on both backends: ED 3 (CSI 3 J, the xterm
     /// extension) fed as terminal OUTPUT clears scrollback and only
     /// scrollback — the visible screen stays, matching macOS.
+    /// tmux `respawn-pane -k`: kill the pane's process, start the given
+    /// command (or a login shell) in the same pane. VTE panes respawn in
+    /// place — scrollback survives. Ghostty panes refuse honestly: the
+    /// shim owns their spawn, and support belongs to the roadmap/05
+    /// lifecycle work alongside live config reload.
+    private func v2SurfaceRespawn(id: Any?, params: [String: Any]) -> String {
+        guard let target = v2TargetSurface(params) else {
+            return v2Error(id: id, code: "not_found", message: "Surface not found")
+        }
+        if SurfaceRegistry.shared.ghostty(for: target.surfaceId) != nil {
+            return v2Error(
+                id: id, code: "unavailable",
+                message: "respawn is not supported for Ghostty panes yet (the shim owns their spawn); use a VTE pane or close and reopen this one"
+            )
+        }
+        let command = (params["command"] as? String)
+            .flatMap { $0.isEmpty ? nil : $0 } ?? "exec ${SHELL:-/bin/sh} -l"
+        let requestedCwd = (params["working_directory"] as? String)
+            .flatMap { $0.isEmpty ? nil : $0 }
+        let leafCwd = target.tab.allSurfaces
+            .first { $0.surface.surfaceId == target.surfaceId }?
+            .surface.workingDirectory
+        guard SurfaceRegistry.shared.respawnTerminal(
+            surfaceId: target.surfaceId,
+            workspaceId: target.tab.id,
+            command: command,
+            workingDirectory: requestedCwd ?? leafCwd
+        ) else {
+            return v2Error(id: id, code: "unavailable", message: "Surface has no terminal to respawn")
+        }
+        return v2Ok(id: id, result: [
+            "workspace_id": target.tab.id.uuidString,
+            "surface_id": target.surfaceId.uuidString,
+            "respawned": true,
+        ])
+    }
+
     private func v2SurfaceClearHistory(id: Any?, params: [String: Any]) -> String {
         guard let target = v2TargetSurface(params) else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")

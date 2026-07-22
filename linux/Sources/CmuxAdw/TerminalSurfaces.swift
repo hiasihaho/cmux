@@ -55,6 +55,56 @@ final class SurfaceRegistry {
         spawnTimes[surfaceId] = Date()
     }
 
+    /// Child pids reported by VTE's spawn callback, so respawn can kill
+    /// the old process deterministically instead of hoping the pty-close
+    /// SIGHUP reaches a shell that may ignore it.
+    private var childPids: [UUID: pid_t] = [:]
+
+    func setChildPid(_ pid: pid_t, for surfaceId: UUID) {
+        if pid > 0 { childPids[surfaceId] = pid }
+    }
+
+    /// tmux `respawn-pane -k` semantics for a VTE pane: kill the current
+    /// child and start `command` in the SAME VteTerminal — scrollback
+    /// survives, the process does not. Ghostty panes are refused by the
+    /// caller (the shim owns their spawn; roadmap/05).
+    func respawnTerminal(
+        surfaceId: UUID,
+        workspaceId: UUID,
+        command: String,
+        workingDirectory: String?
+    ) -> Bool {
+        guard let terminal = terminals[surfaceId] else { return false }
+        if let pid = childPids.removeValue(forKey: surfaceId) {
+            kill(pid, SIGKILL)
+        }
+        var environment = ProcessInfo.processInfo.environment
+        environment["CMUX_WORKSPACE_ID"] = workspaceId.uuidString
+        environment["CMUX_SURFACE_ID"] = surfaceId.uuidString
+        environment["CMUX_SOCKET_PATH"] = ControlSocketServer.shared.path
+        let argv = cmuxCStringArray(["/bin/sh", "-c", command])
+        let envv = cmuxCStringArray(environment.map { "\($0.key)=\($0.value)" })
+        defer {
+            g_strfreev(argv)
+            g_strfreev(envv)
+        }
+        spawnTimes[surfaceId] = Date()
+        vte_terminal_spawn_async(
+            terminal,
+            VTE_PTY_DEFAULT,
+            workingDirectory,
+            argv,
+            envv,
+            G_SPAWN_DEFAULT,
+            nil, nil, nil,
+            -1,
+            nil,
+            vteSpawnPidCallback,
+            Unmanaged.passRetained(SpawnPidBox(surfaceId)).toOpaque()
+        )
+        return true
+    }
+
     func registerGhostty(
         _ widget: OpaquePointer,
         container: OpaquePointer,
@@ -69,6 +119,35 @@ final class SurfaceRegistry {
 
     func ghostty(for surfaceId: UUID) -> OpaquePointer? {
         ghosttys[surfaceId]
+    }
+
+    /// Eager background spawn: the shim starts a surface's shell when its
+    /// widget is REALIZED, and GTK only realizes stack children when they
+    /// are first shown — so panes in never-shown workspaces had no shell
+    /// until first selection and agents sending to them got `unavailable`.
+    /// Realizing an anchored hidden widget is legal (GTK realizes the
+    /// ancestor chain first) and does NOT map it: the shell starts, the
+    /// renderer stays dormant until the workspace is shown. Idempotent;
+    /// runs at the end of every sync.
+    func realizeHiddenGhosttys() {
+        for (_, widget) in ghosttys {
+            let w = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkWidget.self)
+            if gtk_widget_get_realized(w) == 0, gtk_widget_get_root(w) != nil {
+                realizeSubtree(w)
+            }
+        }
+    }
+
+    /// gtk_widget_realize realizes ANCESTORS, never children — and the
+    /// shim's lazy init hooks the GLArea's own realize, several levels
+    /// below the registered bin. Walk the subtree.
+    private func realizeSubtree(_ widget: UnsafeMutablePointer<GtkWidget>) {
+        gtk_widget_realize(widget)
+        var child = gtk_widget_get_first_child(widget)
+        while let current = child {
+            realizeSubtree(current)
+            child = gtk_widget_get_next_sibling(current)
+        }
     }
 
     /// Bell policy — shell startup banners (fastfetch & friends) often emit
@@ -459,9 +538,11 @@ struct TerminalStackWidget: AdwaitaWidget {
         // Titles arrive after the page does (a freshly adopted popup has
         // neither title nor URL yet), so refresh them on every sync.
         PaneTabs.refreshAllTitles(tabs: tabs)
-        // Selecting a workspace for the first time is what finally maps its
-        // panes and starts their shells — the moment a restored scrollback
-        // can actually be replayed.
+        // Eager background spawn: realize hidden ghostty widgets so their
+        // shells start without the workspace ever being selected.
+        SurfaceRegistry.shared.realizeHiddenGhosttys()
+        // Mapping used to be what started background shells; with eager
+        // realize the replay poll can usually begin before first show.
         TerminalScrollbackStore.replayPendingIfReady()
 
         if let tab = tabs.first(where: { $0.id == selection }) {
@@ -671,8 +752,8 @@ struct TerminalStackWidget: AdwaitaWidget {
         environment["CMUX_SURFACE_ID"] = leaf.surfaceId.uuidString
         environment["CMUX_SOCKET_PATH"] = ControlSocketServer.shared.path
 
-        let argv = cStringArray([shell])
-        let envv = cStringArray(environment.map { "\($0.key)=\($0.value)" })
+        let argv = cmuxCStringArray([shell])
+        let envv = cmuxCStringArray(environment.map { "\($0.key)=\($0.value)" })
         defer {
             g_strfreev(argv)
             g_strfreev(envv)
@@ -687,7 +768,9 @@ struct TerminalStackWidget: AdwaitaWidget {
             G_SPAWN_DEFAULT,
             nil, nil, nil,
             -1,
-            nil, nil, nil
+            nil,
+            vteSpawnPidCallback,
+            Unmanaged.passRetained(SpawnPidBox(leaf.surfaceId)).toOpaque()
         )
     }
 
@@ -695,14 +778,30 @@ struct TerminalStackWidget: AdwaitaWidget {
         UnsafeMutableRawPointer(terminal).assumingMemoryBound(to: GtkWidget.self)
     }
 
-    /// NULL-terminated, strdup'd C string array (freed with `g_strfreev`;
-    /// VTE's spawn copies the arrays before returning).
-    private func cStringArray(_ strings: [String]) -> UnsafeMutablePointer<UnsafeMutablePointer<CChar>?> {
-        let array = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity: strings.count + 1)
-        for (index, string) in strings.enumerated() {
-            array[index] = strdup(string)
-        }
-        array[strings.count] = nil
-        return array
+}
+
+/// NULL-terminated, strdup'd C string array (freed with `g_strfreev`;
+/// VTE's spawn copies the arrays before returning). File-scope: both the
+/// view's first spawn and the registry's respawn build argv/envv with it.
+func cmuxCStringArray(_ strings: [String]) -> UnsafeMutablePointer<UnsafeMutablePointer<CChar>?> {
+    let array = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity: strings.count + 1)
+    for (index, string) in strings.enumerated() {
+        array[index] = strdup(string)
     }
+    array[strings.count] = nil
+    return array
+}
+
+/// Carries the surface identity into VTE's C spawn callback.
+final class SpawnPidBox {
+    let surfaceId: UUID
+    init(_ surfaceId: UUID) { self.surfaceId = surfaceId }
+}
+
+/// Records the child pid VTE reports, so respawn can kill the previous
+/// process instead of orphaning it.
+let vteSpawnPidCallback: VteTerminalSpawnAsyncCallback = { _, pid, _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<SpawnPidBox>.fromOpaque(userData).takeRetainedValue()
+    SurfaceRegistry.shared.setChildPid(pid, for: box.surfaceId)
 }

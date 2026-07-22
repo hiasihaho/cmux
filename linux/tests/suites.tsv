@@ -13,6 +13,6 @@ session-persistence-smoke	25	Session schema v3 round-trip: tabs, selection, brow
 pane-zoom-smoke	7	Pane zoom: geometry, toggle, switching panes, not persisted
 browser-urlbar-smoke	5	Address bar via xdotool: typed loopback/domain/search resolution mirrors navigation
 browser-profile-smoke	14	Browser profiles: per-profile cookie/storage isolation verbs
-vte-scrollback-smoke	5	VTE backend scrollback capture + replay across an instance restart
+vte-scrollback-smoke	8	VTE backend scrollback capture + replay across an instance restart
 settings-smoke	6	Settings precedence (env > file > default), preferences verbs
-ui-commands-smoke	35	UI/protocol verbs: tree, tab actions, notifications, move/reorder, swap/resize/break/join, debug.surfaces
+ui-commands-smoke	36	UI/protocol verbs: tree, tab actions, notifications, move/reorder, swap/resize/break/join, debug.surfaces

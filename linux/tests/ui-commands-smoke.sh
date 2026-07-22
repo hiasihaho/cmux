@@ -12,6 +12,10 @@
 SUITE_NAME="ui-commands-smoke"
 APP_ID_SUFFIX="uitest"
 PAGE_PORT=8422
+# Ghostty explicitly, not via the user's config: the respawn-refusal
+# assertion below depends on the backend, and the suite has always run
+# ghostty in practice (the daily config chooses it).
+INSTANCE_ENV=(CMUX_TERM=ghostty)
 source "$(dirname "$0")/lib.sh"
 
 require_tools xdotool
@@ -307,5 +311,13 @@ doc=$(v2 '{"id":11,"method":"debug.surfaces"}')
 echo "$doc" | grep -q '"backend"' && echo "$doc" | grep -q '"parent_type"' \
     && ok "debug.surfaces reports widget lifecycle state" \
     || bad "debug.surfaces" "$(echo "$doc" | head -c 120)"
+
+# Respawn is VTE-only for now (the shim owns ghostty spawn; roadmap/05) —
+# a ghostty pane must refuse HONESTLY, not pretend. The VTE respawn
+# itself is covered in vte-scrollback-smoke.
+rsp=$(cx respawn-pane --surface "$T" --command 'echo never-runs' 2>&1)
+echo "$rsp" | grep -qi "ghostty" \
+    && ok "respawn refuses ghostty panes with an honest error" \
+    || bad "respawn refusal" "expected a Ghostty-specific unavailable error, got: $(echo "$rsp" | head -c 100)"
 
 finish

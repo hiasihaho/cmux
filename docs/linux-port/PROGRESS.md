@@ -2887,3 +2887,53 @@ relocated to the legacy path must still replay — delete that leg
 together with the fallback). lib.sh exports SBDIR so suites stop
 hand-deriving the path: if the app regressed to the shared dir, every
 capture assertion would go red on its own.
+
+### surface.respawn: VTE in place, ghostty refused honestly (2026-07-22)
+
+`cmux respawn-pane` (and the tmux-compat `respawn-pane -k`, which
+claude-teams teammates use). The CLI sends `surface.respawn` with a
+shell-line `command` (default `exec ${SHELL:-/bin/sh} -l`), optional
+`working_directory`.
+
+VTE panes respawn IN PLACE: the same VteTerminal gets a fresh
+`vte_terminal_spawn_async` — so scrollback survives — and the old
+child is killed by pid rather than trusting the pty-close SIGHUP to
+reach a shell that may ignore it. The pid comes from VTE's spawn
+callback (a `SpawnPidBox` carries the surface id through the C
+callback), recorded at first spawn and at every respawn.
+
+Ghostty panes refuse with `unavailable` naming the reason: the shim
+owns their spawn, and respawn there belongs to the roadmap/05 shim
+work together with live config reload. ui-commands pins its instance
+to `CMUX_TERM=ghostty` (it always ran ghostty via the user config —
+now the refusal assertion doesn't depend on that config) and asserts
+the refusal; vte-scrollback grew a three-assertion respawn leg
+(command runs, old pid dead, scrollback survives). Live-verified on a
+scratch instance first: custom command, default command, and the old
+shell's pid confirmed dead.
+
+### Eager background spawn: the realize half, and where the rest lives (2026-07-22)
+
+The sync now force-realizes hidden ghostty subtrees
+(`realizeHiddenGhosttys`). Two things the experiment established, both
+worth their ink:
+
+- `gtk_widget_realize` realizes ANCESTORS, never children — and the
+  shim's lazy init hooks the GLArea's own realize, several levels below
+  the registered bin. The walk must recurse. After it, every surface in
+  a never-shown workspace reports realized=true mapped=false in
+  `debug.surfaces` (the doctor verb earning its keep again).
+- Realized is NOT running: the shim initializes "when the widget's
+  GLArea is first realized AND SIZED" (lib_gtk_embed.zig), and GtkStack
+  never allocates hidden children, so the size half never arrives and
+  the shell still waits for first selection. Forcing allocation of
+  unmapped widgets from outside layout would be fighting GTK; the
+  correct remainder is shim-side eager PTY sizing (spawn with a default
+  80×24 grid when unallocated, or an explicit ensure_started API) —
+  exactly the "realize-offscreen strategy or eager PTY sizing" the
+  increment-4 note predicted. GAPS carries the diagnosis; the realize
+  half stays because the shim increment needs it anyway.
+
+The eager-realize pass fronts the GL-context cost of hidden panes
+(bounded — first show would have paid it), renderers stay dormant
+until map.

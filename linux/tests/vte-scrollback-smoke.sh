@@ -126,6 +126,34 @@ if [ "$moved" -gt 0 ]; then
     echo "$screen2" | grep -q VTE_SB_MARKER_XYZ \
         && ok "pre-move files in the legacy shared dir still replay" \
         || bad "legacy fallback" "marker in legacy dir was not replayed"
+
+    # --------------------------------------------------- surface.respawn
+    # tmux respawn-pane -k semantics, VTE in place: the process dies, the
+    # command runs in the same pane, the buffer survives.
+    info "respawn-pane (VTE, in place)"
+    cx send --surface "$TC" 'echo RSP_PID_$$\n' >/dev/null 2>&1
+    sleep 1
+    old_pid=$(cx read-screen --surface "$TC" 2>/dev/null | grep -oE 'RSP_PID_[0-9]+' | tail -1 | cut -d_ -f3)
+    cx respawn-pane --surface "$TC" --command 'echo RSP_RESPAWNED_XYZ; exec sh -l' >/dev/null 2>&1
+    rscreen=""
+    for _ in $(seq 1 20); do
+        rscreen=$(cx read-screen --surface "$TC" --scrollback 2>/dev/null)
+        echo "$rscreen" | grep -q RSP_RESPAWNED_XYZ && break
+        sleep 0.5
+    done
+    echo "$rscreen" | grep -q RSP_RESPAWNED_XYZ \
+        && ok "respawn runs the given command in the same pane" \
+        || bad "respawn command" "RSP_RESPAWNED_XYZ never appeared"
+    if [ -n "$old_pid" ]; then
+        kill -0 "$old_pid" 2>/dev/null \
+            && bad "respawn kill" "old shell $old_pid still alive" \
+            || ok "the previous shell process was killed ($old_pid)"
+    else
+        skip "respawn kill assertion" "could not read the old shell pid"
+    fi
+    echo "$rscreen" | grep -q VTE_SB_MARKER_XYZ \
+        && ok "scrollback survives the respawn" \
+        || bad "respawn scrollback" "buffer content lost across respawn"
 else
     skip "legacy fallback assertion" "no scrollback files to relocate"
 fi

@@ -52,42 +52,38 @@ pick from its *Now* table, follow its rules (same-commit updates, suite
 per fix, sweep after every merge). The milestones below are the
 narrative context.
 
-## Current focus and the parity resume path (2026-07-22)
+## Current focus and the parity resume path (2026-07-22, ~17:00)
 
-**In flight: the harness batch** — the four S-items from
-`linux/tests/README.md` §Harness roadmap (unified `run.sh` front door,
-binary-freshness preflight, flake-hunter mode, assertion-count ledger).
-Decision 2026-07-22: interactivity (the TTY picker) is explicitly
-**deferred** — flags only for now. Every later batch runs through this
-tooling, which is why it cuts the line.
+**Done today:** the harness batch (run.sh front door, freshness
+preflight, flake hunter, assertion ledger, kept gate logs — plus the
+saboteur hunt it resolved, see PROGRESS), the per-session scrollback
+directory, `surface.respawn` on VTE (in place, old pid killed,
+scrollback survives; ghostty refuses honestly), and the realize half
+of eager background spawn.
 
-**When the harness batch is done, resume parity work here**, in order
-(all rows live in GAPS *Now* with full symptom/source detail):
+**The resume path** (rows in GAPS *Now* with full detail):
 
-1. **`surface.respawn` + eager background spawn** — paired on purpose:
-   respawn is kill+restart of the shell in the same pane, eager spawn
-   starts shells in never-shown workspaces; both live in the spawn
-   lifecycle the batch-5 forensics just mapped (PROGRESS 2026-07-22,
-   "two crashes worth their scars"), so do them while that knowledge
-   is warm.
-2. **Live Ghostty config reload** — needs a shim call to re-read config
-   on existing surfaces; `reload-config` currently says "new terminals
-   only", honestly.
-3. **Browser JS console pane** — `browser.console.show`; distinct from
+1. **The ghostty shim increment** — three remainders now provably
+   converge on the shim: respawn for ghostty panes (shim owns spawn),
+   eager background spawn's sizing half (init needs realize AND a
+   nonzero size; the realize half is done — GtkStack never allocates
+   hidden children, so the shim must spawn with a default 80×24 grid
+   or expose ensure_started), and live Ghostty config reload. One
+   shim branch (`linux-gtk-embed`, fork hiasihaho/ghostty), one
+   increment, three GAPS rows.
+2. **Browser JS console pane** — `browser.console.show`; distinct from
    DevTools, macOS opens a console directly.
-4. **Bare Ghostty pane relocation respawns its shell** — the batch-5
-   known limitation (cwd survives, scrollback/processes don't; tabbed
-   panes relocate safely). Belongs with roadmap/05 lifecycle hardening;
-   `debug.surfaces` is the probe.
+3. **Bare Ghostty pane relocation respawns its shell** — batch-5 known
+   limitation; roadmap/05 lifecycle hardening; `debug.surfaces` is the
+   probe.
 
 Then GAPS *Next* (ephemeral panes S-row first, then profile popover UI,
 workspace.reorder, multi-window, Flatpak — see the table).
 
 Standing state to remember on resume: the daily instance runs the
-04:43 promote — everything from GAPS batches 1–5 (cmux tree, tab
-renames, pane swap/resize/break/join, debug.surfaces, move/reorder) is
-on disk but reaches the daily only at the next `promote.sh` run. Full
-gate before batch 5 shipped: 12 suites, 147 assertions green.
+04:43 promote — GAPS batches 1–5 AND today's work (respawn, per-session
+scrollback, harness) are on disk but reach the daily only at the next
+`promote.sh` run. Gate: 12 suites, 152 assertions green.
 
 ## Next milestones
 
