@@ -265,6 +265,10 @@ linux/scripts/dogfood.sh "focus…" [min]      # QA agent cycle (CMUX_SOCKET_PAT
 
 ## Doc map
 
+- **MENTAL-MODEL.md** — the one-page shape of the system, mermaid
+  diagrams: supervision loop, hierarchy, attention pipeline, Claude
+  lifecycle, tmux shim, UI geography, doc map, port heat map. Start
+  here for the big picture.
 - **CONCEPTS.md** — how cmux is *meant*: the official-docs
   distillation (crawled 2026-07-22 via the port's own browser stack);
   read before deciding whether/how to build a macOS feature.
