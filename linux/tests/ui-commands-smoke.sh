@@ -116,4 +116,29 @@ except Exception: pass" | sed -n '3p')
 selected=$(cx list-workspaces 2>/dev/null | grep "\[selected\]" | grep -oE 'workspace:[0-9]+')
 expect "the unread workspace is now selected" "$WS2" "$selected"
 
+# ------------------------------------- capabilities-sweep verb round trip
+# These verbs existed on macOS with CLI commands the port silently failed
+# on until the 2026-07-22 sweep (linux/scripts/capabilities-sweep.py).
+info "sweep verbs: notification round trip, devtools alias, zoom"
+cx notify --title "sweep" --workspace "$WS2" >/dev/null 2>&1
+sleep 1
+NID=$(cx --json list-notifications 2>/dev/null | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+print(d[0]["id"] if isinstance(d,list) and d else "")')
+expect "mark-notification-read --id" "OK" "$(cx mark-notification-read --id "$NID" 2>&1 | head -1)"
+open_out=$(cx open-notification --id "$NID" 2>&1 | head -1)
+echo "$open_out" | grep -q "^OK" \
+    && ok "open-notification jumps to the workspace" \
+    || bad "open-notification" "$open_out"
+expect "dismiss-notification --id" "OK" "$(cx dismiss-notification --id "$NID" 2>&1 | head -1)"
+
+B=$(cx browser open about:blank --workspace "$WS2" 2>/dev/null | grep -oE 'surface:[0-9]+' | head -1)
+sleep 2
+expect "browser zoom in (browser.zoom.set)" "OK" "$(cx browser --surface "$B" zoom in 2>&1 | head -1)"
+dev_out=$(cx browser --surface "$B" devtools 2>&1 | head -1)
+echo "$dev_out" | grep -q "^OK" \
+    && ok "browser devtools alias (devtools.toggle → inspect)" \
+    || bad "devtools alias" "$dev_out"
+
 finish

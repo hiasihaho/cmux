@@ -228,6 +228,26 @@ extension ControlCommandHandler {
         return v2BrowserOk(id: id, result: result)
     }
 
+    /// `direction: in|out|reset` — steps match the CLI's expectation;
+    /// the resulting level rides the existing zoom persistence.
+    func v2BrowserZoomSet(id: Any?, params: [String: Any]) -> String {
+        guard let webView = browserWebView(params) else {
+            return v2BrowserError(id: id, code: "not_found", message: "Browser surface not found")
+        }
+        let current = webkit_web_view_get_zoom_level(webView)
+        let level: Double
+        switch (params["direction"] as? String)?.lowercased() {
+        case "in": level = min(5.0, current * 1.1)
+        case "out": level = max(0.2, current / 1.1)
+        case "reset": level = 1.0
+        default:
+            return v2BrowserError(id: id, code: "invalid_params", message: "zoom requires direction in|out|reset")
+        }
+        webkit_web_view_set_zoom_level(webView, level)
+        SessionStore.requestSave()
+        return v2BrowserOk(id: id, result: ["zoom": level])
+    }
+
     // MARK: browser.profiles.* — wire format mirrors macOS's
     // BrowserProfileAutomation exactly, so the shared CLI behaves
     // identically on both platforms.

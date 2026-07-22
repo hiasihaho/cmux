@@ -2607,3 +2607,35 @@ ways (simulated inside-dev shell refused; this session's real shell
 would be refused for daily). `--slot dev2` runs the identical code path
 against a disposable instance, which is how the script itself was
 verified end-to-end (marker survived the promote).
+
+### The capabilities sweep: hunting quiet renames (2026-07-22)
+
+The notify regression (create_for_caller) proved the class exists, so
+the whole surface got swept: every v2 method the merged CLI can put on
+the wire, diffed against every method the Linux server dispatches —
+`linux/scripts/capabilities-sweep.py`, committed so every future merge
+re-runs it.
+
+Result: 212 sendable methods, 150 initially missing. Classified:
+
+- **Quiet breaks of claimed features, now fixed (9):**
+  `browser.devtools.toggle` (the `browser devtools` alias silently died
+  while `browser inspect` still worked — aliased to the same handler),
+  `notification.jump_to_unread` / `mark_read` / `dismiss` / `open`
+  (CLI commands `jump-to-unread`, `mark-notification-read`,
+  `dismiss-notification`, `open-notification` — the internals existed
+  since the shortcut work; only the wire names were missing),
+  `browser.zoom.set` (`browser zoom in|out|reset`, riding the existing
+  zoom persistence), `window.current` + v1 `current_window`, and
+  `settings.open` (`cmux settings open` → the preferences window).
+- **Relief:** bare `cmux <dir>` sends `workspace.create` — the headline
+  open-directory flow was never broken. `file.open`/`project.open` are
+  macOS file/Xcode openers, honestly erroring.
+- **Honestly missing, not renames (~140):** vm.*, remotes.*,
+  workspace.group.*, workspace.remote.*, canvas.*, feed.*, auth.*,
+  layout.*, screencast/trace/network route — macOS features the port
+  has never claimed. The unknown-method error is the correct answer
+  until each is built.
+
+ui-commands-smoke grew the verb round trip (mark/open/dismiss, zoom,
+devtools alias): 13 assertions.

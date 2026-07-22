@@ -105,7 +105,11 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    (Ctrl+Shift+E — NOT F2, terminals eat function keys), jump-to-unread
    (Ctrl+Shift+U), open-folder workspace (Ctrl+Shift+O), flash
    (surface.trigger_flash + CLI). Still open: browser JS console pane,
-   multi-window. ALSO: `notification.create_for_caller` implemented —
+   multi-window. The full capabilities sweep ran 2026-07-22
+   (`linux/scripts/capabilities-sweep.py`, re-run it after every merge):
+   9 quiet renames fixed, ~140 remaining methods are honest macOS-only
+   feature gaps (vm/remotes/groups/canvas/feed/auth/layout). ALSO:
+   `notification.create_for_caller` implemented —
    `cmux notify` had silently regressed after the merge (upstream
    renamed the method); agent hooks were failing quietly.
 

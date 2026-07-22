@@ -149,6 +149,116 @@ extension ControlCommandHandler {
         ])
     }
 
+    // MARK: verbs found missing by the capabilities sweep (quiet renames)
+
+    func v2NotificationJumpToUnread(id: Any?) -> String {
+        guard jumpToUnread() else {
+            return v2Error(id: id, code: "not_found", message: "No unread notifications")
+        }
+        return v2Ok(id: id, result: [
+            "workspace_id": selection.wrappedValue.uuidString,
+            "jumped": true
+        ])
+    }
+
+    /// `all` / `tab_id` (+ optional `surface_id`) — marks matching
+    /// notifications read and clears the workspace attention dot, the same
+    /// state selecting the workspace clears.
+    func v2NotificationMarkRead(id: Any?, params: [String: Any]) -> String {
+        var tabId: UUID?
+        if let raw = params["tab_id"] as? String ?? params["workspace_id"] as? String {
+            tabId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw)
+        }
+        var surfaceId: UUID?
+        if let raw = params["surface_id"] as? String {
+            surfaceId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw)
+        }
+        var notificationId: UUID?
+        if let raw = params["id"] as? String {
+            notificationId = UUID(uuidString: raw)
+        }
+        let all = (params["all"] as? Bool) ?? false
+        guard all || tabId != nil || notificationId != nil else {
+            return v2Error(id: id, code: "invalid_params", message: "mark_read requires id, all, or a workspace")
+        }
+        var marked = 0
+        notifications.wrappedValue = notifications.wrappedValue.map { notification in
+            guard all
+                || (notificationId != nil && notification.id == notificationId)
+                || (tabId != nil && notification.tabId == tabId
+                    && (surfaceId == nil || notification.surfaceId == surfaceId)) else {
+                return notification
+            }
+            var copy = notification
+            if !copy.isRead { marked += 1 }
+            copy.isRead = true
+            return copy
+        }
+        for (index, tab) in tabs.wrappedValue.enumerated()
+        where all || (tabId != nil && tab.id == tabId) {
+            tabs.wrappedValue[index].needsAttention = false
+            DesktopNotifier.withdraw(id: "cmux-\(tab.id.uuidString)")
+        }
+        return v2Ok(id: id, result: ["marked_read": marked])
+    }
+
+    /// `id` removes one notification; `all_read: true` sweeps the read ones.
+    func v2NotificationDismiss(id: Any?, params: [String: Any]) -> String {
+        if (params["all_read"] as? Bool) == true {
+            let before = notifications.wrappedValue.count
+            notifications.wrappedValue.removeAll { $0.isRead }
+            return v2Ok(id: id, result: ["dismissed": before - notifications.wrappedValue.count])
+        }
+        guard let raw = params["id"] as? String, let target = UUID(uuidString: raw) else {
+            return v2Error(id: id, code: "invalid_params", message: "dismiss requires id or all_read")
+        }
+        guard let index = notifications.wrappedValue.firstIndex(where: { $0.id == target }) else {
+            return v2Error(id: id, code: "not_found", message: "Notification not found")
+        }
+        notifications.wrappedValue.remove(at: index)
+        return v2Ok(id: id, result: ["dismissed": 1])
+    }
+
+    /// Jumps to a notification's workspace (and surface, when it has one)
+    /// and marks it read — the sidebar row's click, as a verb.
+    func v2NotificationOpen(id: Any?, params: [String: Any]) -> String {
+        guard let raw = params["id"] as? String, let target = UUID(uuidString: raw),
+              let index = notifications.wrappedValue.firstIndex(where: { $0.id == target }) else {
+            return v2Error(id: id, code: "not_found", message: "Notification not found")
+        }
+        let notification = notifications.wrappedValue[index]
+        guard let tabIndex = tabs.wrappedValue.firstIndex(where: { $0.id == notification.tabId }) else {
+            return v2Error(id: id, code: "not_found", message: "Workspace no longer exists")
+        }
+        select(notification.tabId)
+        if let surfaceId = notification.surfaceId,
+           tabs.wrappedValue[tabIndex].contains(surfaceId: surfaceId) {
+            selectSurfaceTab(tabId: notification.tabId, surfaceId: surfaceId)
+            tabs.wrappedValue[tabIndex].focusedSurfaceId = surfaceId
+        }
+        notifications.wrappedValue[index].isRead = true
+        return v2Ok(id: id, result: [
+            "workspace_id": notification.tabId.uuidString,
+            "opened": true
+        ])
+    }
+
+    func v2WindowCurrent(id: Any?) -> String {
+        v2Ok(id: id, result: [
+            "id": ControlCommandHandler.windowId.uuidString,
+            "ref": RefRegistry.shared.ref(kind: "window", uuid: ControlCommandHandler.windowId)
+        ])
+    }
+
+    /// Present the (single) window — an explicit focus-intent verb, same
+    /// policy class as workspace.select.
+    func v2WindowFocus(id: Any?) -> String {
+        if let window = UIDialogs.mainWindowWidget() {
+            gtk_window_present(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self))
+        }
+        return v2Ok(id: id, result: ["focused": true])
+    }
+
     func v2SurfaceTriggerFlash(id: Any?, params: [String: Any]) -> String {
         var tabId: UUID?
         if let raw = params["workspace_id"] as? String {

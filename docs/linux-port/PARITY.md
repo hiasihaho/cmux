@@ -94,6 +94,8 @@ are implemented on both**, 47 are macOS-only, and a further 29 macOS
 | Method | Status | Notes |
 |---|---|---|
 | notification.create / list / clear | ✅ | + desktop delivery, withdraw on workspace close |
+| notification.create_for_caller / jump_to_unread / mark_read / dismiss / open | ✅ | the 2026-07-22 capabilities sweep: upstream's CLI sends these for notify/jump-to-unread/mark-notification-read/dismiss-notification/open-notification |
+| settings.open / browser.zoom.set / browser.devtools.toggle / window.current | ✅ | sweep fixes — devtools.toggle aliases browser.inspect |
 | notification.create_for_surface / create_for_target | ✅ | v2 verbs with macOS param/result shapes; for_surface defaults to the selected workspace, for_target requires workspace_id |
 | app.focus_override.set / simulate_active | ❌ | |
 | auth.login | — | socket is 0600 per-user; auth not required |

@@ -73,6 +73,8 @@ struct ControlCommandHandler {
             return selectWorkspace(args)
         case "current_workspace":
             return currentWorkspace()
+        case "current_window":
+            return ControlCommandHandler.windowId.uuidString
         case "close_workspace":
             return closeWorkspace(args)
         case "send":
@@ -288,7 +290,7 @@ struct ControlCommandHandler {
             return v2SearchPanes(id: id, params: params, respond: respond)
         case "browser.wait":
             return v2BrowserWait(id: id, params: params, respond: respond)
-        case "browser.inspect":
+        case "browser.inspect", "browser.devtools.toggle":
             return v2BrowserInspect(id: id, params: params, respond: respond)
         case "browser.navigate":
             return v2BrowserNavigate(id: id, params: params, respond: respond)
@@ -363,7 +365,11 @@ struct ControlCommandHandler {
                     "surface.list", "surface.create", "surface.send_text",
                     "surface.send_key", "surface.read_text", "surface.split",
                     "surface.close", "surface.focus", "surface.trigger_flash",
-                    "session.save",
+                    "session.save", "settings.open",
+                    "notification.jump_to_unread", "notification.mark_read",
+                    "notification.dismiss", "notification.open",
+                    "window.current", "window.focus", "browser.zoom.set",
+                    "browser.devtools.toggle",
                     "pane.create", "pane.list", "pane.focus", "pane.surfaces",
                     "browser.open_split", "browser.navigate", "browser.url.get",
                     "browser.back", "browser.forward", "browser.reload",
@@ -446,6 +452,23 @@ struct ControlCommandHandler {
             return v2SurfaceFocus(id: id, params: params)
         case "session.save":
             return v2SessionSave(id: id)
+        case "notification.jump_to_unread":
+            return v2NotificationJumpToUnread(id: id)
+        case "notification.mark_read":
+            return v2NotificationMarkRead(id: id, params: params)
+        case "notification.dismiss":
+            return v2NotificationDismiss(id: id, params: params)
+        case "notification.open":
+            return v2NotificationOpen(id: id, params: params)
+        case "window.current":
+            return v2WindowCurrent(id: id)
+        case "window.focus":
+            return v2WindowFocus(id: id)
+        case "settings.open":
+            PreferencesWindow.present()
+            return v2Ok(id: id, result: ["opened": true, "target": (params["target"] as? String) ?? "general"])
+        case "browser.zoom.set":
+            return v2BrowserZoomSet(id: id, params: params)
         case "surface.trigger_flash":
             return v2SurfaceTriggerFlash(id: id, params: params)
         case "pane.surfaces":
