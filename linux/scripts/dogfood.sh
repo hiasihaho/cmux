@@ -100,7 +100,11 @@ STREAM="$(dirname "$0")/dogfood-stream.py"
 # $REPORT (so the harness still saves clean markdown) and prints a
 # readable activity log. --verbose is required for stream-json to emit
 # per-turn events.
-CMD="clear; echo \"$BANNER\"; claude -p \"\$(cat $PROMPT)\" --allowedTools Bash Read Grep Glob --output-format stream-json --verbose | python3 $STREAM $REPORT; touch $REPORT.done; cmux notify --title 'Dogfood report ready' --body '$STAMP'; sleep 10; cmux close-workspace --workspace $WS"
+# Skill is allowed so the agent can load /cmux (CLI usage) and the other
+# repo skills instead of rediscovering verb syntax every cycle; the skills
+# are user-level symlinks (linux/scripts/install-user-skills.sh), so they
+# resolve regardless of the workspace cwd.
+CMD="clear; echo \"$BANNER\"; claude -p \"\$(cat $PROMPT)\" --allowedTools Bash Read Grep Glob Skill --output-format stream-json --verbose | python3 $STREAM $REPORT; touch $REPORT.done; cmux notify --title 'Dogfood report ready' --body '$STAMP'; sleep 10; cmux close-workspace --workspace $WS"
 cmux send --workspace "$WS" "$CMD\\n" >/dev/null
 
 DEADLINE=$(( $(date +%s) + TIMEOUT_MIN * 60 ))

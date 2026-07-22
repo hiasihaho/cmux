@@ -182,6 +182,11 @@ agent explicit permission) — it consumes Claude usage.
   `../docs/linux-port/PROGRESS.md` (what + verification evidence) and this
   README's status list; `PORTING.md` when the plan itself shifts.
 - Conversation exports (`2026-*.txt`) are gitignored — never commit them.
+- `linux/scripts/install-user-skills.sh` (run once) symlinks the repo's
+  `skills/` into `~/.claude/skills`, so every Claude Code session on this
+  machine — dev-instance panes, scratch workspaces, any cwd — can invoke
+  the `/cmux*` skills; symlinks track the repo, a pull updates them.
+  Dogfood QA agents get the `Skill` tool for the same reason.
 - Changes to shared sources (`CLI/cmux.swift`) must keep building on macOS:
   Linux differences live behind `#if canImport(Darwin)` / `#if os(Linux)`.
 - The `ghostty/` submodule points at the **hiasihaho/ghostty** fork on this
