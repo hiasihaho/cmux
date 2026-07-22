@@ -114,3 +114,18 @@ our block matched first, so upstream's element-highlight became dead
 code — on macOS too, for anyone building the CLI from our tree. Fixed
 2026-07-22 by dropping the alias (`find-in-page` keeps its own name).
 Worth flagging in any upstream PR that touches CLI/cmux.swift.
+
+### 4d. `browser devtools console` shadowed by the sweep's devtools alias — macOS affected
+
+Same first-match-wins class as §4c, caught one day later while building
+the Linux `browser.console.show`. The 2026-07-22 capabilities sweep
+aliased `devtools` onto our `browser inspect` CLI block; upstream's
+dedicated `devtools` block (toggle→`browser.devtools.toggle`,
+console→`browser.console.show`) sits ~450 lines below and became dead
+code — so `cmux browser devtools console` silently sent
+`browser.inspect` on BOTH platforms. Found by strace'ing the CLI's
+socket write after the server's reuse logic tested clean in isolation.
+Fixed 2026-07-22 by scoping our block back to `inspect` only; upstream's
+block owns `devtools` again. Lesson now twice-paid: never alias a
+subcommand name in an upstream CLI file without grepping for an existing
+block that owns it lower down.

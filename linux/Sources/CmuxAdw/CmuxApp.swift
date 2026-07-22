@@ -297,6 +297,13 @@ struct CmuxApp: App {
                 handler.newWorkspace(cwd: path)
             }
         }
+        // JS console. macOS binds Alt+Cmd+C (Safari's default); on Linux
+        // Ctrl+Shift+C is terminal copy and Ctrl+Shift+J is what Chrome
+        // and Firefox users' fingers already know — a recorded UX-PARITY
+        // deviation, not an accident.
+        .keyboardShortcut("j".ctrl().shift()) { _ in
+            consoleForFocusedPane()
+        }
     }
 
     /// Selecting a tab in the sidebar also clears its attention state,
@@ -356,6 +363,20 @@ struct CmuxApp: App {
               let focused = tab.focusedSurface,
               case .browser = focused.kind else { return }
         _ = controlHandler.v2BrowserInspect(
+            id: nil,
+            params: ["surface_id": focused.surfaceId.uuidString],
+            respond: { _ in }
+        )
+    }
+
+    /// Ctrl+Shift+J — the JS console for the focused browser pane. Same
+    /// implementation as the `browser.console.show` verb, per the
+    /// shared-behavior rule.
+    private func consoleForFocusedPane() {
+        guard let tab = tabs.first(where: { $0.id == selection }),
+              let focused = tab.focusedSurface,
+              case .browser = focused.kind else { return }
+        controlHandler.v2BrowserConsoleShow(
             id: nil,
             params: ["surface_id": focused.surfaceId.uuidString],
             respond: { _ in }

@@ -28,14 +28,16 @@ Effort: **S** ≤ half a session · **M** one session · **L** multi-session.
 
 | Gap | Symptom / value | Source | Effort |
 |---|---|---|---|
-| Browser JS console | macOS builds **no console UI** — it reveals WebKit's inspector and flips it to its Console tab via private selectors (UX survey 2026-07-22, `BrowserPanel.swift:6742`). Linux target: our DevTools split + console-tab activation on `WebKitWebInspector`; `browser devtools console` sends `browser.console.show` | CATCHUP item 5 + UX survey | S–M |
 | Bare Ghostty pane relocation respawns the shell | break/join (and move) of a never-tabbed Ghostty pane restarts its shell — cwd survives, scrollback and processes do not. Forensics 2026-07-22 (PROGRESS): container refcount reaches the parent's-last-ref state despite the registry's ref; one extra ref keeps the shell but leaks the io thread. Tabbed panes relocate safely (reconciliation path). Belongs to roadmap/05 lifecycle hardening; `debug.surfaces` is the probe | GAPS batch 5 | M |
 | Pane-tab drag-reorder desyncs the model | AdwTabBar lets the user drag tabs but no `page-reordered` handler updates the model — a drag silently diverges UI from model (reorder exists only as the `surface.reorder` verb). Wire the signal or disable the drag | UX survey 2026-07-22 | S |
 
-**Watch list** (observed once, not reproducible on the current binary):
-`list-panes` with no `--workspace` said "Workspace not found" after a
-restore (2026-07-22, old binary); four repro attempts on the current
-binary all pass. Re-add to Now with a repro if it resurfaces.
+**Watch list** (observed twice, minimal repro still missing):
+`list-panes` with no `--workspace` returns nothing after a restore
+(2026-07-22, old binary; resurfaced same day on the current binary
+during the JS-console work — scratch instance restarted onto a restored
+session, `list-panes` empty until a `select-workspace` ran). Next
+sighting: capture `workspace.list` + selection state before touching
+anything, then promote to Now.
 
 ## Next — real features, planned
 

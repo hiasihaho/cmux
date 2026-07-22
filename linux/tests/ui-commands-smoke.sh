@@ -131,6 +131,34 @@ echo "$dev_out" | grep -q "^OK" \
     && ok "browser devtools alias (devtools.toggle → inspect)" \
     || bad "devtools alias" "$dev_out"
 
+# ------------------------------------ browser.console.show (2026-07-22)
+# macOS's "Show JavaScript Console" flips WebKit's inspector to its
+# Console tab via PRIVATE selectors; WebKitGTK has no public tab-flip
+# (the inspector widget is not even a WebKitWebView). The Linux contract
+# is therefore: the DevTools pane for the target exists and is focused.
+# Two properties matter: the verb answers, and — unlike browser.inspect,
+# which always splits — a second call focuses instead of stacking.
+info "browser.console.show: creates once, focuses thereafter"
+B2=$(cx browser open about:blank --workspace "$WS2" 2>/dev/null | grep -oE 'surface:[0-9]+' | head -1)
+sleep 2
+count_ws2_surfaces() {
+    cx --json list-panes --workspace "$WS2" 2>/dev/null | python3 -c '
+import json,sys
+print(sum(len(p["surface_refs"]) for p in json.load(sys.stdin)["panes"]))'
+}
+before_console=$(count_ws2_surfaces)
+con_out=$(cx browser --surface "$B2" devtools console 2>&1 | head -1)
+sleep 2
+echo "$con_out" | grep -q "^OK" \
+    && ok "browser devtools console (browser.console.show)" \
+    || bad "console.show" "$con_out"
+after_first=$(count_ws2_surfaces)
+expect "console.show created one DevTools pane" "$((before_console + 1))" "$after_first"
+cx browser --surface "$B2" devtools console >/dev/null 2>&1
+sleep 1
+after_second=$(count_ws2_surfaces)
+expect "second console.show focuses, does not stack" "$after_first" "$after_second"
+
 # v1 verbs the skill's fast-start uses (caught by exercising /cmux: the
 # v2-only sweep missed the v1 dimension entirely).
 info "v1 verbs from the sweep's blind spot"

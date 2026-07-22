@@ -3003,3 +3003,30 @@ substantially larger than the sweep's method inventory suggested —
 right sidebar (Vault/Dock/files), canvas layout, diff/markdown
 viewers, status lanes, workspace templates, agent resume — all now
 recorded with intent, not just method names.
+
+### browser.console.show: the JS console, and CLI shadowing bug #2 (2026-07-22)
+
+The GAPS-Now row, resolved with the macOS survey as the spec: macOS
+builds no console UI (it flips WebKit's inspector to the Console tab
+via private selectors), and WebKitGTK offers no public flip — the
+inspector widget is not even a WebKitWebView, so nothing can script the
+frontend. The Linux contract is therefore: the DevTools pane for the
+target exists and is focused. Deliberately better than `browser.inspect`
+in one respect: repeat calls focus the existing pane instead of
+stacking splits. Bound to Ctrl+Shift+J (not macOS's Alt+Cmd+C:
+Ctrl+Shift+C is terminal copy, Ctrl+Shift+J is Linux browser muscle
+memory) through the same handler as the verb.
+
+The debugging story is the valuable part. The server-side reuse logic
+tested broken through the CLI — second call split again — yet worked
+perfectly via a raw socket call. strace on the CLI showed why:
+`browser devtools console` was sending `browser.inspect`. Our sweep-day
+`devtools` alias on the `browser inspect` block shadowed upstream's
+dedicated devtools block 450 lines below (toggle/console dispatch),
+exactly the §4c highlight pattern — the second instance of that class
+in two days (UPSTREAM.md §4d; the fix un-shadows macOS too). Also
+resurfaced in passing: the list-panes-after-restore watch-list quirk
+(conditions recorded in GAPS).
+
+ui-commands-smoke grew three assertions (creates once / focuses
+thereafter / verb answers OK): 42 in the suite.

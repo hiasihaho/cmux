@@ -101,6 +101,7 @@ are implemented on both**, 47 are macOS-only, and a further 29 macOS
 | notification.create / list / clear | ✅ | + desktop delivery, withdraw on workspace close |
 | notification.create_for_caller / jump_to_unread / mark_read / dismiss / open | ✅ | the 2026-07-22 capabilities sweep: upstream's CLI sends these for notify/jump-to-unread/mark-notification-read/dismiss-notification/open-notification |
 | settings.open / browser.zoom.set / browser.devtools.toggle / window.current | ✅ | sweep fixes — devtools.toggle aliases browser.inspect |
+| browser.console.show | ✅ | `browser devtools console` + Ctrl+Shift+J (2026-07-22). macOS flips WebKit's inspector to its Console tab via private selectors; WebKitGTK has no public tab flip (the inspector widget is not a WebKitWebView), so the Linux contract is "DevTools pane exists and is focused" — creates the split once, focuses on repeat calls (unlike browser.inspect, which always splits). Esc inside the inspector toggles the quick console on any tab |
 | notification.create_for_surface / create_for_target | ✅ | v2 verbs with macOS param/result shapes; for_surface defaults to the selected workspace, for_target requires workspace_id |
 | app.focus_override.set / simulate_active | ❌ | |
 | auth.login | — | socket is 0600 per-user; auth not required |
@@ -147,7 +148,7 @@ are implemented on both**, 47 are macOS-only, and a further 29 macOS
 | Workspace pinning / rename UI | 🟡 | rename dialog done (Ctrl+Shift+E, 2026-07-22); pinning UI still missing |
 | Sidebar metadata pills (git branch, PR, ports, status/progress) | ❌ | pairs with report_* verbs |
 | Update pill / Sparkle auto-update | — | Flatpak packaging phase owns updates |
-| Keyboard shortcuts | 🟡 | 19 of macOS's 28 commands bound (2026-07-22): workspace/split/find/zoom/close/browser/devtools/workspace-nav/pane-nav as before, plus preferences (Ctrl+comma), directional pane focus (Ctrl+Shift+arrows), rename workspace dialog (Ctrl+Shift+E), jump-to-unread (Ctrl+Shift+U), open folder (Ctrl+Shift+O). Missing: JS console, multi-window family — see GAPS.md |
+| Keyboard shortcuts | 🟡 | 19 of macOS's 28 commands bound (2026-07-22): workspace/split/find/zoom/close/browser/devtools/workspace-nav/pane-nav as before, plus preferences (Ctrl+comma), directional pane focus (Ctrl+Shift+arrows), rename workspace dialog (Ctrl+Shift+E), jump-to-unread (Ctrl+Shift+U), open folder (Ctrl+Shift+O). Also JS console (Ctrl+Shift+J, 2026-07-22 — deliberately not macOS's Alt+Cmd+C: Ctrl+Shift+C is terminal copy, and Ctrl+Shift+J is Chrome/Firefox muscle memory on Linux). Missing: multi-window family — see GAPS.md |
 | CLI (shared `CLI/cmux.swift`) | ✅ | builds unmodified on Linux; global flags before subcommand |
 | Claude hooks (Stop/Notification → cmux claude-hook) | ✅ | |
 

@@ -338,6 +338,8 @@ struct ControlCommandHandler {
             return v2BrowserWait(id: id, params: params, respond: respond)
         case "browser.inspect", "browser.devtools.toggle":
             return v2BrowserInspect(id: id, params: params, respond: respond)
+        case "browser.console.show":
+            return v2BrowserConsoleShow(id: id, params: params, respond: respond)
         case "browser.navigate":
             return v2BrowserNavigate(id: id, params: params, respond: respond)
         case "browser.back":
@@ -444,6 +446,7 @@ struct ControlCommandHandler {
                     "browser.cookies.get", "browser.cookies.set", "browser.cookies.clear",
                     "browser.storage.get", "browser.storage.set", "browser.storage.clear",
                     "browser.console.list", "browser.console.clear", "browser.errors.list",
+                    "browser.console.show",
                     "browser.download.wait",
                     "notification.create", "notification.create_for_surface",
                     "notification.create_for_target",

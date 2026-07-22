@@ -529,6 +529,46 @@ extension ControlCommandHandler {
         }
         reply()
     }
+
+    /// browser.console.show — macOS's `showBrowserJavaScriptConsole`.
+    ///
+    /// macOS builds no console UI: it reveals WebKit's inspector and flips
+    /// it to the Console tab through *private* selectors
+    /// (`BrowserPanel.showDeveloperToolsConsole`). WebKitGTK has no public
+    /// equivalent of that flip — the inspector's widget is not even a
+    /// `WebKitWebView` (see `InspectorSurfaceFactory`), so no script can
+    /// reach the frontend. The honest Linux contract: make the DevTools
+    /// pane for the target surface exist and be focused; tab choice stays
+    /// WebKit's (the frontend remembers its last tab, and Esc toggles the
+    /// quick console on every tab).
+    ///
+    /// Unlike `browser.inspect`, calling this twice must not stack a second
+    /// DevTools pane: an existing inspector for the target is focused, not
+    /// duplicated.
+    func v2BrowserConsoleShow(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
+        guard let target = v2TargetSurfaceForBrowser(params) else {
+            return respond(v2BrowserError(
+                id: id, code: "not_found", message: "Browser surface not found"
+            ))
+        }
+        for pane in target.tab.panes {
+            for surface in pane.surfaces {
+                if case .inspector(let inspected) = surface.kind, inspected == target.surfaceId {
+                    _ = v2SurfaceFocus(id: nil, params: ["surface_id": surface.surfaceId.uuidString])
+                    let registry = RefRegistry.shared
+                    return respond(v2BrowserOk(id: id, result: [
+                        "shown": true,
+                        "created_split": false,
+                        "surface_id": surface.surfaceId.uuidString,
+                        "surface_ref": registry.ref(kind: "surface", uuid: surface.surfaceId),
+                        "inspected_surface_id": target.surfaceId.uuidString,
+                        "inspected_surface_ref": registry.ref(kind: "surface", uuid: target.surfaceId)
+                    ]))
+                }
+            }
+        }
+        v2BrowserInspect(id: id, params: params, respond: respond)
+    }
 }
 
 // MARK: - browser.tab.* (per-pane browser tabs)

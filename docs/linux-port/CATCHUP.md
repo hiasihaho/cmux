@@ -73,8 +73,10 @@ hiasihaho/ghostty).
 
 **The resume path** (rows in GAPS *Now* with full detail):
 
-1. **Browser JS console pane** — `browser.console.show`; distinct from
-   DevTools, macOS opens a console directly.
+1. ✅ **Browser JS console** — DONE 2026-07-22 late (`browser.console.show`,
+   `browser devtools console`, Ctrl+Shift+J; reuse-not-stack; the fix
+   also un-shadowed upstream's `devtools console` CLI block on macOS —
+   UPSTREAM.md §4d).
 2. **Bare Ghostty pane relocation respawns its shell** — batch-5 known
    limitation; roadmap/05 lifecycle hardening; `debug.surfaces` is the
    probe.

@@ -13595,7 +13595,14 @@ struct CMUXCLI {
             return
         }
 
-        if subcommand == "inspect" || subcommand == "devtools" {
+        // "inspect" ONLY — "devtools" belongs to the dedicated block further
+        // down, which dispatches toggle→browser.devtools.toggle and
+        // console→browser.console.show. Aliasing "devtools" here (as the
+        // 2026-07-22 sweep briefly did) shadowed that block and silently
+        // killed `browser devtools console` on BOTH platforms — the same
+        // first-match-wins trap as the `browser highlight` shadowing
+        // (UPSTREAM.md §4c).
+        if subcommand == "inspect" {
             let sid = try requireSurface()
             var params: [String: Any] = ["surface_id": sid]
             let (directionOpt, _) = parseOption(subArgs, name: "--direction")

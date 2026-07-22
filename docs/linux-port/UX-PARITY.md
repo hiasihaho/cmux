@@ -76,7 +76,7 @@ feature hiding in an unexpected place is a real cost anywhere.
 | Find-in-page | floating corner-snap bar | revealer bar under URL bar (entry, n/m, up/down, x) | 🎨 revealer is the GTK idiom; controls match |
 | Zoom | menu/shortcut, no on-screen chip | verb only, no chip | ✅ chip-less matches; shortcuts missing → keyboard work |
 | DevTools | WebKit inspector, WebKit-owned dock state | **our own DevTools split pane** (reparented inspector) | 🎨 arguably better: inspector is a real pane (tabs, splits, socket-drivable) |
-| JS console | ⌥⌘C → reveal inspector + private `showConsole` selector — **no custom console UI** | missing | ❌ GAPS Now — target = inspector pane + console tab activation, not a bespoke pane |
+| JS console | ⌥⌘C → reveal inspector + private `showConsole` selector — **no custom console UI** | ✅ Ctrl+Shift+J / `browser devtools console` → DevTools pane revealed + focused, reuse-not-stack; no public WebKitGTK tab flip exists (macOS needs private API for it too) | ✅ 2026-07-22, with recorded 🎨 shortcut deviation |
 | Focus mode / design mode / React Grab | yes | no | ❌ Later |
 
 ## 6. Splits, zoom, flash
@@ -139,3 +139,7 @@ feature hiding in an unexpected place is a real cost anywhere.
   WebKit's own dock management — tabs, splits, socket-drivable.
 - 2026-07-22 — **Tab-bar autohide stays** (🎨): Adwaita idiom, saves a
   28px row in the 1-tab common case.
+- 2026-07-22 — **JS console binds Ctrl+Shift+J, not macOS's ⌥⌘C** (🎨):
+  Ctrl+Shift+C is terminal copy on Linux, and Ctrl+Shift+J is
+  Chrome/Firefox console muscle memory. Interaction parity kept (one
+  keystroke, same semantics), presentation adapted to platform.
