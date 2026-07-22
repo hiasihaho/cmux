@@ -83,11 +83,14 @@ Then GAPS *Next* (ephemeral panes S-row first, then profile popover UI,
 workspace.reorder, multi-window, Flatpak — see the table).
 
 Standing state to remember on resume: the daily instance runs the
-04:43 promote — GAPS batches 1–5 AND all of today (harness batch,
-per-session scrollback, respawn both backends, eager spawn, live
-reload) are on disk but reach the daily only at the next `promote.sh`
-run. That promote needs the REBUILT SHIM too (zig-out is already
-current). Gate: 12 suites, 155 assertions green.
+**21:06 promote (2026-07-22)** — GAPS batches 1–5 and all of the day's
+work (harness batch, per-session scrollback, respawn on both backends,
+eager background spawn, live reload — shim increment 3) are LIVE in
+the daily; eager spawn was verified against the running instance.
+Gate: 12 suites, 155 assertions green. Session-history note: the
+2026-07-22 day session died at 100% context, which makes
+`claude --continue` bail silently — start fresh and reconstruct from
+this file + PROGRESS + GAPS (proven to work, ~10 minutes).
 
 ## Next milestones
 
