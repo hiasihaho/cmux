@@ -110,11 +110,14 @@ struct ControlCommandHandler {
             return "OK"
         case "reload_config":
             // cmux.json is mtime-gated and re-read on every access, so
-            // invalidating the cache IS the reload. Ghostty's own config is
-            // read by the embedded surfaces at spawn — new terminals pick
-            // it up; live refresh of existing ones is shim work (TBD).
+            // invalidating the cache IS the reload. Ghostty config: the
+            // shim re-reads and propagates to every live surface
+            // (ghostty_embed_reload_config, 2026-07-22).
             LinuxSettings.invalidate()
-            return "OK reloaded cmux.json (ghostty config applies to new terminals)"
+            if SurfaceRegistry.shared.ghosttyReloadConfig() {
+                return "OK reloaded cmux.json + ghostty config (live)"
+            }
+            return "OK reloaded cmux.json (no live ghostty surfaces)"
         case "notify_target_async":
             // Same as notify_target; the CLI variant just does not wait.
             return notifyTarget(args)
@@ -782,14 +785,20 @@ struct ControlCommandHandler {
             return v2Error(id: id, code: "not_found", message: "Workspace not found")
         }
         let registry = RefRegistry.shared
-        let focusedId = tab.focusedSurface?.surfaceId
-        let surfaces: [[String: Any]] = tab.surfaces.enumerated().map { index, leaf in
+        let focusedId = tab.focusedSurfaceId
+        // allSurfaces, not surfaces: a pane's background TABS are real
+        // surfaces too, and the shared CLI resolves surface targets
+        // against this listing — enumerating only each pane's leaf made
+        // `respawn-pane`/`--surface` fail with "Surface ref not found"
+        // for any non-selected tab (found 2026-07-22 bisecting a suite
+        // red; macOS lists every surface).
+        let surfaces: [[String: Any]] = tab.allSurfaces.enumerated().map { index, entry in
             [
-                "id": leaf.surfaceId.uuidString,
-                "ref": registry.ref(kind: "surface", uuid: leaf.surfaceId),
+                "id": entry.surface.surfaceId.uuidString,
+                "ref": registry.ref(kind: "surface", uuid: entry.surface.surfaceId),
                 "index": index,
-                "focused": focusedId.map { leaf.contains(surfaceId: $0) } ?? false,
-                "type": leaf.kind.typeName,
+                "focused": entry.surface.surfaceId == focusedId,
+                "type": entry.surface.kind.typeName,
                 "title": tab.title
             ]
         }
@@ -983,18 +992,14 @@ struct ControlCommandHandler {
     /// scrollback — the visible screen stays, matching macOS.
     /// tmux `respawn-pane -k`: kill the pane's process, start the given
     /// command (or a login shell) in the same pane. VTE panes respawn in
-    /// place — scrollback survives. Ghostty panes refuse honestly: the
-    /// shim owns their spawn, and support belongs to the roadmap/05
-    /// lifecycle work alongside live config reload.
+    /// place (same VteTerminal, buffer intact). Ghostty panes use the
+    /// macOS strategy — tear the widget down, mount a replacement under
+    /// the SAME surface id, replay the captured scrollback: the shim owns
+    /// their spawn, so in-place is not available, but identity and buffer
+    /// survive the same way macOS's respawnTerminalSurface keeps them.
     private func v2SurfaceRespawn(id: Any?, params: [String: Any]) -> String {
         guard let target = v2TargetSurface(params) else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")
-        }
-        if SurfaceRegistry.shared.ghostty(for: target.surfaceId) != nil {
-            return v2Error(
-                id: id, code: "unavailable",
-                message: "respawn is not supported for Ghostty panes yet (the shim owns their spawn); use a VTE pane or close and reopen this one"
-            )
         }
         let command = (params["command"] as? String)
             .flatMap { $0.isEmpty ? nil : $0 } ?? "exec ${SHELL:-/bin/sh} -l"
@@ -1003,6 +1008,50 @@ struct ControlCommandHandler {
         let leafCwd = target.tab.allSurfaces
             .first { $0.surface.surfaceId == target.surfaceId }?
             .surface.workingDirectory
+
+        if SurfaceRegistry.shared.ghostty(for: target.surfaceId) != nil {
+            // Buffer first — the registry read requires the OLD surface,
+            // and force skips the capture throttle. The text goes to the
+            // replay queue IN MEMORY, not via the disk file: the
+            // replacement surface's own periodic capture overwrites the
+            // file before the replay poll would read it.
+            ScrollbackStore.capture(surfaceId: target.surfaceId, force: true)
+            if let text = SurfaceRegistry.shared.scrollbackText(for: target.surfaceId),
+               !text.isEmpty {
+                TerminalScrollbackStore.pending[target.surfaceId] = text
+            }
+            let cwd = requestedCwd
+                ?? SurfaceRegistry.shared.currentGhosttyDirectory(for: target.surfaceId)
+                ?? leafCwd
+            SurfaceRegistry.shared.setPendingRespawn(command, workingDirectory: cwd, for: target.surfaceId)
+            // Drop the registry's refs; the old widget now lives only in
+            // the old skeleton, which the nonce-forced rebuild destroys —
+            // the same teardown close-surface exercises daily. The create
+            // pass then mounts the replacement (same id, pending command)
+            // and startReplay pours the captured buffer back.
+            SurfaceRegistry.shared.unregister(target.surfaceId)
+            guard let tabIndex = tabs.wrappedValue.firstIndex(where: { $0.id == target.tab.id }) else {
+                return v2Error(id: id, code: "internal_error", message: "Workspace vanished mid-respawn")
+            }
+            tabs.wrappedValue[tabIndex].respawnNonce += 1
+            // The rebuild mounts the replacement in the sync this bump
+            // triggers, but a widget mounted and eager-started in the SAME
+            // pass can miss its GL init — and an unmapped pane then waits
+            // for the next unrelated model change to try again. A few
+            // settled main-loop passes close that gap (each is idempotent).
+            for delayMs in [200, 700, 1500] as [UInt32] {
+                scheduleOnMainLoop(afterMs: delayMs) {
+                    SurfaceRegistry.shared.realizeHiddenGhosttys()
+                    TerminalScrollbackStore.replayPendingIfReady()
+                }
+            }
+            return v2Ok(id: id, result: [
+                "workspace_id": target.tab.id.uuidString,
+                "surface_id": target.surfaceId.uuidString,
+                "respawned": true,
+            ])
+        }
+
         guard SurfaceRegistry.shared.respawnTerminal(
             surfaceId: target.surfaceId,
             workspaceId: target.tab.id,

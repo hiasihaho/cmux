@@ -167,7 +167,42 @@ Current shim C API (`include/ghostty_gtk_embed.h`, branch
                                     const char** env_keys,
                                     const char** env_values,
                                     size_t env_len);   // -> GtkWidget* (floating)
+    // + increment-3 exports: surface_new_with_command, ensure_started,
+    //   reload_config (see the increment-3 section below)
 
 Build: `zig build lib-gtk -Dapp-runtime=gtk -Dversion-string=1.3.0-dev`
 → `zig-out/lib/libghostty-gtk.so` + header; consumed by
 `CMUX_GHOSTTY=1 swift build` in `linux/`.
+
+## Increment 3 (2026-07-22): respawn, eager spawn, live config reload
+
+Three exports, closing the three GAPS rows that converged on the shim:
+
+    void* ghostty_embed_surface_new_with_command(wd, keys, vals, len,
+                                                 const char* command);
+    int   ghostty_embed_surface_ensure_started(void* surface_widget);
+    int   ghostty_embed_reload_config(void);
+
+- **`new_with_command`** — the respawn primitive. The surface runs
+  `command` (shell-expanded, ghostty's `command` config key) instead of
+  the user's shell. The host mirrors macOS's `respawnTerminalSurface`:
+  tear the old widget down, mount a replacement under the SAME surface
+  id, replay the captured buffer (in memory — the replacement's own
+  periodic capture overwrites the disk file), preserve cwd via OSC 7.
+- **`ensure_started`** — eager background spawn's missing half. The GTK
+  apprt inits the core surface in `glareaResize`, which never fires for
+  hidden GtkStack children (GTK never allocates them). `ensureStarted`
+  (Surface class, fork) initializes at a stand-in 720×432 size; the
+  real resize corrects it on first map. Two traps encoded: GTK realize
+  covers ancestors, never children, so the host walks the subtree; and
+  the bin can be realized while the GLArea inside is not (AdwTabView
+  page churn) — ensureStarted self-heals by realizing the anchored
+  GLArea.
+- **`reload_config`** — `core_app.performAction(.reload_config)`;
+  ghostty's own propagation updates every LIVE surface, so
+  `cmux reload-config` now refreshes existing terminals like macOS.
+
+Host-side timing lesson: a widget mounted and eager-started in the SAME
+sync pass can miss its GL init, and an unmapped pane then waits for the
+next unrelated model change. surface.respawn schedules settled main-loop
+passes (200/700/1500ms, idempotent) after the rebuild.

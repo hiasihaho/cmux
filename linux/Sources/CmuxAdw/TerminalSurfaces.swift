@@ -121,6 +121,19 @@ final class SurfaceRegistry {
         ghosttys[surfaceId]
     }
 
+    /// Command/cwd override for the NEXT widget created for a surface id —
+    /// the handoff from surface.respawn (which tears the old widget down)
+    /// to the factory (which mounts the replacement, macOS-style).
+    private var pendingGhosttyRespawns: [UUID: (command: String, workingDirectory: String?)] = [:]
+
+    func setPendingRespawn(_ command: String, workingDirectory: String?, for surfaceId: UUID) {
+        pendingGhosttyRespawns[surfaceId] = (command, workingDirectory)
+    }
+
+    func takePendingRespawn(for surfaceId: UUID) -> (command: String, workingDirectory: String?)? {
+        pendingGhosttyRespawns.removeValue(forKey: surfaceId)
+    }
+
     /// Eager background spawn: the shim starts a surface's shell when its
     /// widget is REALIZED, and GTK only realizes stack children when they
     /// are first shown — so panes in never-shown workspaces had no shell
@@ -130,11 +143,19 @@ final class SurfaceRegistry {
     /// renderer stays dormant until the workspace is shown. Idempotent;
     /// runs at the end of every sync.
     func realizeHiddenGhosttys() {
-        for (_, widget) in ghosttys {
+        for (surfaceId, widget) in ghosttys {
             let w = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkWidget.self)
-            if gtk_widget_get_realized(w) == 0, gtk_widget_get_root(w) != nil {
-                realizeSubtree(w)
-            }
+            guard gtk_widget_get_mapped(w) == 0, gtk_widget_get_root(w) != nil else { continue }
+            // Always walk the SUBTREE: the bin can be realized while the
+            // GLArea inside is not (AdwTabView page churn does this), and
+            // gtk_widget_realize is idempotent — a top-level realized
+            // check would skip exactly the widget that needs it.
+            realizeSubtree(w)
+            // The sizing half: GTK never allocates hidden stack children,
+            // so realize alone leaves the shim's init waiting for a size
+            // that never comes. ensure_started spawns at a stand-in grid;
+            // the real resize corrects it on first map. Idempotent.
+            ghosttyEnsureStarted(for: surfaceId)
         }
     }
 
@@ -318,7 +339,16 @@ final class SurfaceRegistry {
     /// be mapped (their terminal starts on first map); a VTE terminal is
     /// ready as soon as it exists.
     func readyForReplay(for surfaceId: UUID) -> Bool {
-        ghosttyIsMapped(for: surfaceId) || terminals[surfaceId] != nil
+        // Ghostty readiness used to be "mapped" — before eager background
+        // spawn, map was the only moment the core surface (and its
+        // terminal) came to exist, and write_display into a not-started
+        // surface loses the text. With ensure_started, a readable surface
+        // (core exists, io running) is the honest signal, mapped or not.
+        if terminals[surfaceId] != nil { return true }
+        if ghosttys[surfaceId] != nil {
+            return ghosttyReadText(for: surfaceId, includeScrollback: false) != nil
+        }
+        return false
     }
 
     @discardableResult
@@ -461,6 +491,7 @@ struct TerminalStackWidget: AdwaitaWidget {
             // the signature or toggling would not rebuild.
             let signature = tab.layout.shapeSignature
                 + "|zoom:" + (tab.zoomedSurfaceId?.uuidString ?? "-")
+                + "|respawn:\(tab.respawnNonce)"
             let existing = gtk_stack_get_child_by_name(stack, tab.id.uuidString)
             guard shapes[tab.id] != signature || existing == nil else { continue }
 

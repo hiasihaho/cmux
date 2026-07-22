@@ -79,11 +79,12 @@ warn_if_stale_binary() {
 }
 warn_if_stale_binary
 
-# A FOREIGN instance whose session lives in /tmp shares /tmp/scrollback
-# with every suite — and the app prunes that dir on each save, deleting
-# the suites' capture files mid-run. A leaked scratch instance did
-# exactly this on 2026-07-22 and produced a day of moving gate flakes.
-# Warn loudly; killing someone else's instance is not the harness's call.
+# A leaked /tmp-session instance corrupted a day of suite runs on
+# 2026-07-22 (pre-per-session-dir binaries pruned the SHARED
+# /tmp/scrollback on every save). Per-session dirs fixed the sharing,
+# but a leaked instance is still trouble — an OLD binary still prunes
+# the legacy dir, and stray instances hold ports and skew load. Warn;
+# killing someone else's instance is not the harness's call.
 warn_if_foreign_tmp_instance() {
     local pid path
     for pid in $(pgrep -x cmux-adw 2>/dev/null); do
@@ -91,7 +92,8 @@ warn_if_foreign_tmp_instance() {
             | grep '^CMUX_SESSION_PATH=/tmp/' | cut -d= -f2)
         [ -n "$path" ] || continue
         [ "$path" = "$SESSION" ] && continue
-        echo "  WARN  foreign cmux-adw (pid $pid, session $path) shares /tmp/scrollback — its periodic prune WILL corrupt capture assertions; stop it before trusting this run" >&2
+        case "$path" in /tmp/cmux-scratch-*) continue ;; esac
+        echo "  WARN  foreign cmux-adw (pid $pid, session $path) — a leaked instance; stop it (scratch.sh stop / kill by CMUX_APP_ID) before trusting this run" >&2
     done
     return 0
 }

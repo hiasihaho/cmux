@@ -330,6 +330,12 @@ struct TerminalTab: Identifiable, Equatable {
     /// NOT persisted: zoom is a momentary "let me see this" state, and
     /// restoring into it would hide panes the user forgot they had.
     var zoomedSurfaceId: UUID?
+    /// Bumped when a surface in this workspace is torn down for respawn
+    /// (surface.respawn on a ghostty pane). Part of the view sync's shape
+    /// signature, so the bump forces the subtree rebuild that destroys
+    /// the old widget and mounts the replacement. Transient, not
+    /// persisted.
+    var respawnNonce: Int = 0
 
     init(
         id: UUID = UUID(),

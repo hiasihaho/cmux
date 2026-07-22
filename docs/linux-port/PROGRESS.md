@@ -2937,3 +2937,46 @@ worth their ink:
 The eager-realize pass fronts the GL-context cost of hidden panes
 (bounded — first show would have paid it), renderers stay dormant
 until map.
+
+### Ghostty shim increment 3: respawn, eager spawn, live reload (2026-07-22)
+
+The three GAPS rows that converged on the shim, done as one increment
+(GHOSTTY-SHIM.md has the C API). The macOS reading paid off twice:
+
+- **macOS does NOT respawn in place.** `respawnTerminalSurface` tears
+  the surface down and builds a replacement with the same panel id,
+  replaying scrollback via file+env. Mirrored exactly: pending-command
+  handoff (registry) → nonce-forced rebuild (respawnNonce in the model,
+  part of the shape signature) → factory mounts the replacement via
+  `new_with_command` → in-memory replay (the disk file gets overwritten
+  by the replacement's own capture). cwd carries over via OSC 7. VTE
+  keeps its cheaper in-place respawn.
+- **Eager spawn was one export away.** `ensure_started` initializes a
+  realized-but-never-allocated surface at a stand-in size. Agents can
+  now drive panes in never-shown workspaces (the CATCHUP item-1 gap,
+  open since increment 4's backlog).
+- **Live config reload is one performAction.** ghostty's own
+  config-change propagation does the per-surface work.
+
+The debugging ledger, each with a permanent artifact:
+
+- `surface.list` listed only each pane's SELECTED surface, so the
+  shared CLI's surface resolution failed for background tabs
+  ("Surface ref not found") — every workspace-scoped CLI command was
+  affected, not just respawn. Now `allSurfaces`. Found by bisecting a
+  suite red down through batch-5's swap into a cross-workspace-move +
+  tab combination.
+- PaneTabs reconcile keyed pages by surface id, so a respawned surface
+  (same id, new container) kept its STALE page and the replacement
+  never mounted. Reconcile now closes a page whose child differs from
+  the registry's container.
+- The same-sync GL-init miss (see GHOSTTY-SHIM.md increment 3) — the
+  respawn verb schedules settled main-loop passes; without them the
+  replacement in an unmapped workspace waited for the next unrelated
+  model change.
+- `readyForReplay` gated ghostty on MAPPED — correct before eager
+  spawn (map was when the terminal came to exist), wrong after.
+  Readable (core exists) is the honest signal now.
+- ui-commands grew the increment section (respawn + replay + eager +
+  live reload, 39 assertions); the refusal assertion it replaces died
+  young, as it should.

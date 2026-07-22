@@ -233,6 +233,19 @@ final class PaneTabsView {
         }
 
         for (index, surface) in pane.surfaces.enumerated() {
+            // A respawned surface keeps its id but has a NEW container
+            // (surface.respawn: replace-and-replay); the page still holds
+            // the old widget. Close the stale page — close_page is the
+            // correct teardown for tab children and destroys the old
+            // widget — so the append branch below mounts the replacement.
+            if let page = pages[surface.surfaceId],
+               let container = SurfaceRegistry.shared.containers[surface.surfaceId],
+               adw_tab_page_get_child(page) != UnsafeMutablePointer<GtkWidget>(container) {
+                PaneTabs.isReconciling = true
+                adw_tab_view_close_page(tabView, page)
+                PaneTabs.isReconciling = false
+                pages.removeValue(forKey: surface.surfaceId)
+            }
             if pages[surface.surfaceId] == nil {
                 guard let container = SurfaceRegistry.shared.containers[surface.surfaceId] else {
                     continue

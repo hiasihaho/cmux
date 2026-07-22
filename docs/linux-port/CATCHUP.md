@@ -61,19 +61,21 @@ directory, `surface.respawn` on VTE (in place, old pid killed,
 scrollback survives; ghostty refuses honestly), and the realize half
 of eager background spawn.
 
+**Done 2026-07-22 evening: ghostty shim increment 3** — respawn for
+ghostty panes (macOS's replace-and-replay, same surface id, buffer +
+cwd survive), eager background spawn (agents can drive panes in
+never-shown workspaces), live config reload. Plus the bugs the hunt
+surfaced: `surface.list` omitted background tabs (broke the shared
+CLI's surface resolution everywhere), PaneTabs reconcile kept stale
+pages on same-id widget replacement. GHOSTTY-SHIM.md increment 3 has
+the C API; the shim branch is `linux-gtk-embed` (fork
+hiasihaho/ghostty).
+
 **The resume path** (rows in GAPS *Now* with full detail):
 
-1. **The ghostty shim increment** — three remainders now provably
-   converge on the shim: respawn for ghostty panes (shim owns spawn),
-   eager background spawn's sizing half (init needs realize AND a
-   nonzero size; the realize half is done — GtkStack never allocates
-   hidden children, so the shim must spawn with a default 80×24 grid
-   or expose ensure_started), and live Ghostty config reload. One
-   shim branch (`linux-gtk-embed`, fork hiasihaho/ghostty), one
-   increment, three GAPS rows.
-2. **Browser JS console pane** — `browser.console.show`; distinct from
+1. **Browser JS console pane** — `browser.console.show`; distinct from
    DevTools, macOS opens a console directly.
-3. **Bare Ghostty pane relocation respawns its shell** — batch-5 known
+2. **Bare Ghostty pane relocation respawns its shell** — batch-5 known
    limitation; roadmap/05 lifecycle hardening; `debug.surfaces` is the
    probe.
 
@@ -81,9 +83,11 @@ Then GAPS *Next* (ephemeral panes S-row first, then profile popover UI,
 workspace.reorder, multi-window, Flatpak — see the table).
 
 Standing state to remember on resume: the daily instance runs the
-04:43 promote — GAPS batches 1–5 AND today's work (respawn, per-session
-scrollback, harness) are on disk but reach the daily only at the next
-`promote.sh` run. Gate: 12 suites, 152 assertions green.
+04:43 promote — GAPS batches 1–5 AND all of today (harness batch,
+per-session scrollback, respawn both backends, eager spawn, live
+reload) are on disk but reach the daily only at the next `promote.sh`
+run. That promote needs the REBUILT SHIM too (zig-out is already
+current). Gate: 12 suites, 155 assertions green.
 
 ## Next milestones
 

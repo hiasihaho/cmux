@@ -102,10 +102,25 @@ enum GhosttySurfaceFactory {
         var keys: [UnsafePointer<CChar>?] = keyDup.map { UnsafePointer($0) }
         var values: [UnsafePointer<CChar>?] = valueDup.map { UnsafePointer($0) }
 
+        // A pending respawn (surface.respawn tore the old widget down)
+        // overrides cwd and runs its command instead of the user's shell.
+        let respawn = SurfaceRegistry.shared.takePendingRespawn(for: leaf.surfaceId)
+        let workingDirectory = respawn?.workingDirectory ?? leaf.workingDirectory
         let raw: UnsafeMutableRawPointer? = keys.withUnsafeMutableBufferPointer { k in
             values.withUnsafeMutableBufferPointer { v in
-                ghostty_embed_surface_new(
-                    leaf.workingDirectory,
+                if let command = respawn?.command {
+                    return command.withCString { cmd in
+                        ghostty_embed_surface_new_with_command(
+                            workingDirectory,
+                            k.baseAddress,
+                            v.baseAddress,
+                            env.count,
+                            cmd
+                        )
+                    }
+                }
+                return ghostty_embed_surface_new(
+                    workingDirectory,
                     k.baseAddress,
                     v.baseAddress,
                     env.count
@@ -304,6 +319,25 @@ extension SurfaceRegistry {
         let pwd = GhosttySurfaceFactory.stringProperty(widget, "pwd")
         return (pwd?.isEmpty ?? true) ? nil : pwd
     }
+
+    /// Eagerly start the shell of a realized-but-never-allocated surface
+    /// (background workspace pane). The realize half happens in the sync
+    /// (`realizeHiddenGhosttys`); this is the sizing half, in the shim.
+    @discardableResult
+    func ghosttyEnsureStarted(for surfaceId: UUID) -> Bool {
+        guard let pointer = ghostty(for: surfaceId) else { return false }
+        let widget = UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: GtkWidget.self)
+        return ghostty_embed_surface_ensure_started(widget) == 1
+    }
+
+    /// Live config reload: ghostty re-reads its config and propagates to
+    /// every existing surface (the app.reload-config action). The
+    /// registered-surface guard doubles as the initialized guard — no
+    /// ghostty surface exists unless the shim is up.
+    func ghosttyReloadConfig() -> Bool {
+        guard !ghosttys.isEmpty else { return false }
+        return ghostty_embed_reload_config() == 1
+    }
 }
 #endif
 
@@ -321,5 +355,8 @@ extension SurfaceRegistry {
     func ghosttyChildExited(for surfaceId: UUID) -> Bool { false }
     func currentGhosttyTitle(for surfaceId: UUID) -> String? { nil }
     func currentGhosttyDirectory(for surfaceId: UUID) -> String? { nil }
+    @discardableResult
+    func ghosttyEnsureStarted(for surfaceId: UUID) -> Bool { false }
+    func ghosttyReloadConfig() -> Bool { false }
 }
 #endif

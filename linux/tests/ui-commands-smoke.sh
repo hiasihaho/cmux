@@ -312,12 +312,60 @@ echo "$doc" | grep -q '"backend"' && echo "$doc" | grep -q '"parent_type"' \
     && ok "debug.surfaces reports widget lifecycle state" \
     || bad "debug.surfaces" "$(echo "$doc" | head -c 120)"
 
-# Respawn is VTE-only for now (the shim owns ghostty spawn; roadmap/05) —
-# a ghostty pane must refuse HONESTLY, not pretend. The VTE respawn
-# itself is covered in vte-scrollback-smoke.
-rsp=$(cx respawn-pane --surface "$T" --command 'echo never-runs' 2>&1)
-echo "$rsp" | grep -qi "ghostty" \
-    && ok "respawn refuses ghostty panes with an honest error" \
-    || bad "respawn refusal" "expected a Ghostty-specific unavailable error, got: $(echo "$rsp" | head -c 100)"
+# ---------------------------------------- ghostty shim increment 3 verbs
+# (VTE respawn is covered in vte-scrollback-smoke; this section is the
+# ghostty side: replace-and-replay respawn, eager background spawn, live
+# config reload — the three verbs the 2026-07-22 shim increment added.)
+info "ghostty respawn (replace + replay)"
+cx send --surface "$T" 'echo GRSP_PRE_MARKER_XYZ\n' >/dev/null 2>&1
+sleep 1
+# --workspace is load-bearing: the shared CLI resolves --surface against
+# the CURRENT workspace when it is omitted, and $T's workspace is not
+# selected here — without it the CLI errors before sending anything.
+rsp_out=$(cx respawn-pane --workspace "$WS" --surface "$T" --command 'echo GRSP_RESPAWNED_XYZ; exec sh -l' 2>&1)
+gscreen=""
+for _ in $(seq 1 30); do
+    gscreen=$(cx read-screen --surface "$T" --scrollback 2>/dev/null)
+    echo "$gscreen" | grep -q GRSP_RESPAWNED_XYZ && break
+    sleep 0.5
+done
+if echo "$gscreen" | grep -q GRSP_RESPAWNED_XYZ; then
+    ok "ghostty respawn runs the command in the same pane id"
+else
+    bad "ghostty respawn" "GRSP_RESPAWNED_XYZ never appeared"
+    echo "  -- diag respawn reply was: $rsp_out"
+    echo "  -- diag T=$T WS=$WS selected=$(cx list-workspaces 2>/dev/null | grep selected)"
+    echo "  -- diag debug.surfaces:"
+    v2 '{"id":9,"method":"debug.surfaces"}' | python3 -m json.tool 2>/dev/null | grep -E '"ref"|"backend"|"readable"|"parent_type"|"realized"|"mapped"' | sed 's/^/     /'
+    echo "  -- diag log tail:"
+    grep -iE "CRITICAL|WARNING|eager|initialize" "$LOG" 2>/dev/null | tail -6 | sed 's/^/     /'
+fi
+echo "$gscreen" | grep -q GRSP_PRE_MARKER_XYZ \
+    && ok "the old buffer replays into the replacement" \
+    || bad "ghostty respawn replay" "pre-respawn marker lost"
+
+info "eager background spawn"
+WSEG=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+TEG=$(cx --json list-panes --workspace "$WSEG" 2>/dev/null | python3 -c '
+import json,sys
+print(json.load(sys.stdin)["panes"][0]["surface_refs"][0])')
+# The whole point: the workspace is NEVER selected, yet the shell runs.
+egread=""
+for _ in $(seq 1 20); do
+    cx send --surface "$TEG" 'echo EAGER_BG_XYZ\n' >/dev/null 2>&1 \
+        && egread=$(cx read-screen --surface "$TEG" 2>/dev/null | grep -c EAGER_BG_XYZ) \
+        && [ "${egread:-0}" -ge 1 ] && break
+    sleep 0.5
+done
+[ "${egread:-0}" -ge 1 ] \
+    && ok "a never-selected workspace's pane accepts send/read" \
+    || bad "eager spawn" "background pane never became drivable"
+cx close-workspace --workspace "$WSEG" >/dev/null 2>&1
+
+info "live ghostty config reload"
+rout=$(cx reload-config 2>&1)
+echo "$rout" | grep -q "ghostty config (live)" \
+    && ok "reload-config reports live ghostty propagation" \
+    || bad "live reload" "got: $(echo "$rout" | head -c 80)"
 
 finish

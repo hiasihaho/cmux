@@ -28,10 +28,7 @@ Effort: **S** ≤ half a session · **M** one session · **L** multi-session.
 
 | Gap | Symptom / value | Source | Effort |
 |---|---|---|---|
-| `surface.respawn` on Ghostty panes | VTE respawn landed 2026-07-22 (in place — old process killed, scrollback survives); ghostty panes refuse honestly since the shim owns their spawn. Belongs to roadmap/05 shim work, alongside live config reload | sweep-v2 | M (shim) |
-| Live Ghostty config reload | `reload-config` honestly says "new terminals only"; macOS refreshes in place. Needs a shim call to re-read config on existing surfaces | skill-walk | M |
 | Browser JS console pane | macOS `showBrowserJavaScriptConsole` opens a console directly (distinct from DevTools); `browser devtools console` sends `browser.console.show` | CATCHUP item 5 | M |
-| Eager background spawn (shim half) | Half solved 2026-07-22: the sync now force-realizes hidden ghostty subtrees (`realizeHiddenGhosttys` — GTK realizes ancestors, never children, so the walk is recursive), and `debug.surfaces` confirms realized=true unmapped. Not sufficient: the shim's lazy init needs realize AND a nonzero size, and GtkStack never allocates hidden children — shells still wait for first selection. Remainder is shim-side eager PTY sizing (default 80×24 grid when unallocated, or an `ensure_started` API) — shim increment work with respawn-for-ghostty and live config reload | CATCHUP item 1 | M (shim) |
 | Bare Ghostty pane relocation respawns the shell | break/join (and move) of a never-tabbed Ghostty pane restarts its shell — cwd survives, scrollback and processes do not. Forensics 2026-07-22 (PROGRESS): container refcount reaches the parent's-last-ref state despite the registry's ref; one extra ref keeps the shell but leaks the io thread. Tabbed panes relocate safely (reconciliation path). Belongs to roadmap/05 lifecycle hardening; `debug.surfaces` is the probe | GAPS batch 5 | M |
 
 **Watch list** (observed once, not reproducible on the current binary):

@@ -15,4 +15,4 @@ browser-urlbar-smoke	5	Address bar via xdotool: typed loopback/domain/search res
 browser-profile-smoke	14	Browser profiles: per-profile cookie/storage isolation verbs
 vte-scrollback-smoke	8	VTE backend scrollback capture + replay across an instance restart
 settings-smoke	6	Settings precedence (env > file > default), preferences verbs
-ui-commands-smoke	36	UI/protocol verbs: tree, tab actions, notifications, move/reorder, swap/resize/break/join, debug.surfaces
+ui-commands-smoke	39	UI/protocol verbs: tree, tab actions, notifications, move/reorder, swap/resize/break/join, debug.surfaces
