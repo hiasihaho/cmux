@@ -146,6 +146,74 @@ final class SurfaceRegistry {
         return string.isEmpty ? nil : string
     }
 
+    /// Full-buffer text of a VTE surface — scrollback plus screen, up to
+    /// the cursor. The vertical adjustment's `lower` is the earliest row
+    /// VTE still holds; rows are absolute and only grow. The adjustment is
+    /// read as the GtkScrollable interface *property* — CVte's view of GTK
+    /// does not surface the GtkScrollable cast type.
+    func vteScrollbackText(for surfaceId: UUID) -> String? {
+        guard let terminal = terminals[surfaceId] else { return nil }
+        var cursorCol: glong = 0
+        var cursorRow: glong = 0
+        vte_terminal_get_cursor_position(terminal, &cursorCol, &cursorRow)
+        var startRow: glong = 0
+        var adjustmentValue = GValue()
+        _ = g_value_init(&adjustmentValue, gtk_adjustment_get_type())
+        g_object_get_property(
+            UnsafeMutableRawPointer(terminal).assumingMemoryBound(to: GObject.self),
+            "vadjustment", &adjustmentValue
+        )
+        if let raw = g_value_get_object(&adjustmentValue) {
+            let adjustment = UnsafeMutableRawPointer(raw).assumingMemoryBound(to: GtkAdjustment.self)
+            startRow = glong(gtk_adjustment_get_lower(adjustment))
+        }
+        g_value_unset(&adjustmentValue)
+        guard let raw = vte_terminal_get_text_range_format(
+            terminal, VTE_FORMAT_TEXT, startRow, 0, cursorRow, -1, nil
+        ) else { return nil }
+        defer { g_free(raw) }
+        return String(cString: raw)
+    }
+
+    /// Feeds bytes to a VTE terminal as terminal OUTPUT — parsed and
+    /// drawn, never handed to the shell. The VTE analog of the Ghostty
+    /// fork's `inject_output`.
+    @discardableResult
+    func vteWriteDisplay(for surfaceId: UUID, text: String) -> Bool {
+        guard let terminal = terminals[surfaceId], !text.isEmpty else { return false }
+        let bytes = Array(text.utf8)
+        bytes.withUnsafeBufferPointer { buffer in
+            buffer.baseAddress?.withMemoryRebound(to: CChar.self, capacity: buffer.count) {
+                vte_terminal_feed(terminal, $0, buffer.count)
+            }
+        }
+        return true
+    }
+
+    // MARK: backend-neutral scrollback dispatch (used by TerminalScrollback)
+
+    /// Whichever backend holds the surface answers; nil means "could not
+    /// read", which callers must not confuse with "empty".
+    func scrollbackText(for surfaceId: UUID) -> String? {
+        ghosttyReadText(for: surfaceId, includeScrollback: true)
+            ?? vteScrollbackText(for: surfaceId)
+    }
+
+    /// True once the surface can accept a replay. Ghostty surfaces need to
+    /// be mapped (their terminal starts on first map); a VTE terminal is
+    /// ready as soon as it exists.
+    func readyForReplay(for surfaceId: UUID) -> Bool {
+        ghosttyIsMapped(for: surfaceId) || terminals[surfaceId] != nil
+    }
+
+    @discardableResult
+    func writeDisplay(for surfaceId: UUID, text: String) -> Bool {
+        if terminals[surfaceId] != nil {
+            return vteWriteDisplay(for: surfaceId, text: text)
+        }
+        return ghosttyWriteDisplay(for: surfaceId, text: text)
+    }
+
     /// Shell working directory reported via OSC 7 (vte.sh), if any.
     func currentDirectory(for surfaceId: UUID) -> String? {
         #if canImport(CGhosttyEmbed)
@@ -492,6 +560,9 @@ struct TerminalStackWidget: AdwaitaWidget {
 
         spawnShell(in: terminal, leaf: leaf, tab: tab)
         SurfaceRegistry.shared.registerTerminal(terminal, container: OpaquePointer(scrolled), for: leaf.surfaceId)
+        // Replay restored scrollback. Unlike Ghostty (terminal exists only
+        // after first map), a VTE terminal is usable immediately.
+        TerminalScrollbackStore.startReplay(surfaceId: leaf.surfaceId)
         connectSignals(for: leaf, in: tab, terminal: terminal, widget: widget, storage: storage)
     }
 

@@ -137,12 +137,13 @@ enum TerminalScrollbackStore {
             polling.remove(surfaceId)
             return
         }
-        // Only inject into a *mapped* surface. `write_display` accepts
-        // bytes as soon as the core surface exists, so an unmapped pane
-        // would report success and queue the replay into a terminal that
-        // has not started — the text would be consumed and lost.
-        if SurfaceRegistry.shared.ghosttyIsMapped(for: surfaceId),
-           SurfaceRegistry.shared.ghosttyWriteDisplay(
+        // Only inject into a *ready* surface. Ghostty's `write_display`
+        // accepts bytes as soon as the core surface exists, so an unmapped
+        // pane would report success and queue the replay into a terminal
+        // that has not started — the text would be consumed and lost.
+        // (VTE terminals are ready from creation.)
+        if SurfaceRegistry.shared.readyForReplay(for: surfaceId),
+           SurfaceRegistry.shared.writeDisplay(
                for: surfaceId, text: TerminalScrollback.replayPayload(text)
            ) {
             pending.removeValue(forKey: surfaceId)
@@ -229,7 +230,7 @@ enum ScrollbackStore {
         // mean "how much do I keep", not "which capture mode am I in".
         // The 2s throttle above is what keeps the read affordable.
         write(
-            SurfaceRegistry.shared.ghosttyReadText(for: surfaceId, includeScrollback: true),
+            SurfaceRegistry.shared.scrollbackText(for: surfaceId),
             for: surfaceId
         )
     }

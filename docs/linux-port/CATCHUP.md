@@ -76,7 +76,9 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    it is parity work and deliberately waits until after the upstream
    catch-up merge, which defines the exact surface to mirror.
 
-   **Next (decided 2026-07-21): VTE backend parity for scrollback.**
+   ✅ **DONE (2026-07-22): VTE backend parity for scrollback** — as designed below, plus `read_text --scrollback` now works on VTE too. Historical design note:
+
+   **(decided 2026-07-21): VTE backend parity for scrollback.**
    Only Ghostty panes capture/replay today — `ghosttyReadText` returns
    nil for VTE surfaces, so under `CMUX_TERM=vte` the feature is absent
    (not broken). Feasibility checked against VTE 0.82.3: capture via

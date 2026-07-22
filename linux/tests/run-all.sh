@@ -23,6 +23,7 @@ SUITES=(
     pane-zoom-smoke
     browser-urlbar-smoke
     browser-profile-smoke
+    vte-scrollback-smoke
 )
 
 if [ $# -gt 0 ]; then

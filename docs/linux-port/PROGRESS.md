@@ -2495,3 +2495,29 @@ Noticed while debugging, parked: after a session restore, `list-panes`
 with no --workspace reports "Workspace not found" until a workspace is
 explicitly selected — pre-existing selection-resolution quirk, suites
 always pass --workspace.
+
+### VTE scrollback parity (2026-07-22)
+
+Scrollback persistence now works under both terminal backends. The
+dispatch is backend-neutral (`SurfaceRegistry.scrollbackText` /
+`writeDisplay` / `readyForReplay`): Ghostty surfaces keep the fork's
+`inject_output` and map-gating; VTE surfaces capture the whole retained
+buffer via `vte_terminal_get_text_range_format` (range from the vertical
+adjustment's `lower` — read as the GtkScrollable interface *property*,
+since CVte's view of GTK has no GtkScrollable cast type — to the cursor
+row) and replay via `vte_terminal_feed`, VTE's exact analog of
+inject_output: parsed as output, never handed to the shell. VTE
+terminals are ready at creation, so the restartable-poll machinery just
+succeeds on its first attempt there.
+
+The suite initially reported the replay broken while it worked: the
+marker had scrolled 200 lines up, and VTE's `read_text` was
+viewport-only (a documented PARITY gap). Closing the gap —
+`scrollback:true` now returns the full retained buffer on VTE too — made
+the assertion honest and removed a real limitation in one move.
+
+vte-scrollback-smoke.sh (CMUX_TERM=vte instance): capture beyond the
+viewport, replay after restart, column-0 check, not-executed check.
+The LF→CRLF normalization carried over untouched — it lives in the
+backend-neutral `replayPayload`, exactly as hoped when the staircase
+was fixed.

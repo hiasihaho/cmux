@@ -1174,6 +1174,20 @@ struct ControlCommandHandler {
         guard let terminal = SurfaceRegistry.shared.terminal(for: target.surfaceId) else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")
         }
+        // `scrollback:true` returns the whole retained buffer — parity
+        // with the Ghostty path (this closed a PARITY gap on 2026-07-22).
+        if (params["scrollback"] as? Bool) == true,
+           var text = SurfaceRegistry.shared.vteScrollbackText(for: target.surfaceId) {
+            if let lines = params["lines"] as? Int, lines > 0 {
+                let all = text.split(separator: "\n", omittingEmptySubsequences: false)
+                text = all.suffix(lines).joined(separator: "\n")
+            }
+            return v2Ok(id: id, result: [
+                "workspace_id": target.tab.id.uuidString,
+                "surface_id": target.surfaceId.uuidString,
+                "text": text
+            ])
+        }
         // Read the screenful ending at the cursor, not the viewport: an
         // unmapped terminal (background workspace) never scrolls its
         // viewport, which would return a stale first screenful forever.
