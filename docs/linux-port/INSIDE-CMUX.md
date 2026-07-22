@@ -93,6 +93,9 @@ you. Triage pattern: root-cause before trusting findings (cycle 2's
   per feature *with docs*, conversation exports are gitignored, changes to
   shared sources (`CLI/cmux.swift`) must keep building on macOS
   (`#if canImport(Darwin)` / `#if os(Linux)`).
+- **Gap backlog**: `docs/linux-port/GAPS.md` — the prioritized work-down
+  list with per-gap effort and source; update it in the same commit as
+  any gap fixed or found.
 - **Parity tracker**: `docs/linux-port/PARITY.md` — per-verb/per-feature
   status vs macOS. Update it in the same commit as any feature change.
 - **Done**: phases 0–5c (shell, control plane, VTE terminals, attention

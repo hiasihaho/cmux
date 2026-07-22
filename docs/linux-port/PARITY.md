@@ -8,6 +8,7 @@ stubs, or intentionally skips a feature.** Evidence and dates live in
 Legend: ✅ done · 🟡 partial (note says what's missing) · ❌ missing ·
 — not planned / not applicable on Linux.
 
+The prioritized work-down list of these gaps lives in [GAPS.md](GAPS.md).
 Parity runs both ways: the **Linux-only additions** section near the end
 lists what this port has that macOS does not, and
 [FEATURES.md](FEATURES.md) describes them. Method-level gaps below were
@@ -68,7 +69,7 @@ measured by diffing the two capability lists, not estimated.
 | browser.console.list / clear, browser.errors.list | ✅ | **Capture v2** (2026-07-21): document-start user script (CSP-exempt user-agent script, no eval) posts through a script message handler into a per-surface app-side ring buffer. Captures from page load on every site incl. strict-CSP — strictly better than macOS's lazily-armed wrap, which only sees entries after the first call. Note: entries logged by our own isolated-world automation aren't captured (we record what the PAGE logs) |
 | browser.network.requests / route / unroute | ❌ | |
 | browser.download.wait | 🟡 | path-based wait works (non-blocking poll); the no-path event branch times out — macOS's download-event queue is never populated either (no writer exists). Real downloads need a decide-destination handler (future) |
-| browser.tab.list / new / switch / close | ❌ | |
+| browser.tab.list / new / switch / close | ✅ | per-pane AdwTabView tabs (2026-07-21) |
 | browser.viewport.set / geolocation.set / offline.set | ❌ | |
 | browser.highlight / addscript / addstyle / addinitscript | ❌ | |
 | browser.state.save / load, trace.*, screencast.*, input_* | ❌ / — | input_* is not_supported on macOS too |
@@ -139,10 +140,10 @@ are implemented on both**, 47 are macOS-only, and a further 29 macOS
 | Command palette | ❌ | |
 | Tab drag-and-drop (reorder, tear-off, cross-window) | ❌ | |
 | Multi-window | ❌ | |
-| Workspace pinning / rename UI | ❌ | |
+| Workspace pinning / rename UI | 🟡 | rename dialog done (Ctrl+Shift+E, 2026-07-22); pinning UI still missing |
 | Sidebar metadata pills (git branch, PR, ports, status/progress) | ❌ | pairs with report_* verbs |
 | Update pill / Sparkle auto-update | — | Flatpak packaging phase owns updates |
-| Keyboard shortcuts | 🟡 | 12 of macOS's 28 commands bound: new workspace (Ctrl+Shift+T), split right/down (D/S), find (F), zoom (Z), close pane (W), **open browser pane (B)**, **browser devtools (I)**, **next/previous workspace (Ctrl+Shift+PageDown/Up)**, **next/previous pane (Ctrl+Tab / Ctrl+Shift+Tab)**. Still unbound though the verb exists: rename workspace (needs a text dialog). Not implemented at all: directional pane focus (`focusLeft/Right/Up/Down`), next/prev surface, jump-to-unread, open folder, JS console, flash, multi-window |
+| Keyboard shortcuts | 🟡 | 19 of macOS's 28 commands bound (2026-07-22): workspace/split/find/zoom/close/browser/devtools/workspace-nav/pane-nav as before, plus preferences (Ctrl+comma), directional pane focus (Ctrl+Shift+arrows), rename workspace dialog (Ctrl+Shift+E), jump-to-unread (Ctrl+Shift+U), open folder (Ctrl+Shift+O). Missing: JS console, multi-window family — see GAPS.md |
 | CLI (shared `CLI/cmux.swift`) | ✅ | builds unmodified on Linux; global flags before subcommand |
 | Claude hooks (Stop/Notification → cmux claude-hook) | ✅ | |
 

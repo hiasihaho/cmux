@@ -45,6 +45,11 @@ now: `linux/tests/browser-navigation-smoke.sh` (8) and
 or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
 (no macOS toolchain here).
 
+**The work-down list lives in [GAPS.md](GAPS.md)** (since 2026-07-22):
+pick from its *Now* table, follow its rules (same-commit updates, suite
+per fix, sweep after every merge). The milestones below are the
+narrative context.
+
 ## Next milestones
 
 1. ✅ Default flip DONE (2026-07-17): shim-linked builds default to
