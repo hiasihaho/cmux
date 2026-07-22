@@ -183,13 +183,10 @@ enum ScrollbackStore {
         SessionStore.fileURL.deletingLastPathComponent().appendingPathComponent("scrollback")
     }
 
-    /// Character budget. `CMUX_SCROLLBACK_LIMIT=0` keeps everything —
-    /// affordable now that saves are incremental.
-    static var limit: Int {
-        guard let raw = ProcessInfo.processInfo.environment["CMUX_SCROLLBACK_LIMIT"],
-              let value = Int(raw), value >= 0 else { return TerminalScrollback.maxCharacters }
-        return value
-    }
+    /// Character budget; 0 keeps everything — affordable now that saves
+    /// are incremental. Env (CMUX_SCROLLBACK_LIMIT) > settings file >
+    /// default, resolved per save so the preferences slider applies live.
+    static var limit: Int { LinuxSettings.scrollbackLimit }
 
     /// Hashes of what was last written, so an unchanged pane is not
     /// rewritten. In memory only: a cold start rewrites once, which is

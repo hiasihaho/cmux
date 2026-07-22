@@ -2521,3 +2521,32 @@ viewport, replay after restart, column-0 check, not-executed check.
 The LF→CRLF normalization carried over untouched — it lives in the
 backend-neutral `replayPayload`, exactly as hoped when the staircase
 was fixed.
+
+### Settings file + preferences window (2026-07-22)
+
+The three env-var-only settings now persist. Storage is the same file
+macOS uses — `~/.config/cmux/cmux.json` — under a `"linux"` object so the
+schemas can never collide and one dotfiles repo serves both platforms.
+Resolution order is **environment > file > default**, deliberately:
+every suite and script depends on an explicit `CMUX_SCROLLBACK_LIMIT=0`
+beating whatever the file says. The file is re-read mtime-gated on
+access, so external edits (hand, dotfiles sync) apply without a watcher,
+and the preferences window writes through the same type.
+
+The window (Ctrl+comma / gear button) is raw libadwaita C —
+adwaita-swift binds the preference rows but not `GtkScale`, and the
+scrollback budget genuinely wants a slider. It got one: marks at
+16 KB / 64 KB / 256 KB / 1 MB / 8 MB / All (a linear byte axis is
+useless across three orders of magnitude; the slider moves across
+presets). Off-preset values from a hand-edited file snap to the nearest
+stop. Terminal backend is a ComboRow (Ghostty/VTE, "applies to the next
+launch" — the Ghostty runtime initializes once); search URL an EntryRow
+applying to the next search. Screenshot-verified under Xvfb.
+
+settings-smoke.sh: file limit bounds capture (4096 → 4096-byte file),
+backend=vte keeps Ghostty uninitialized, CMUX_TERM env beats the file,
+window opens on Ctrl+comma, config file never clobbered by reads.
+
+Note for CAdw work: interface types (GListModel) have no struct in
+CAdw's view — pass what CAdw's own functions return directly instead of
+casting through the system headers' names.

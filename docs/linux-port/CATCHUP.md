@@ -90,12 +90,10 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
    over for free. Achievable; it is a second implementation, not a port
    blocker.
 
-   Still open on the settings side: `CMUX_SCROLLBACK_LIMIT`,
-   `CMUX_SEARCH_URL` and `CMUX_TERM` are env-var-only. Next is an XDG
-   config file so they persist, then a preferences window —
-   adwaita-swift already binds `PreferencesPage`/`SwitchRow`/`SpinRow`/
-   `ComboRow`, so the UI needs no shim and has three real settings on
-   day one.
+   ✅ **DONE (2026-07-22): settings.** `~/.config/cmux/cmux.json`
+   (`linux` object, env > file > default) + preferences window
+   (Ctrl+comma): backend ComboRow, scrollback slider with preset marks,
+   search-URL row. Raw libadwaita C (adwaita-swift lacks GtkScale).
 
    Method: read the macOS implementation first (it is usually right and
    is the parity target), then deviate only where our own approach is

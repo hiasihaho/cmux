@@ -24,6 +24,7 @@ SUITES=(
     browser-urlbar-smoke
     browser-profile-smoke
     vte-scrollback-smoke
+    settings-smoke
 )
 
 if [ $# -gt 0 ]; then

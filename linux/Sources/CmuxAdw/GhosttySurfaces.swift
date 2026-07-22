@@ -11,14 +11,11 @@ import Foundation
 
 /// One-shot shim initialization, decided by env + first use.
 enum GhosttyRuntime {
-    /// Shim-linked builds default to Ghostty terminals; CMUX_TERM=vte is
-    /// the explicit fallback (VTE-only builds never compile this file).
-    private static let wanted: Bool = {
-        switch ProcessInfo.processInfo.environment["CMUX_TERM"]?.lowercased() {
-        case "vte": return false
-        default: return true
-        }
-    }()
+    /// Shim-linked builds default to Ghostty terminals; VTE is the
+    /// explicit fallback via CMUX_TERM=vte or the settings file
+    /// (linux.terminalBackend). One-shot: read at first terminal creation,
+    /// so a settings change applies at the next launch.
+    private static let wanted: Bool = LinuxSettings.terminalBackend == .ghostty
     private static var initResult: Bool?
 
     /// Self-locate the shell-integration/theme resources for launches

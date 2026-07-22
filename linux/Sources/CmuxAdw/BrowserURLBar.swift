@@ -42,17 +42,14 @@ enum BrowserURLBar {
         return nil
     }
 
-    /// Search URL for text that is not a URL. macOS keeps the engine in
-    /// user defaults; there is no settings surface on Linux yet, so it is
-    /// an env var with the same default rather than a hardcoded choice
-    /// nobody can change.
+    /// Search URL for text that is not a URL — template from the settings
+    /// file (or CMUX_SEARCH_URL), resolved per use so a change applies to
+    /// the next search immediately.
     static func searchURL(for query: String) -> String? {
         guard let escaped = query.addingPercentEncoding(
             withAllowedCharacters: .urlQueryAllowed
         ) else { return nil }
-        let template = ProcessInfo.processInfo.environment["CMUX_SEARCH_URL"]
-            ?? "https://www.google.com/search?q=%s"
-        return template.replacingOccurrences(of: "%s", with: escaped)
+        return LinuxSettings.searchURL.replacingOccurrences(of: "%s", with: escaped)
     }
 
     /// What Enter in the bar should load: a URL if it looks like one, a

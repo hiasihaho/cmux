@@ -179,6 +179,11 @@ struct CmuxApp: App {
                             sidebarVisible.toggle()
                         }
                         .tooltip("Toggle sidebar")
+                        Button(icon: .custom(name: "emblem-system-symbolic")) {
+                            PreferencesWindow.present()
+                        }
+                        .keyboardShortcut("comma".ctrl())
+                        .tooltip("Preferences (Ctrl+,)")
                         Button(icon: .custom(name: "pan-end-symbolic")) {
                             splitFocused(direction: "right")
                         }
