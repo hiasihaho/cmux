@@ -188,4 +188,15 @@ import json,sys
 print(max(p["surface_count"] for p in json.load(sys.stdin)["panes"]))')
 expect "close-others trims back to one" "1" "$tabs_after"
 
+# highlight: upstream's element outline, un-shadowed from our old
+# find-in-page alias (a merge collision that killed it on BOTH platforms).
+B2=$(cx browser open "data:text/html,<button id='hi'>press</button>" --workspace "$WS2" 2>/dev/null | grep -oE 'surface:[0-9]+' | head -1)
+sleep 3
+expect "browser highlight outlines an element" "OK" "$(cx browser --surface "$B2" highlight '#hi' 2>&1 | head -1)"
+hl_missing=$(cx browser --surface "$B2" highlight '#nope' 2>&1 | head -1)
+echo "$hl_missing" | grep -q "not found" \
+    && ok "highlight errors helpfully on a missing element" \
+    || bad "highlight missing" "$hl_missing"
+expect "find-in-page still works under its own name" "1 of 1" "$(cx browser --surface "$B2" find-in-page press 2>&1 | head -1)"
+
 finish

@@ -345,7 +345,7 @@ struct ControlCommandHandler {
             return v2BrowserHistory(id: id, params: params, action: "reload", respond: respond)
         case "browser.click", "browser.dblclick", "browser.hover", "browser.focus",
              "browser.fill", "browser.type", "browser.check", "browser.uncheck",
-             "browser.select", "browser.scroll_into_view",
+             "browser.select", "browser.scroll_into_view", "browser.highlight",
              "browser.get.text", "browser.get.html", "browser.get.value",
              "browser.get.attr", "browser.get.box", "browser.get.styles",
              "browser.is.visible", "browser.is.enabled", "browser.is.checked":

@@ -34,7 +34,6 @@ Effort: **S** ≤ half a session · **M** one session · **L** multi-session.
 | `surface.respawn` | `cmux respawn-pane` errors; needs kill+restart of the shell in the same pane (both backends) | sweep-v2 | M |
 | Live Ghostty config reload | `reload-config` honestly says "new terminals only"; macOS refreshes in place. Needs a shim call to re-read config on existing surfaces | skill-walk | M |
 | Browser JS console pane | macOS `showBrowserJavaScriptConsole` opens a console directly (distinct from DevTools); `browser devtools console` sends `browser.console.show` | CATCHUP item 5 | M |
-| `browser.highlight` / `addscript` / `addstyle` / `addinitscript` | agent-facing helpers; small WebKit calls (user script injection exists for console capture already) | parity-diff | S |
 | Eager background spawn | panes in never-shown workspaces start their shell only on first selection; agents sending to them get `unavailable` | CATCHUP item 1 | M |
 
 **Watch list** (observed once, not reproducible on the current binary):

@@ -13565,7 +13565,11 @@ struct CMUXCLI {
             return
         }
 
-        if subcommand == "find-in-page" || subcommand == "highlight" {
+        // NOT also "highlight": that alias (from the Linux port's find bar
+        // work) shadowed upstream's dedicated element-highlight block below,
+        // which sends browser.highlight — dead code on both platforms until
+        // the 2026-07-22 GAPS pass caught it.
+        if subcommand == "find-in-page" {
             let sid = try requireSurface()
             var params: [String: Any] = ["surface_id": sid]
             let (_, rest) = parseOption(subArgs, name: "--nothing")

@@ -2697,3 +2697,17 @@ cannot even name WebKitWebView). Unsupported keys (duplicate, pin,
 mark_read, move/detach, full-width) error with macOS's shape.
 
 ui-commands-smoke: 22 assertions.
+
+### GAPS batch 3: browser.highlight, and a shared-CLI collision (2026-07-22)
+
+The last S row hid two findings. First, three of its four methods
+(addscript/addstyle/addinitscript) are no longer sent by the merged CLI
+at all — rows retired, not implemented; tracking follows the wire, not
+old lists. Second, `browser highlight` was broken on BOTH platforms by
+the merge: our find-bar work had aliased `highlight` onto the
+find-in-page block, and upstream's dedicated element-highlight block sat
+below it as dead code. The union merge preserved both, ours matched
+first. Dropping the alias un-shadowed upstream's subcommand; the server
+side is a fifteen-line entry in the existing selector-verb envelope (2s
+outline), which contributed the retry and not-found diagnostics for
+free. UPSTREAM.md §4c flags the CLI fix for the next upstream PR.

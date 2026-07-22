@@ -74,7 +74,7 @@ measured by diffing the two capability lists, not estimated.
 | browser.download.wait | 🟡 | path-based wait works (non-blocking poll); the no-path event branch times out — macOS's download-event queue is never populated either (no writer exists). Real downloads need a decide-destination handler (future) |
 | browser.tab.list / new / switch / close | ✅ | per-pane AdwTabView tabs (2026-07-21) |
 | browser.viewport.set / geolocation.set / offline.set | ❌ | |
-| browser.highlight / addscript / addstyle / addinitscript | ❌ | |
+| browser.highlight | ✅ | 2s element outline via the selector-verb envelope (2026-07-22). addscript/addstyle/addinitscript: the merged CLI no longer sends them — dropped from tracking |
 | browser.state.save / load, trace.*, screencast.*, input_* | ❌ / — | input_* is not_supported on macOS too |
 
 ### browser — not yet ported

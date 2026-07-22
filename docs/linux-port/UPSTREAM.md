@@ -104,3 +104,13 @@ Related, same area: any verb carrying its own `timeout_ms` needs the
 transport budget to exceed it. Ours capped flat at 15 s on both ends, so
 `wait --timeout-ms 20000` died at 15 s with a transport timeout that is
 indistinguishable from the predicate never being met.
+
+### 4c. `browser highlight` shadowed by the find-in-page alias — macOS affected after any merge of our branch
+
+Our Linux find-bar work aliased `highlight` onto the `find-in-page` CLI
+block; upstream independently added a dedicated `highlight` subcommand
+(element outline via `browser.highlight`) *below* it. In the merged CLI
+our block matched first, so upstream's element-highlight became dead
+code — on macOS too, for anyone building the CLI from our tree. Fixed
+2026-07-22 by dropping the alias (`find-in-page` keeps its own name).
+Worth flagging in any upstream PR that touches CLI/cmux.swift.

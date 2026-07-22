@@ -991,6 +991,24 @@ extension ControlCommandHandler {
         let scriptBuilder: (String) -> String
 
         switch method {
+        case "browser.highlight":
+            // Agent debugging aid: outline the match for two seconds.
+            scriptBuilder = { sel in """
+                (() => {
+                  const el = document.querySelector(\(sel));
+                  if (!el) return { ok: false, error: 'not_found' };
+                  el.scrollIntoView({ block: 'center', inline: 'nearest' });
+                  const prev = el.style.outline;
+                  const prevOffset = el.style.outlineOffset;
+                  el.style.outline = '3px solid #f60';
+                  el.style.outlineOffset = '2px';
+                  setTimeout(() => {
+                    el.style.outline = prev;
+                    el.style.outlineOffset = prevOffset;
+                  }, 2000);
+                  return { ok: true };
+                })()
+                """ }
         case "browser.click":
             scriptBuilder = { sel in """
                 (() => {
