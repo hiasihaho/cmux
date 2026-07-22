@@ -317,7 +317,7 @@ if [ -n "$T5" ] && wait_for_shell "$T5"; then
     # Scrollback lives OUTSIDE the session document: that file is
     # rewritten on every model change, so inline text made every line of
     # output rewrite everything (~327KB per save before this).
-    sbdir="$(dirname "$SESSION")/scrollback"
+    sbdir="$SBDIR"
     stored=0
     for i in $(seq 1 30); do
         [ $(( i % 6 )) -eq 1 ] && force_save
@@ -387,7 +387,7 @@ print(" ".join(r for p in json.load(sys.stdin)["panes"] for r in p["surface_refs
     # Poll for VERIFIED capture of BOTH panes before killing the
     # instance (2026-07-22: a timed save caught only one pane under
     # load; the instrumentation line below is how the loss surfaced).
-    sbdir6="$(dirname "$SESSION")/scrollback"
+    sbdir6="$SBDIR"
     held=0
     for i in $(seq 1 30); do
         [ $(( i % 6 )) -eq 1 ] && force_save
@@ -476,7 +476,7 @@ if [ "$USE_XVFB" = "1" ] && command -v xdotool >/dev/null 2>&1 \
         done
         fired=$(grep -c "exit save firing" "$LOG" 2>/dev/null)
         expect "close-request ran the final save" "1" "${fired:-0}"
-        sbdir="$(dirname "$SESSION")/scrollback"
+        sbdir="$SBDIR"
         # Post-epoch files only — a stale marker file from a previous
         # run would false-PASS this.
         saved=$(fresh_marker_files "$sbdir" EXIT_SAVE_MARKER_XYZ)

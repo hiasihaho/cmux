@@ -2871,3 +2871,19 @@ Verified: freshness logic four-case tested in isolation (stale / fresh
 kept logs) and a real green (4/4 at stable duration); full gate green
 after the capture-verification hardening; ledger seeded from a live
 gate and its drop-detection proven by inflating one row.
+
+### Per-session scrollback directory (2026-07-22)
+
+The product half of the saboteur incident: `ScrollbackStore.directory`
+was `dirname(sessionPath)/scrollback`, so any two instances whose
+sessions shared a directory also shared — and cross-pruned — their
+scrollback files. Now it is `<session-stem>-scrollback/` beside the
+session file (`session-linux-scrollback/` for the daily,
+`cmux-<suffix>-session-scrollback/` per suite). `read(for:)` keeps a
+read-only fallback to the legacy shared dir so the first restart after
+the upgrade still replays; it is never written or pruned, and
+vte-scrollback-smoke grew a permanent upgrade-simulation leg (files
+relocated to the legacy path must still replay — delete that leg
+together with the fallback). lib.sh exports SBDIR so suites stop
+hand-deriving the path: if the app regressed to the shared dir, every
+capture assertion would go red on its own.

@@ -44,7 +44,7 @@ if [ -n "$T" ] && wait_for_shell "$T"; then
     # survives truncation.) Only post-epoch files count, and the size
     # bound is measured on the matching file — a stale big file from
     # another suite would fail the bound for the wrong reason.
-    sbdir="$(dirname "$SESSION")/scrollback"
+    sbdir="$SBDIR"
     largest=""
     for i in $(seq 1 30); do
         [ $(( i % 6 )) -eq 1 ] && force_save

@@ -40,7 +40,7 @@ cx send --surface "$T" 'echo VTE_SB_MARKER_XYZ; seq 1 200\n' >/dev/null 2>&1
 # staircase assertion then fails on the missing tail. Only post-epoch
 # files count: the scrollback dir is shared and stale files satisfy
 # the greps instantly.
-sbdir="$(dirname "$SESSION")/scrollback"
+sbdir="$SBDIR"
 stored=0
 for i in $(seq 1 30); do
     [ $(( i % 6 )) -eq 1 ] && force_save
@@ -95,5 +95,39 @@ echo "$screen" | grep -q '^199$\|^200$' \
 
 errs=$(echo "$screen" | grep -ci "command not found")
 expect "replayed text was not executed by the shell" "0" "${errs:-0}"
+
+# ---------------------------------------------- legacy-dir read fallback
+# Scrollback moved from the shared dirname(session)/scrollback to the
+# per-session <stem>-scrollback dir (2026-07-22). One upgrade window
+# remains: a session saved BEFORE the move restarts with its files still
+# in the legacy dir, and the read fallback must replay them. Simulated
+# by relocating this run's files to the legacy path before a restart.
+# Delete this leg together with ScrollbackStore's legacyDirectory.
+legacy_dir="$(dirname "$SESSION")/scrollback"
+mkdir -p "$legacy_dir"
+moved=0
+for fp in "$SBDIR"/*.txt; do
+    [ -f "$fp" ] && mv "$fp" "$legacy_dir/" && moved=$((moved + 1))
+done
+if [ "$moved" -gt 0 ]; then
+    kill_instance
+    start_instance || exit 2
+    sleep 3
+    WSC=$(cx list-workspaces | grep -oE 'workspace:[0-9]+' | sed -n '2p')
+    cx select-workspace --workspace "$WSC" >/dev/null
+    TC=$(first_surface_ref "$WSC")
+    [ -n "$TC" ] && wait_for_shell "$TC" 30
+    screen2=""
+    for _ in $(seq 1 30); do
+        screen2=$(cx read-screen --surface "$TC" --scrollback 2>/dev/null || cx read-screen --surface "$TC" 2>/dev/null)
+        echo "$screen2" | grep -q VTE_SB_MARKER_XYZ && break
+        sleep 0.5
+    done
+    echo "$screen2" | grep -q VTE_SB_MARKER_XYZ \
+        && ok "pre-move files in the legacy shared dir still replay" \
+        || bad "legacy fallback" "marker in legacy dir was not replayed"
+else
+    skip "legacy fallback assertion" "no scrollback files to relocate"
+fi
 
 finish

@@ -47,6 +47,11 @@ APP="$ROOT/.build/debug/cmux-adw"
 APP_ID="com.manaflow.cmux.$APP_ID_SUFFIX"
 SOCK="/tmp/cmux-$APP_ID_SUFFIX.sock"
 SESSION="/tmp/cmux-$APP_ID_SUFFIX-session.json"
+# Per-session scrollback dir, matching ScrollbackStore.directory
+# (<session-stem>-scrollback beside the session file). Suites must not
+# hand-derive it: the old shared dirname/scrollback is exactly the
+# cross-instance corruption the app moved away from.
+SBDIR="/tmp/cmux-$APP_ID_SUFFIX-session-scrollback"
 LOG="/tmp/cmux-$APP_ID_SUFFIX.log"
 
 # A stale binary silently tests yesterday's code and every verdict lies.

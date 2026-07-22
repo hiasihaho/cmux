@@ -179,7 +179,24 @@ enum ScrollbackStore {
     /// Alongside the session file, so an instance pointed at its own
     /// `CMUX_SESSION_PATH` (every test suite) keeps its own scrollback
     /// rather than writing into the user's real state directory.
+    ///
+    /// Scoped to the session FILE (`<stem>-scrollback/` beside it), not
+    /// its directory: dirname-based sharing let any two instances whose
+    /// sessions lived in one directory — every /tmp-session test or dev
+    /// instance — prune each other's files on every save. A leaked
+    /// scratch instance corrupted a day of suite captures exactly that
+    /// way (2026-07-22).
     static var directory: URL {
+        let session = SessionStore.fileURL
+        let stem = session.deletingPathExtension().lastPathComponent
+        return session.deletingLastPathComponent()
+            .appendingPathComponent("\(stem)-scrollback")
+    }
+
+    /// The pre-per-session shared location. Read-only fallback so the
+    /// first restart after the upgrade still replays existing files;
+    /// never written or pruned — another instance may still use it.
+    private static var legacyDirectory: URL {
         SessionStore.fileURL.deletingLastPathComponent().appendingPathComponent("scrollback")
     }
 
@@ -264,7 +281,11 @@ enum ScrollbackStore {
     }
 
     static func read(for surfaceId: UUID) -> String? {
-        try? String(contentsOf: url(for: surfaceId), encoding: .utf8)
+        if let text = try? String(contentsOf: url(for: surfaceId), encoding: .utf8) {
+            return text
+        }
+        let legacy = legacyDirectory.appendingPathComponent("\(surfaceId.uuidString).txt")
+        return try? String(contentsOf: legacy, encoding: .utf8)
     }
 
     /// Removes files for surfaces the session no longer contains.
