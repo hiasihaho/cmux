@@ -73,7 +73,7 @@ inventory. GAPS.md carries one pointer row; the reasoning lives here.
 
 | Idea | What / why | Effort |
 |---|---|---|
-| Unified entry point (`run.sh`) | One front door for the whole harness: `--list` (suites, one-line coverage, per-suite requirements), pattern filtering, `--keep`, `--repeat N`, `--until-fail`. **Flags first, prompts as sugar:** an interactive picker appears only with no args on a TTY — agents, CI, and scripts always get non-interactive behavior, never a menu waiting for input | S |
+| Unified entry point (`run.sh`) | One front door for the whole harness: `--list` (suites, one-line coverage, per-suite requirements), pattern filtering, `--keep`, `--repeat N`, `--until-fail`. **Flags first, prompts as sugar:** an interactive picker appears only with no args on a TTY — agents, CI, and scripts always get non-interactive behavior, never a menu waiting for input. *Decision 2026-07-22: the picker itself is deferred — flags only until the flag surface has settled* | S |
 | Binary-freshness preflight | Suites test `.build/debug/cmux-adw` as-is; forgetting `swift build` silently tests yesterday's binary and every verdict lies. Warn when the binary is older than the newest source file under `linux/Sources`, with a `--build` flag to fix it inline | S |
 | Flake-hunter mode | `--repeat N` / `--until-fail` with per-iteration timing on one suite. The 2026-07-22 load-flake hunt re-ran suites by hand to build confidence; statistical confidence should be one flag | S |
 | Assertion-count ledger | Expected per-suite assertion counts in a manifest; `run-all` warns when a count *drops*. An early `exit 0` that skips half a suite currently reads as green — the same class as macOS's "Executed 0 tests" trap (unwired test files, see CLAUDE.md) | S |

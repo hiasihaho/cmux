@@ -1,11 +1,13 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-21 ~14:10** (navigation barrier + quadratic CLI
-transfer fixed, both found by the SPA-extraction dogfood). Update this
-file at the end of every significant session; it is the fastest path
-from cold start to productive work. Deep history lives in
-[PROGRESS.md](PROGRESS.md), distilled transferable lessons in
-[LESSONS.md](LESSONS.md); this is only "what now".
+Last updated: **2026-07-22 ~12:50** (GAPS batches 1–5 shipped — the
+whole S-cluster plus surface.move/reorder and the tmux-compat pane
+verbs; capabilities sweep covers both protocol generations; harness
+roadmap documented). Update this file at the end of every significant
+session; it is the fastest path from cold start to productive work.
+Deep history lives in [PROGRESS.md](PROGRESS.md), distilled
+transferable lessons in [LESSONS.md](LESSONS.md); this is only
+"what now".
 
 ## Where we are, in one paragraph
 
@@ -49,6 +51,43 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
 pick from its *Now* table, follow its rules (same-commit updates, suite
 per fix, sweep after every merge). The milestones below are the
 narrative context.
+
+## Current focus and the parity resume path (2026-07-22)
+
+**In flight: the harness batch** — the four S-items from
+`linux/tests/README.md` §Harness roadmap (unified `run.sh` front door,
+binary-freshness preflight, flake-hunter mode, assertion-count ledger).
+Decision 2026-07-22: interactivity (the TTY picker) is explicitly
+**deferred** — flags only for now. Every later batch runs through this
+tooling, which is why it cuts the line.
+
+**When the harness batch is done, resume parity work here**, in order
+(all rows live in GAPS *Now* with full symptom/source detail):
+
+1. **`surface.respawn` + eager background spawn** — paired on purpose:
+   respawn is kill+restart of the shell in the same pane, eager spawn
+   starts shells in never-shown workspaces; both live in the spawn
+   lifecycle the batch-5 forensics just mapped (PROGRESS 2026-07-22,
+   "two crashes worth their scars"), so do them while that knowledge
+   is warm.
+2. **Live Ghostty config reload** — needs a shim call to re-read config
+   on existing surfaces; `reload-config` currently says "new terminals
+   only", honestly.
+3. **Browser JS console pane** — `browser.console.show`; distinct from
+   DevTools, macOS opens a console directly.
+4. **Bare Ghostty pane relocation respawns its shell** — the batch-5
+   known limitation (cwd survives, scrollback/processes don't; tabbed
+   panes relocate safely). Belongs with roadmap/05 lifecycle hardening;
+   `debug.surfaces` is the probe.
+
+Then GAPS *Next* (ephemeral panes S-row first, then profile popover UI,
+workspace.reorder, multi-window, Flatpak — see the table).
+
+Standing state to remember on resume: the daily instance runs the
+04:43 promote — everything from GAPS batches 1–5 (cmux tree, tab
+renames, pane swap/resize/break/join, debug.surfaces, move/reorder) is
+on disk but reaches the daily only at the next `promote.sh` run. Full
+gate before batch 5 shipped: 12 suites, 147 assertions green.
 
 ## Next milestones
 
@@ -183,8 +222,9 @@ narrative context.
    broken, and a bad resolution costs a branch rather than the fork.
 
 7. Flatpak packaging.
-5. Parity long tail: PARITY.md ❌ rows (system.tree, surface.focus,
-   pane.resize, terminal find overlay, sidebar metadata pills…).
+5. Parity long tail: the remaining PARITY.md ❌ rows — see GAPS.md,
+   which owns the prioritized list (system.tree, pane.resize/swap/
+   break/join, surface.move/reorder, tab.action all landed 2026-07-22).
 6. Upstreaming to manaflow: everything is PRE-PREPARED in
    [UPSTREAM.md](UPSTREAM.md) — a clean single-commit PR branch
    (`fix-stale-frame-replay-gtk` on hiasihaho/ghostty), a drafted PR
