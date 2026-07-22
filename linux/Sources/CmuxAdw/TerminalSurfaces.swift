@@ -28,7 +28,13 @@ final class SurfaceRegistry {
     /// (disposed) but its memory stays valid until we unref in
     /// `unregister`, so getters degrade to nil instead of crashing.
     private func retain(_ pointer: OpaquePointer) {
-        g_object_ref(UnsafeMutableRawPointer(pointer))
+        // ref_SINK, not ref: registered widgets arrive floating (fresh,
+        // unparented), and g_object_ref on a floating object does NOT
+        // take ownership — the first parent's own ref_sink consumes the
+        // floating ref, leaving the registry's "strong ref" imaginary.
+        // The tell: detaching a moved pane from its GtkPaned destroyed it
+        // on the spot (parent held the only real ref), killing the shell.
+        g_object_ref_sink(UnsafeMutableRawPointer(pointer))
     }
 
     private func release(_ pointer: OpaquePointer?) {
@@ -131,6 +137,36 @@ final class SurfaceRegistry {
 
     func browser(for surfaceId: UUID) -> OpaquePointer? {
         browsers[surfaceId]
+    }
+
+    /// Widget-lifecycle state of one surface — the doctor's stethoscope.
+    /// Every field here is something a debugging round has needed and
+    /// hand-instrumented at least once (parent type at detach time,
+    /// realized/mapped for spawn-gating, refcount for ownership bugs).
+    func doctorReport(for surfaceId: UUID) -> [String: Any] {
+        var report: [String: Any] = ["surface_id": surfaceId.uuidString]
+        if terminals[surfaceId] != nil { report["backend"] = "vte" }
+        else if ghosttys[surfaceId] != nil { report["backend"] = "ghostty" }
+        else if browsers[surfaceId] != nil { report["backend"] = "browser" }
+        else { report["backend"] = "none" }
+        if let container = containers[surfaceId] {
+            let widget = UnsafeMutablePointer<GtkWidget>(container)
+            report["container_refs"] = Int(
+                UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self).pointee.ref_count)
+            report["realized"] = gtk_widget_get_realized(widget) != 0
+            report["mapped"] = gtk_widget_get_mapped(widget) != 0
+            if let parent = gtk_widget_get_parent(widget) {
+                report["parent_type"] = String(cString: g_type_name(
+                    UnsafeMutableRawPointer(parent)
+                        .assumingMemoryBound(to: GTypeInstance.self).pointee.g_class.pointee.g_type))
+            } else {
+                report["parent_type"] = "none"
+            }
+        } else {
+            report["container"] = "unregistered"
+        }
+        report["readable"] = scrollbackText(for: surfaceId) != nil
+        return report
     }
 
     /// Live window title of a terminal surface (OSC 0/2).
@@ -379,6 +415,19 @@ struct TerminalStackWidget: AdwaitaWidget {
             if let existing,
                let parent = gtk_widget_get_parent(existing),
                OpaquePointer(parent) == stack {
+                // The window's focus reference can be the LAST ref keeping
+                // this subtree alive: destroying it then defers the paned's
+                // dispose to the next focus change, which runs mid-focus-
+                // iteration and segfaults inside gtk_widget_focus_move
+                // (observed: gtk_window_root_set_focus → g_object_unref →
+                // gtk_paned_dispose → crash). Point focus elsewhere first.
+                if let root = gtk_widget_get_root(existing) {
+                    let window = UnsafeMutableRawPointer(root).assumingMemoryBound(to: GtkWindow.self)
+                    if let focus = gtk_window_get_focus(window),
+                       gtk_widget_is_ancestor(focus, existing) != 0 || focus == existing {
+                        gtk_window_set_focus(window, nil)
+                    }
+                }
                 gtk_stack_remove(stack, existing)
             }
             // Zoomed: build only that pane. The other containers stay

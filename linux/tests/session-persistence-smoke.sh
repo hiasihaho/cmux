@@ -358,6 +358,7 @@ print(" ".join(r for p in json.load(sys.stdin)["panes"] for r in p["surface_refs
     # Leave WS6 UNSELECTED across the restart — the whole point.
     cx select-workspace --workspace workspace:1 >/dev/null 2>&1
     sleep 3
+    echo "        (files holding the marker before restart: $(grep -l BGWS_MARKER_XYZ "$(dirname "$SESSION")/scrollback"/*.txt 2>/dev/null | wc -l))"
     kill_instance
     start_instance || exit 2
     # Longer than the poll chain's own ~10s lifetime, so a fix that merely
@@ -371,7 +372,13 @@ print(" ".join(r for p in json.load(sys.stdin)["panes"] for r in p["surface_refs
 import json,sys
 print(" ".join(r for p in json.load(sys.stdin)["panes"] for r in p["surface_refs"]))'); do
         panes6=$((panes6 + 1))
-        n=$(cx read-screen --surface "$r" 2>/dev/null | grep -c BGWS_MARKER_XYZ)
+        # Poll, don't sleep: spawn + replay latency varies with load.
+        n=0
+        for _ in $(seq 1 20); do
+            n=$(cx read-screen --surface "$r" 2>/dev/null | grep -c BGWS_MARKER_XYZ)
+            [ "${n:-0}" -gt 0 ] && break
+            sleep 0.5
+        done
         [ "${n:-0}" -gt 0 ] && replayed6=$((replayed6 + 1))
     done
     expect "both split panes replay after a late first open" "$panes6" "$replayed6"

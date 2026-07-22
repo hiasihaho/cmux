@@ -47,8 +47,13 @@ WSB=$(cx list-workspaces | grep -oE 'workspace:[0-9]+' | sed -n '2p')
 cx select-workspace --workspace "$WSB" >/dev/null
 TB=$(first_surface_ref "$WSB")
 [ -n "$TB" ] && wait_for_shell "$TB" 30
-sleep 2
-screen=$(cx read-screen --surface "$TB" --scrollback 2>/dev/null || cx read-screen --surface "$TB" 2>/dev/null)
+# Poll, don't sleep: replay latency varies with load.
+screen=""
+for _ in $(seq 1 20); do
+    screen=$(cx read-screen --surface "$TB" --scrollback 2>/dev/null || cx read-screen --surface "$TB" 2>/dev/null)
+    echo "$screen" | grep -q VTE_SB_MARKER_XYZ && break
+    sleep 0.5
+done
 echo "$screen" | grep -q VTE_SB_MARKER_XYZ \
     && ok "marker is back after the restart" \
     || bad "vte replay" "marker not present after restart"

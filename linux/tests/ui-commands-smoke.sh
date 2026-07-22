@@ -244,5 +244,82 @@ done
     && ok "cross-workspace move keeps the terminal alive" \
     || bad "surface.move cross-workspace" "marker gone after move"
 cx select-workspace --workspace "$WS" >/dev/null 2>&1; sleep 1
+# Bring T home so later sections operate on $WS as they assume.
+cx move-surface --surface "$T" --workspace "$WS" >/dev/null 2>&1; sleep 1
+
+# ----------------------------- GAPS batch 5: pane swap/resize/break/join
+info "gaps batch 5: swap, resize, break, join"
+# Earlier sections have collapsed the workspace to one pane; this batch
+# needs a live split of its own.
+cx new-split right --surface "$T" >/dev/null 2>&1; sleep 2
+PA=$(cx --json list-panes --workspace "$WS" | python3 -c '
+import json,sys; print(json.load(sys.stdin)["panes"][0]["ref"])')
+PB=$(cx --json list-panes --workspace "$WS" | python3 -c '
+import json,sys; d=json.load(sys.stdin)["panes"]; print(d[1]["ref"] if len(d)>1 else "")')
+if [ -n "$PB" ]; then
+    before_a=$(cx --json list-panes --workspace "$WS" | python3 -c '
+import json,sys; print(",".join(json.load(sys.stdin)["panes"][0]["surface_refs"]))')
+    cx swap-pane --pane "$PA" --target-pane "$PB" --workspace "$WS" >/dev/null 2>&1; sleep 1
+    after_b=$(cx --json list-panes --workspace "$WS" | python3 -c '
+import json,sys; print(",".join(json.load(sys.stdin)["panes"][1]["surface_refs"]))')
+    expect "swap-pane exchanges pane contents" "$before_a" "$after_b"
+else
+    skip "swap-pane" "workspace lost its split earlier"
+fi
+
+# resize: the divider fraction in a forced save must move.
+v2 '{"id":9,"method":"session.save"}' >/dev/null
+f1=$(python3 -c "
+import json
+d=json.load(open('$SESSION'))
+def walk(n):
+    if 'split' in n:
+        yield n['split'].get('dividerPosition')
+        yield from walk(n['split']['first']); yield from walk(n['split']['second'])
+vals=[v for w in d['workspaces'] for v in walk(w['layout']) if v]
+print(round(vals[0],3) if vals else '')")
+cx resize-pane --pane "$PA" --workspace "$WS" -L --amount 6 >/dev/null 2>&1; sleep 1
+v2 '{"id":10,"method":"session.save"}' >/dev/null
+f2=$(python3 -c "
+import json
+d=json.load(open('$SESSION'))
+def walk(n):
+    if 'split' in n:
+        yield n['split'].get('dividerPosition')
+        yield from walk(n['split']['first']); yield from walk(n['split']['second'])
+vals=[v for w in d['workspaces'] for v in walk(w['layout']) if v]
+print(round(vals[0],3) if vals else '')")
+[ -n "$f1" ] && [ -n "$f2" ] && [ "$f1" != "$f2" ] \
+    && ok "resize-pane moves the divider ($f1 → $f2)" \
+    || bad "pane.resize" "fraction $f1 → $f2"
+
+# break: the surface becomes its own workspace (bare Ghostty panes respawn
+# their shell on relocation — a known roadmap/05 limitation — so this
+# asserts STRUCTURE and cwd survival, not scrollback survival).
+ws_count_before=$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')
+cx break-pane --surface "$T" --focus true >/dev/null 2>&1; sleep 2
+ws_count_after=$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')
+[ "$ws_count_after" -gt "$ws_count_before" ] \
+    && ok "break-pane creates a workspace ($ws_count_before → $ws_count_after)" \
+    || bad "pane.break" "workspace count $ws_count_before → $ws_count_after"
+broken_ws=$(cx --json list-panes 2>/dev/null | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+print(1 if any("'"$T"'" in p["surface_refs"] for p in d.get("panes",[])) else 0)' 2>/dev/null)
+expect "the broken-out surface lives in the new workspace" "1" "$broken_ws"
+
+# join: back into a pane of the original workspace.
+cx join-pane --surface "$T" --target-pane "$PA" >/dev/null 2>&1; sleep 2
+joined=$(cx --json list-panes --workspace "$WS" | python3 -c '
+import json,sys
+print(1 if any("'"$T"'" in p["surface_refs"] for p in json.load(sys.stdin)["panes"]) else 0)')
+expect "join-pane brings it back as a tab" "1" "$joined"
+expect "and the emptied break workspace closed" "$ws_count_before" "$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')"
+
+# The doctor verb that debugging this batch produced.
+doc=$(v2 '{"id":11,"method":"debug.surfaces"}')
+echo "$doc" | grep -q '"backend"' && echo "$doc" | grep -q '"parent_type"' \
+    && ok "debug.surfaces reports widget lifecycle state" \
+    || bad "debug.surfaces" "$(echo "$doc" | head -c 120)"
 
 finish

@@ -257,6 +257,29 @@ indirect enum PaneNode: Equatable {
         }
     }
 
+    /// Exchanges the CONTENTS of two panes (tmux swap-pane): surfaces and
+    /// selection swap, pane identities and divider geometry stay put.
+    func swappingPanes(_ a: UUID, _ b: UUID) -> PaneNode? {
+        guard let paneA = leaves.first(where: { $0.paneId == a }),
+              let paneB = leaves.first(where: { $0.paneId == b }) else { return nil }
+        func replace(_ node: PaneNode) -> PaneNode {
+            switch node {
+            case .leaf(var leaf):
+                if leaf.paneId == a {
+                    leaf.surfaces = paneB.surfaces
+                    leaf.selectedIndex = paneB.selectedIndex
+                } else if leaf.paneId == b {
+                    leaf.surfaces = paneA.surfaces
+                    leaf.selectedIndex = paneA.selectedIndex
+                }
+                return .leaf(leaf)
+            case .split(let orientation, let first, let second):
+                return .split(orientation: orientation, first: replace(first), second: replace(second))
+            }
+        }
+        return replace(self)
+    }
+
     /// Removes the leaf holding `surfaceId`; the sibling subtree takes the
     /// removed node's place. Returns nil when this node itself disappears.
     ///

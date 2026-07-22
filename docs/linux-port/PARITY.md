@@ -43,7 +43,7 @@ measured by diffing the two capability lists, not estimated.
 | pane.zoom | ✅ | Linux-only socket verb for macOS's Toggle Pane Zoom command |
 | pane.last | ✅ | tmux last-pane toggle; history fed by the GTK focus funnel (2026-07-22) |
 | tab.action / surface.action | 🟡 | rename/clear_name (pinned per-surface titles, persisted), close_left/right/others, new_terminal_right/new_browser_right, reload (2026-07-22). Not yet: duplicate, pin/unpin, mark_read/unread, move/detach-to-workspace, toggle_full_width — macOS's remaining action keys |
-| pane.break / join / resize / swap | ❌ | pane.resize would pair well with divider persistence |
+| pane.break / join / resize / swap | 🟡 | all four verbs work (2026-07-22): swap exchanges pane contents in place, resize walks to the owning divider (cells ≈ 10/18px), break→new workspace, join delegates to surface.move. Limitation: relocating a never-tabbed Ghostty pane respawns its shell (GAPS row; roadmap/05) |
 
 ### browser — navigation & automation
 

@@ -2730,3 +2730,47 @@ has safely landed.
 One suite lesson re-learned: "poll, don't sleep" — the cross-workspace
 assertion flaked once at a fixed 3s under full-suite load; the
 reparented surface needs a map+draw cycle before read-screen sees it.
+
+### GAPS batch 5: pane swap/resize/break/join — and two crashes worth their scars (2026-07-22)
+
+The four tmux-compat pane verbs. swap exchanges two panes' CONTENTS
+(identities and divider geometry stay — the reconciliation reparents the
+tabs); resize walks the pane's widget ancestry to the nearest paned of
+the matching orientation and shifts its divider (amounts are cells,
+≈10px/18px); break removes the surface into a new workspace (refusing
+tmux-style when it is already alone); join is surface.move in disguise
+and delegates to it.
+
+What the debugging bought, beyond the verbs:
+
+- **Registry refs were imaginary.** `g_object_ref` on a FLOATING widget
+  does not take ownership — the first parent's ref_sink consumes the
+  floating ref, so the registry's "strong ref" never existed. The tell:
+  detaching a moved pane from its GtkPaned destroyed it instantly
+  (parent held the only real ref) and killed the shell ("pty fd
+  closed"). retain() is ref_sink now.
+- **Raw gtk_widget_unparent out of a GtkPaned is a delayed bomb** — the
+  paned's internal child pointer survives, and destroying the paned
+  later disposes the "removed" child anyway. detachWidget uses the
+  proper per-parent removal, and deliberately does NOT touch AdwTabView
+  children (ripping a page's child out segfaults the later close_page —
+  the second crash of the night).
+- **The window's focus ref can be a subtree's last ref.** Destroying the
+  old skeleton then defers the paned's dispose to the next focus change,
+  which runs MID-focus-iteration and segfaults deep in
+  gtk_widget_focus_move (backtrace: gtk_window_root_set_focus →
+  g_object_unref → gtk_paned_dispose). The sync now points window focus
+  elsewhere before gtk_stack_remove. This is the GTK-reparenting trap
+  family's third documented member.
+- **Known limitation, precisely characterized:** relocating a
+  never-tabbed Ghostty pane respawns its shell (cwd survives; scrollback
+  and running processes do not). An extra ref keeps the old shell but
+  leaks its io thread — worse. Tabbed panes relocate safely. Tracked in
+  GAPS, belongs to roadmap/05.
+- **debug.surfaces** (the doctor verb, at the user's suggestion): one
+  line per surface — backend, parent type, realized/mapped, container
+  refcount, readable. Every field is a probe some debugging round had
+  hand-instrumented; extend it rather than re-instrumenting. Candidate
+  seed for a future `cmux doctor` suite.
+
+ui-commands-smoke: 35 assertions.

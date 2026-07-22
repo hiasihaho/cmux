@@ -28,12 +28,11 @@ Effort: **S** ≤ half a session · **M** one session · **L** multi-session.
 
 | Gap | Symptom / value | Source | Effort |
 |---|---|---|---|
-| `pane.resize` | `cmux resize-pane -L/-R/-U/-D` errors; PaneDividers already owns positions | sweep-v2 | M |
-| `pane.swap` / `pane.break` / `pane.join` | tmux-compat commands in our own CLI help; break/join = move a surface out of / into a pane, swap = exchange two panes' content | sweep-v2 | M |
 | `surface.respawn` | `cmux respawn-pane` errors; needs kill+restart of the shell in the same pane (both backends) | sweep-v2 | M |
 | Live Ghostty config reload | `reload-config` honestly says "new terminals only"; macOS refreshes in place. Needs a shim call to re-read config on existing surfaces | skill-walk | M |
 | Browser JS console pane | macOS `showBrowserJavaScriptConsole` opens a console directly (distinct from DevTools); `browser devtools console` sends `browser.console.show` | CATCHUP item 5 | M |
 | Eager background spawn | panes in never-shown workspaces start their shell only on first selection; agents sending to them get `unavailable` | CATCHUP item 1 | M |
+| Bare Ghostty pane relocation respawns the shell | break/join (and move) of a never-tabbed Ghostty pane restarts its shell — cwd survives, scrollback and processes do not. Forensics 2026-07-22 (PROGRESS): container refcount reaches the parent's-last-ref state despite the registry's ref; one extra ref keeps the shell but leaks the io thread. Tabbed panes relocate safely (reconciliation path). Belongs to roadmap/05 lifecycle hardening; `debug.surfaces` is the probe | GAPS batch 5 | M |
 
 **Watch list** (observed once, not reproducible on the current binary):
 `list-panes` with no `--workspace` said "Workspace not found" after a

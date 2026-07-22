@@ -69,6 +69,43 @@ enum PaneTabs {
 
     /// Drops views for panes that no longer exist, so a closed pane does
     /// not keep its tab view (and its surface containers) alive forever.
+    /// Unparents a surface's container out of its tab page so the page's
+    /// destruction cannot take the widget (and a Ghostty shell) with it.
+    /// "Live" = still in the registry: surfaces removed from the model are
+    /// unregistered in the same sync pass, moves are not.
+    static func detachIfLive(_ surfaceId: UUID) {
+        guard let container = SurfaceRegistry.shared.containers[surfaceId] else { return }
+        detachWidget(UnsafeMutablePointer<GtkWidget>(container))
+    }
+
+    /// Removes a widget from its parent with the CORRECT per-parent call.
+    /// Raw gtk_widget_unparent out of a GtkPaned leaves the paned's
+    /// internal child pointer set — destroying the paned later disposes
+    /// the "removed" child anyway, which is how a moved Ghostty pane's
+    /// shell kept dying ("pty fd closed") behind a seemingly safe detach.
+    static func detachWidget(_ widget: UnsafeMutablePointer<GtkWidget>) {
+        guard let parent = gtk_widget_get_parent(widget) else { return }
+        func isA(_ w: UnsafeMutablePointer<GtkWidget>, _ type: GType) -> Bool {
+            g_type_check_instance_is_a(
+                UnsafeMutableRawPointer(w).assumingMemoryBound(to: GTypeInstance.self), type
+            ) != 0
+        }
+        if isA(parent, gtk_stack_get_type()) {
+            gtk_stack_remove(OpaquePointer(parent), widget)
+        } else if isA(parent, gtk_paned_get_type()) {
+            let paned = OpaquePointer(parent)
+            if gtk_paned_get_start_child(paned) == widget {
+                gtk_paned_set_start_child(paned, nil)
+            } else if gtk_paned_get_end_child(paned) == widget {
+                gtk_paned_set_end_child(paned, nil)
+            }
+        }
+        // Any other parent (AdwTabView internals, most importantly) is
+        // NOT detached here: ripping a page's child out from under the
+        // tab view segfaults the later close_page. Tabbed panes are
+        // relocated safely by the reconciliation itself.
+    }
+
     static func prune(livePaneIds: Set<UUID>) {
         for (paneId, view) in views where !livePaneIds.contains(paneId) {
             view.destroy()
@@ -182,6 +219,13 @@ final class PaneTabsView {
         let wantedSet = Set(wanted)
 
         for (surfaceId, page) in pages where !wantedSet.contains(surfaceId) {
+            // A surface leaving THIS pane may be moving to another one
+            // (surface.move, pane.break/join) — close_page DESTROYS the
+            // page child, and destroying a Ghostty widget kills its shell
+            // ("pty fd closed"). Detach the container first when the
+            // surface is still registered; a genuinely closed surface is
+            // unregistered in the same sync and gets destroyed as before.
+            PaneTabs.detachIfLive(surfaceId)
             PaneTabs.isReconciling = true
             adw_tab_view_close_page(tabView, page)
             PaneTabs.isReconciling = false
@@ -233,7 +277,8 @@ final class PaneTabsView {
     }
 
     func destroy() {
-        for (_, page) in pages {
+        for (surfaceId, page) in pages {
+            PaneTabs.detachIfLive(surfaceId)
             PaneTabs.isReconciling = true
             adw_tab_view_close_page(tabView, page)
             PaneTabs.isReconciling = false

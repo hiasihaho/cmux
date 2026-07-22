@@ -411,6 +411,8 @@ struct ControlCommandHandler {
                     "session.save", "settings.open", "system.tree",
                     "pane.last", "surface.clear_history", "tab.action",
                     "surface.reorder", "surface.move",
+                    "pane.swap", "pane.break", "pane.join", "pane.resize",
+                    "debug.surfaces",
                     "notification.jump_to_unread", "notification.mark_read",
                     "notification.dismiss", "notification.open",
                     "window.current", "window.focus", "browser.zoom.set",
@@ -497,6 +499,20 @@ struct ControlCommandHandler {
             return v2SurfaceFocus(id: id, params: params)
         case "session.save":
             return v2SessionSave(id: id)
+        case "debug.surfaces":
+            // The doctor verb: widget-lifecycle state of every surface
+            // (backend, parent type, realized/mapped, refcount, readable).
+            // Grew out of hand-instrumented probes during the pane-verb
+            // work; extend it rather than re-instrumenting.
+            let reports = tabs.wrappedValue.flatMap { tab in
+                tab.allSurfaces.map { entry -> [String: Any] in
+                    var report = SurfaceRegistry.shared.doctorReport(for: entry.surface.surfaceId)
+                    report["workspace_id"] = tab.id.uuidString
+                    report["ref"] = RefRegistry.shared.ref(kind: "surface", uuid: entry.surface.surfaceId)
+                    return report
+                }
+            }
+            return v2Ok(id: id, result: ["surfaces": reports])
         case "system.tree":
             return v2SystemTree(id: id, params: params)
         case "pane.last":
@@ -509,6 +525,14 @@ struct ControlCommandHandler {
             return v2SurfaceReorder(id: id, params: params)
         case "surface.move":
             return v2SurfaceMove(id: id, params: params)
+        case "pane.swap":
+            return v2PaneSwap(id: id, params: params)
+        case "pane.break":
+            return v2PaneBreak(id: id, params: params)
+        case "pane.join":
+            return v2PaneJoin(id: id, params: params)
+        case "pane.resize":
+            return v2PaneResize(id: id, params: params)
         case "notification.jump_to_unread":
             return v2NotificationJumpToUnread(id: id)
         case "notification.mark_read":
@@ -1163,6 +1187,12 @@ struct ControlCommandHandler {
         }
         let position = resolveTabPosition(params: params, in: targetPane, excluding: surfaceId)
 
+        // Detach the container BEFORE the model changes: the source
+        // workspace's rebuild destroys its old skeleton, and a container
+        // still inside it dies with it (a destroyed Ghostty widget kills
+        // its shell — "pty fd closed"). Parentless, it just waits for the
+        // target workspace's build to adopt it.
+        PaneTabs.detachIfLive(surfaceId)
         // Remove from the source. nil = the source workspace has no panes
         // left; it closes after the surface is safely inserted elsewhere.
         let sourceRemainder = tabs.wrappedValue[sourceIndex].layout.removing(surfaceId: surfaceId)
@@ -1207,6 +1237,192 @@ struct ControlCommandHandler {
             "surface_ref": registry.ref(kind: "surface", uuid: surfaceId),
             "pane_id": targetPane.paneId.uuidString,
             "pane_ref": registry.ref(kind: "pane", uuid: targetPane.paneId),
+        ])
+    }
+
+    private func resolvePane(_ raw: String?) -> (tabIndex: Int, pane: PaneLeaf)? {
+        guard let raw, let paneId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw)
+        else { return nil }
+        for (index, tab) in tabs.wrappedValue.enumerated() {
+            if let pane = tab.panes.first(where: { $0.paneId == paneId }) {
+                return (index, pane)
+            }
+        }
+        return nil
+    }
+
+    /// tmux swap-pane: exchange two panes' contents; identities and
+    /// divider geometry stay, the reconciliation reparents the tabs.
+    private func v2PaneSwap(id: Any?, params: [String: Any]) -> String {
+        guard let target = resolvePane(params["target_pane_id"] as? String) else {
+            return v2Error(id: id, code: "invalid_params", message: "swap requires target_pane_id")
+        }
+        let source: (tabIndex: Int, pane: PaneLeaf)?
+        if params["pane_id"] != nil {
+            source = resolvePane(params["pane_id"] as? String)
+        } else if let tab = tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue }),
+                  let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id }),
+                  let focused = tab.focusedSurface {
+            source = tab.panes.first { $0.paneId == focused.paneId }.map { (index, $0) }
+        } else {
+            source = nil
+        }
+        guard let source else {
+            return v2Error(id: id, code: "not_found", message: "Source pane not found")
+        }
+        guard source.tabIndex == target.tabIndex else {
+            return v2Error(id: id, code: "invalid_params", message: "swap-pane works within one workspace")
+        }
+        guard let layout = tabs.wrappedValue[source.tabIndex].layout
+            .swappingPanes(source.pane.paneId, target.pane.paneId) else {
+            return v2Error(id: id, code: "internal_error", message: "Swap failed")
+        }
+        tabs.wrappedValue[source.tabIndex].layout = layout
+        return v2Ok(id: id, result: [
+            "workspace_id": tabs.wrappedValue[source.tabIndex].id.uuidString,
+            "pane_id": source.pane.paneId.uuidString,
+            "target_pane_id": target.pane.paneId.uuidString,
+        ])
+    }
+
+    /// tmux break-pane: the surface leaves its pane and becomes a new
+    /// workspace of its own.
+    private func v2PaneBreak(id: Any?, params: [String: Any]) -> String {
+        // Target surface: explicit, else the given pane's visible tab,
+        // else the selected workspace's focused surface.
+        var surfaceId: UUID?
+        if let raw = params["surface_id"] as? String {
+            surfaceId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw)
+        } else if let pane = resolvePane(params["pane_id"] as? String) {
+            surfaceId = pane.pane.selected.surfaceId
+        } else if let tab = tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue }) {
+            surfaceId = tab.focusedSurface?.surfaceId
+        }
+        guard let surfaceId,
+              let sourceTab = tabs.wrappedValue.first(where: { $0.contains(surfaceId: surfaceId) }),
+              let sourceIndex = tabs.wrappedValue.firstIndex(where: { $0.id == sourceTab.id }),
+              let sourcePane = sourceTab.panes.first(where: { p in p.surfaces.contains { $0.surfaceId == surfaceId } }),
+              let surface = sourcePane.surfaces.first(where: { $0.surfaceId == surfaceId })
+        else {
+            return v2Error(id: id, code: "not_found", message: "Surface not found")
+        }
+        // Breaking the only surface of a single-pane workspace is a no-op
+        // that would churn workspaces; refuse like tmux does.
+        if sourceTab.panes.count == 1 && sourcePane.surfaces.count == 1 {
+            return v2Error(id: id, code: "invalid_params", message: "Pane is already the only pane of its workspace")
+        }
+        // Same rule as surface.move: parentless before the model changes,
+        // or the source rebuild destroys the widget (and the shell).
+        PaneTabs.detachIfLive(surfaceId)
+        guard let remainder = tabs.wrappedValue[sourceIndex].layout.removing(surfaceId: surfaceId) else {
+            return v2Error(id: id, code: "internal_error", message: "Break failed")
+        }
+        tabs.wrappedValue[sourceIndex].layout = remainder
+        if tabs.wrappedValue[sourceIndex].focusedSurfaceId == surfaceId,
+           let fallback = tabs.wrappedValue[sourceIndex].panes.first?.selected.surfaceId {
+            tabs.wrappedValue[sourceIndex].focusedSurfaceId = fallback
+        }
+        tabCounter.wrappedValue += 1
+        var newTab = TerminalTab(
+            title: PaneTabs.customTitles[surfaceId] ?? "Terminal \(tabCounter.wrappedValue)",
+            workingDirectory: surface.workingDirectory
+        )
+        // The init creates a fresh empty pane; replace it with the broken-
+        // out surface and point focus at it.
+        newTab.layout = .leaf(PaneLeaf(surfaces: [surface], selectedIndex: 0))
+        newTab.focusedSurfaceId = surfaceId
+        tabs.wrappedValue.append(newTab)
+        if (params["focus"] as? Bool) ?? true {
+            select(newTab.id)
+        }
+        let registry = RefRegistry.shared
+        return v2Ok(id: id, result: [
+            "workspace_id": newTab.id.uuidString,
+            "workspace_ref": registry.ref(kind: "workspace", uuid: newTab.id),
+            "surface_id": surfaceId.uuidString,
+            "surface_ref": registry.ref(kind: "surface", uuid: surfaceId),
+        ])
+    }
+
+    /// tmux join-pane: the inverse of break — the source surface joins the
+    /// target pane as a tab. Delegates to surface.move (identical
+    /// semantics, identical reconciliation path).
+    private func v2PaneJoin(id: Any?, params: [String: Any]) -> String {
+        guard let targetRaw = params["target_pane_id"] as? String else {
+            return v2Error(id: id, code: "invalid_params", message: "join requires target_pane_id")
+        }
+        var surfaceRaw = params["surface_id"] as? String
+        if surfaceRaw == nil, let source = resolvePane(params["pane_id"] as? String) {
+            surfaceRaw = source.pane.selected.surfaceId.uuidString
+        }
+        if surfaceRaw == nil,
+           let tab = tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue }) {
+            surfaceRaw = tab.focusedSurface?.surfaceId.uuidString
+        }
+        guard let surfaceRaw else {
+            return v2Error(id: id, code: "not_found", message: "Source surface not found")
+        }
+        var moveParams: [String: Any] = ["surface_id": surfaceRaw, "pane_id": targetRaw]
+        if let focus = params["focus"] { moveParams["focus"] = focus }
+        return v2SurfaceMove(id: id, params: moveParams)
+    }
+
+    /// tmux resize-pane: walk from the pane's container up to the nearest
+    /// GtkPaned of the matching orientation and shift its divider. Amounts
+    /// are cells, approximated at 10px horizontal / 18px vertical — the
+    /// same order tmux users expect per step.
+    private func v2PaneResize(id: Any?, params: [String: Any]) -> String {
+        guard let direction = params["direction"] as? String,
+              ["left", "right", "up", "down"].contains(direction) else {
+            return v2Error(id: id, code: "invalid_params", message: "resize requires direction left|right|up|down")
+        }
+        let amount = (params["amount"] as? Int) ?? 1
+        let pane: PaneLeaf?
+        if let resolved = resolvePane(params["pane_id"] as? String) {
+            pane = resolved.pane
+        } else if let tab = tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue }),
+                  let focused = tab.focusedSurface {
+            pane = tab.panes.first { $0.paneId == focused.paneId }
+        } else {
+            pane = nil
+        }
+        guard let pane,
+              let container = SurfaceRegistry.shared.containers[pane.selected.surfaceId] else {
+            return v2Error(id: id, code: "not_found", message: "Pane not found")
+        }
+        let horizontal = direction == "left" || direction == "right"
+        // Nearest ancestor paned of the right orientation owns the divider
+        // this pane's edge belongs to.
+        var widget: UnsafeMutablePointer<GtkWidget>? = UnsafeMutablePointer<GtkWidget>(container)
+        var paned: OpaquePointer?
+        while let current = widget {
+            if g_type_check_instance_is_a(
+                UnsafeMutableRawPointer(current).assumingMemoryBound(to: GTypeInstance.self),
+                gtk_paned_get_type()
+            ) != 0 {
+                let candidate = OpaquePointer(current)
+                let isHorizontal = gtk_orientable_get_orientation(candidate) == GTK_ORIENTATION_HORIZONTAL
+                if isHorizontal == horizontal {
+                    paned = candidate
+                    break
+                }
+            }
+            widget = gtk_widget_get_parent(current)
+        }
+        guard let paned else {
+            return v2Error(id: id, code: "not_found", message: "No divider in that direction")
+        }
+        let pixels = amount * (horizontal ? 10 : 18)
+        let delta = (direction == "left" || direction == "up") ? -pixels : pixels
+        let panedWidget = UnsafeMutablePointer<GtkWidget>(paned)
+        let total = horizontal ? gtk_widget_get_width(panedWidget) : gtk_widget_get_height(panedWidget)
+        let position = gtk_paned_get_position(paned)
+        let clamped = max(20, min(Int(total) - 20, Int(position) + delta))
+        gtk_paned_set_position(paned, Int32(clamped))
+        return v2Ok(id: id, result: [
+            "pane_id": pane.paneId.uuidString,
+            "position": clamped,
+            "total": Int(total),
         ])
     }
 
