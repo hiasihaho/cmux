@@ -94,6 +94,19 @@ struct CmuxApp: App {
         // …and once more as the window closes, while the terminals still
         // exist to be read. Retried until the application has registered a
         // window; `install` reports whether it got one.
+        // The URL bar's profile popover routes through the same split
+        // machinery as `browser open --profile` (shared-behavior rule):
+        // same page, new pane, chosen container. Hoisted out of the Idle
+        // closure: computing `controlHandler` inside it would capture
+        // mutating self.
+        let profileHandler = controlHandler
+        BrowserURLBar.onProfileChosen = { surfaceId, profileId, url in
+            _ = profileHandler.v2BrowserOpenSplit(id: nil, params: [
+                "surface_id": surfaceId.uuidString,
+                "url": url,
+                "profile": profileId.uuidString
+            ])
+        }
         Idle(delay: .seconds(1)) {
             !SessionExitSave.install {
                 SessionStore.isFinalSave = true
@@ -105,6 +118,9 @@ struct CmuxApp: App {
 
     var scene: Scene {
         let _ = SessionStore.saveIfChanged(tabs: tabs, selection: selection, tabCounter: tabCounter)
+        // Widget-class writes only (no model state) — see AttentionStyle.
+        let _ = AttentionStyle.install()
+        let _ = AttentionStyle.syncUnreadRings(notifications: notifications)
         Window(id: "main") { _ in
             OverlaySplitView(visible: $sidebarVisible) {
                 EitherView(showNotifications, view1: {
@@ -124,6 +140,7 @@ struct CmuxApp: App {
                                 : "preferences-system-notifications-symbolic"
                         )) {
                             showNotifications.toggle()
+                            DesktopNotifier.notificationsPanelVisible = showNotifications
                         }
                         .tooltip(showNotifications
                             ? "Back to workspaces"
@@ -174,16 +191,17 @@ struct CmuxApp: App {
                     )
                 })
                 .topToolbar {
+                    // The header diet (UX-PARITY decision 2026-07-23): macOS
+                    // keeps chrome near-zero; ours had 14 persistent buttons.
+                    // Four "create/arrange" actions stay as icons; everything
+                    // else lives in the GNOME primary menu (with its shortcut
+                    // registered by the menu item) or is keyboard-only
+                    // (workspace/pane stepping — menus are not for nav).
                     HeaderBar {
                         Button(icon: .custom(name: "sidebar-show-symbolic")) {
                             sidebarVisible.toggle()
                         }
                         .tooltip("Toggle sidebar")
-                        Button(icon: .custom(name: "emblem-system-symbolic")) {
-                            PreferencesWindow.present()
-                        }
-                        .keyboardShortcut("comma".ctrl())
-                        .tooltip("Preferences (Ctrl+,)")
                         Button(icon: .custom(name: "pan-end-symbolic")) {
                             splitFocused(direction: "right")
                         }
@@ -194,67 +212,47 @@ struct CmuxApp: App {
                         }
                         .keyboardShortcut("s".ctrl().shift())
                         .tooltip("Split down (Ctrl+Shift+S)")
-                        Button(icon: .custom(name: "edit-find-symbolic")) {
-                            findInFocusedPane()
-                        }
-                        .keyboardShortcut("f".ctrl().shift())
-                        .tooltip("Find in terminal (Ctrl+Shift+F)")
-                        Button(icon: .custom(name: "view-fullscreen-symbolic")) {
-                            controlHandler.toggleZoom(tabId: selection, surfaceId: nil)
-                        }
-                        .keyboardShortcut("z".ctrl().shift())
-                        .tooltip("Zoom pane (Ctrl+Shift+Z)")
-                        // macOS exposes "Open Browser" and "Toggle Browser
-                        // Developer Tools" as commands; both verbs already
-                        // existed here with no way to reach them without
-                        // dropping to the CLI.
                         Button(icon: .custom(name: "web-browser-symbolic")) {
                             openBrowserPane()
                         }
                         .keyboardShortcut("b".ctrl().shift())
                         .tooltip("Open browser pane (Ctrl+Shift+B)")
-                        Button(icon: .custom(name: "applications-engineering-symbolic")) {
-                            inspectFocusedPane()
-                        }
-                        .keyboardShortcut("i".ctrl().shift())
-                        .tooltip("Browser developer tools (Ctrl+Shift+I)")
-                        // Navigation commands macOS has had all along; the
-                        // workspace verbs already existed unbound. Hidden
-                        // buttons would only clutter the bar, so these are
-                        // keyboard-only.
-                        Button(icon: .custom(name: "go-next-symbolic")) {
-                            _ = controlHandler.stepWorkspace(forward: true)
-                        }
-                        .keyboardShortcut("Page_Down".ctrl().shift())
-                        .tooltip("Next workspace (Ctrl+Shift+PageDown)")
-                        Button(icon: .custom(name: "go-previous-symbolic")) {
-                            _ = controlHandler.stepWorkspace(forward: false)
-                        }
-                        .keyboardShortcut("Page_Up".ctrl().shift())
-                        .tooltip("Previous workspace (Ctrl+Shift+PageUp)")
-                        Button(icon: .custom(name: "go-jump-symbolic")) {
-                            controlHandler.stepFocusedSurface(tabId: selection, forward: true)
-                        }
-                        // Ctrl+Tab, not Ctrl+Shift+]: with Shift held the
-                        // "]" key produces braceright, so the accelerator
-                        // never matches what the user actually presses.
-                        .keyboardShortcut("Tab".ctrl())
-                        .tooltip("Next pane (Ctrl+Tab)")
-                        Button(icon: .custom(name: "go-jump-symbolic")) {
-                            controlHandler.stepFocusedSurface(tabId: selection, forward: false)
-                        }
-                        .keyboardShortcut("Tab".ctrl().shift())
-                        .tooltip("Previous pane (Ctrl+Shift+Tab)")
                     } end: {
-                        Button(icon: .custom(name: "software-update-urgent-symbolic")) {
-                            simulateAttention()
+                        // Debug-only affordance, off the daily chrome
+                        // (UX-PARITY decision: behind CMUX_DEBUG_UI=1).
+                        if ProcessInfo.processInfo.environment["CMUX_DEBUG_UI"] == "1" {
+                            Button(icon: .custom(name: "software-update-urgent-symbolic")) {
+                                simulateAttention()
+                            }
+                            .tooltip("Simulate agent attention")
                         }
-                        .tooltip("Simulate agent attention")
-                        Button(icon: .custom(name: "window-close-symbolic")) {
-                            closeFocusedPane()
+                        Menu(icon: .custom(name: "open-menu-symbolic")) {
+                            MenuSection {
+                                MenuButton("Find in Terminal") { findInFocusedPane() }
+                                    .keyboardShortcut("f".ctrl().shift())
+                                MenuButton("Zoom Pane") {
+                                    controlHandler.toggleZoom(tabId: selection, surfaceId: nil)
+                                }
+                                .keyboardShortcut("z".ctrl().shift())
+                                MenuButton("Browser Developer Tools") { inspectFocusedPane() }
+                                    .keyboardShortcut("i".ctrl().shift())
+                                MenuButton("JavaScript Console") { consoleForFocusedPane() }
+                                    .keyboardShortcut("j".ctrl().shift())
+                            }
+                            MenuSection {
+                                MenuButton("Rename Workspace") { renameSelectedWorkspace() }
+                                    .keyboardShortcut("e".ctrl().shift())
+                                MenuButton("Open Folder as Workspace") { openFolderAsWorkspace() }
+                                    .keyboardShortcut("o".ctrl().shift())
+                                MenuButton("Close Pane") { closeFocusedPane() }
+                                    .keyboardShortcut("w".ctrl().shift())
+                            }
+                            MenuSection {
+                                MenuButton("Preferences") { PreferencesWindow.present() }
+                                    .keyboardShortcut("comma".ctrl())
+                            }
                         }
-                        .keyboardShortcut("w".ctrl().shift())
-                        .tooltip("Close pane (Ctrl+Shift+W)")
+                        .tooltip("Menu")
                     }
                 }
             }
@@ -281,28 +279,39 @@ struct CmuxApp: App {
         .keyboardShortcut("u".ctrl().shift()) { _ in
             _ = controlHandler.jumpToUnread()
         }
-        // Not F2: the focused terminal legitimately consumes it (function
-        // keys belong to shell apps), so the shortcut never fires. The
-        // Ctrl+Shift family is reserved for cmux everywhere else already.
-        .keyboardShortcut("e".ctrl().shift()) { _ in
-            let handler = controlHandler
-            guard let tab = tabs.first(where: { $0.id == selection }) else { return }
-            UIDialogs.renameWorkspace(currentTitle: tab.customTitle ?? tab.title) { title in
-                handler.renameWorkspace(tabId: tab.id, title: title)
-            }
+        // Workspace/pane stepping is keyboard-only (GNOME menus are not
+        // for navigation, and macOS has no nav chrome either). Ctrl+Tab,
+        // not Ctrl+Shift+]: with Shift held the "]" key produces
+        // braceright, so that accelerator never matches.
+        .keyboardShortcut("Page_Down".ctrl().shift()) { _ in
+            _ = controlHandler.stepWorkspace(forward: true)
         }
-        .keyboardShortcut("o".ctrl().shift()) { _ in
-            let handler = controlHandler
-            UIDialogs.openFolder { path in
-                handler.newWorkspace(cwd: path)
-            }
+        .keyboardShortcut("Page_Up".ctrl().shift()) { _ in
+            _ = controlHandler.stepWorkspace(forward: false)
         }
-        // JS console. macOS binds Alt+Cmd+C (Safari's default); on Linux
-        // Ctrl+Shift+C is terminal copy and Ctrl+Shift+J is what Chrome
-        // and Firefox users' fingers already know — a recorded UX-PARITY
-        // deviation, not an accident.
-        .keyboardShortcut("j".ctrl().shift()) { _ in
-            consoleForFocusedPane()
+        .keyboardShortcut("Tab".ctrl()) { _ in
+            controlHandler.stepFocusedSurface(tabId: selection, forward: true)
+        }
+        .keyboardShortcut("Tab".ctrl().shift()) { _ in
+            controlHandler.stepFocusedSurface(tabId: selection, forward: false)
+        }
+    }
+
+    /// Rename dialog for the selected workspace (menu + Ctrl+Shift+E —
+    /// not F2: the focused terminal legitimately consumes function keys).
+    private func renameSelectedWorkspace() {
+        let handler = controlHandler
+        guard let tab = tabs.first(where: { $0.id == selection }) else { return }
+        UIDialogs.renameWorkspace(currentTitle: tab.customTitle ?? tab.title) { title in
+            handler.renameWorkspace(tabId: tab.id, title: title)
+        }
+    }
+
+    /// Folder picker → new workspace (menu + Ctrl+Shift+O).
+    private func openFolderAsWorkspace() {
+        let handler = controlHandler
+        UIDialogs.openFolder { path in
+            handler.newWorkspace(cwd: path)
         }
     }
 
@@ -437,13 +446,12 @@ struct CmuxApp: App {
                 title: "Bell",
                 body: "Terminal bell in \(tabs[index].title)"
             ))
-            if tabId != selection {
-                DesktopNotifier.send(
-                    id: "cmux-\(tabId.uuidString)",
-                    title: tabs[index].title,
-                    body: "Terminal bell"
-                )
-            }
+            DesktopNotifier.deliver(
+                tabId: tabId,
+                selection: selection,
+                title: tabs[index].title,
+                body: "Terminal bell"
+            )
         }
     }
 
@@ -465,6 +473,7 @@ struct CmuxApp: App {
             notifications[index].isRead = true
         }
         showNotifications = false
+        DesktopNotifier.notificationsPanelVisible = false
     }
 
     private func clearAllNotifications() {

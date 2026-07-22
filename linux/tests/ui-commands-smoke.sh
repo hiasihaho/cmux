@@ -123,6 +123,15 @@ echo "$open_out" | grep -q "^OK" \
     || bad "open-notification" "$open_out"
 expect "dismiss-notification --id" "OK" "$(cx dismiss-notification --id "$NID" 2>&1 | head -1)"
 
+# Desktop delivery goes through ONE decision path (DesktopNotifier.deliver,
+# 2026-07-23) which logs its outcome — sent or suppressed(reason). The
+# breadcrumb existing at all is what guards the funnel: three inline
+# copies of rule (a) used to drift independently.
+funnel=$(grep -c "cmux: desktop notify" "$LOG" 2>/dev/null)
+[ "${funnel:-0}" -gt 0 ] \
+    && ok "desktop delivery decision leaves a breadcrumb (suppression funnel)" \
+    || bad "notify funnel" "no 'cmux: desktop notify' line in $LOG"
+
 B=$(cx browser open about:blank --workspace "$WS2" 2>/dev/null | grep -oE 'surface:[0-9]+' | head -1)
 sleep 2
 expect "browser zoom in (browser.zoom.set)" "OK" "$(cx browser --surface "$B" zoom in 2>&1 | head -1)"

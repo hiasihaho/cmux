@@ -87,23 +87,20 @@ extension ControlCommandHandler {
     // MARK: flash
 
     /// Visual ping on a surface's pane (macOS `surface.trigger_flash`):
-    /// dip the container's opacity briefly, twice. No CSS machinery — an
-    /// opacity pulse reads clearly on terminals and browsers alike.
+    /// tier 1 of the attention language — the accent ring blinks twice
+    /// over ~0.9s (see AttentionStyle). Replaced the original opacity
+    /// dips 2026-07-23, which also fixed a latent use-after-free: the
+    /// dips captured the widget pointer across their timers, the ring
+    /// re-resolves the registry on every tick.
     @discardableResult
     func triggerFlash(tabId: UUID?, surfaceId: UUID?) -> Bool {
         let tab = tabs.wrappedValue.first { $0.id == (tabId ?? selection.wrappedValue) }
         guard let tab else { return false }
         let target = surfaceId ?? tab.focusedSurface?.surfaceId
-        guard let target, let container = SurfaceRegistry.shared.containers[target] else {
+        guard let target, SurfaceRegistry.shared.containers[target] != nil else {
             return false
         }
-        let widget = UnsafeMutablePointer<GtkWidget>(container)
-        func dip(_ delayMs: UInt32) {
-            scheduleOnMainLoop(afterMs: delayMs) { gtk_widget_set_opacity(widget, 0.35) }
-            scheduleOnMainLoop(afterMs: delayMs + 130) { gtk_widget_set_opacity(widget, 1.0) }
-        }
-        dip(0)
-        dip(280)
+        AttentionStyle.flash(surfaceId: target)
         return true
     }
 

@@ -31,9 +31,9 @@ feature hiding in an unexpected place is a real cost anywhere.
 | Aspect | macOS | Linux port | Verdict |
 |---|---|---|---|
 | Titlebar | hidden native titlebar; custom 28pt band (workspace title, drag, folder-drag icon); controls cluster beside traffic lights: sidebar toggle, bell+unread badge, new-workspace split button, focus back/fwd | stock Adw header bars on sidebar + content | 🎨 header bars are correct GNOME; band-vs-bar is styling |
-| Chrome density | near-zero persistent buttons; nav lives in menus/shortcuts; hold-⌘ reveals hint pills | **14 always-visible buttons** in the content header (incl. 4 nav arrows, debug button) | ❓ **decide: header diet** — keep ~5 core (sidebar, split×2, browser, prefs), move the rest behind a GNOME primary menu + shortcuts |
+| Chrome density | near-zero persistent buttons; nav lives in menus/shortcuts; hold-⌘ reveals hint pills | **4 buttons** (sidebar, split×2, browser) + GNOME primary menu carrying find/zoom/devtools/console/rename/open-folder/close-pane/preferences with their shortcuts (labels auto-localized by GTK); workspace/pane stepping keyboard-only | ✅ dieted 2026-07-23 (was 14) |
 | Unread surfacing in chrome | bell button with numeric badge → popover | subtitle text "N unread" + sidebar-header toggle | ❓ close, but a badge count on the toggle would match the tier model |
-| "Simulate agent attention" button | — (debug menus are DEBUG-build menus) | always-visible header button | ❓ move behind a debug flag/menu |
+| "Simulate agent attention" button | — (debug menus are DEBUG-build menus) | behind `CMUX_DEBUG_UI=1` | ✅ 2026-07-23 |
 | Presentation modes (standard/minimal) | yes, hover-revealed controls | no | ❌ Later |
 
 ## 2. Left sidebar (workspaces)
@@ -72,7 +72,7 @@ feature hiding in an unexpected place is a real cost anywhere.
 
 | Aspect | macOS | Linux port | Verdict |
 |---|---|---|---|
-| Address bar | top of pane, hideable; back/fwd/reload cluster + pill (lock badge, inline autocomplete, suggestions) + trailing tools (focus mode, screenshot, React Grab, **profile popover**, theme, devtools) with overflow collapse | bare full-width GtkEntry, always visible, no buttons | ❓ **decide: omnibar build-out** — minimum worth doing: back/fwd/reload + profile button (verbs all exist); pill styling optional |
+| Address bar | top of pane, hideable; back/fwd/reload cluster + pill (lock badge, inline autocomplete, suggestions) + trailing tools (focus mode, screenshot, React Grab, **profile popover**, theme, devtools) with overflow collapse | back/fwd/reload cluster + entry + trailing **profile popover** (2026-07-23). Popover lists profiles, pane's own marked; picking one opens the same page as a new split in that container — WebKit's `network-session` is construct-only, so in-place switching is impossible (macOS swaps the data store under the view). Profile create/rename stay CLI-side for now | 🟡 core ✅; suggestions/lock/tool cluster open |
 | Find-in-page | floating corner-snap bar | revealer bar under URL bar (entry, n/m, up/down, x) | 🎨 revealer is the GTK idiom; controls match |
 | Zoom | menu/shortcut, no on-screen chip | verb only, no chip | ✅ chip-less matches; shortcuts missing → keyboard work |
 | DevTools | WebKit inspector, WebKit-owned dock state | **our own DevTools split pane** (reparented inspector) | 🎨 arguably better: inspector is a real pane (tabs, splits, socket-drivable) |
@@ -86,7 +86,7 @@ feature hiding in an unexpected place is a real cost anywhere.
 | Dividers | hairline, ±8pt hit area, resize cursors | GtkPaned wide handles | 🎨 both fine; fractions persist on both |
 | Pane zoom | ⇧⌘↩, renders only zoomed pane, no badge | same model, verb + shortcut | ✅ |
 | Equalize splits | ⌃⌘= | missing | ❌ keyboard batch (GAPS) |
-| Flash | blue ring stroke, 0.9s scripted blink, suppressed when unread ring present | opacity dips ×2 | ❓ adopt accent ring when tier system lands; opacity flash works meanwhile |
+| Flash | blue ring stroke, 0.9s scripted blink, suppressed when unread ring present | accent-ring double blink ~0.9s (CSS outline, `AttentionStyle`), registry-resolved per tick (also fixed the opacity version's latent use-after-free) | ✅ 2026-07-23; macOS's flash-vs-ring suppression rule not yet mirrored |
 | Canvas layout | freeform 2D mode | none | ❌ Later (CONCEPTS) |
 
 ## 7. Discovery & command surfaces
@@ -112,7 +112,7 @@ feature hiding in an unexpected place is a real cost anywhere.
 |---|---|---|---|
 | Surfaces | bell popover + sidebar page + per-row badges + pane ring + menu-bar count + dock badge | sidebar page swap + row prefix + desktop | 🟡 page ✅; the tier system is the gap (rows above) |
 | Row look | rounded cards, unread dot, time, 3-line body, workspace caption, hover clear | single text line "● Title: sub — body" | ❌ S — card rows are a cheap Adw.ActionRow win |
-| Suppression rules | window focused / workspace active / panel open | workspace active | ❓ implement the other two (documented contract, CONCEPTS) |
+| Suppression rules | window focused / workspace active / panel open | all three (2026-07-23), one decision path (`DesktopNotifier.deliver`) with outcome breadcrumbs replacing three inline copies of the first rule | ✅ |
 
 ## 10. Visual language
 
@@ -125,11 +125,15 @@ feature hiding in an unexpected place is a real cost anywhere.
 
 ## Decision queue (the ❓ rows, for the human)
 
-1. **Header diet** — prune the 14-button header to ~5 + primary menu?
-2. **Omnibar build-out** — add back/fwd/reload + profile button to the URL bar?
-3. **Attention tier language** — adopt macOS's one-color three-tier system (flash ring → pane ring → badge) using the GNOME accent?
-4. **Debug button** — move "Simulate agent attention" behind a debug flag?
-5. **Suppression rules** — add the two missing desktop-alert suppression cases?
+The original five (header diet, omnibar, attention tiers, debug button,
+suppression rules) were all decided per recommendation and implemented
+2026-07-23 — see Recorded decisions. Currently open:
+
+1. **Unread badge count on the sidebar-header toggle** (small, with the
+   sidebar-rows work).
+2. **Flash-vs-ring suppression** — macOS suppresses the flash when an
+   unread ring is already present; mirror when the rings have lived a
+   while.
 
 ## Recorded decisions
 
@@ -143,3 +147,11 @@ feature hiding in an unexpected place is a real cost anywhere.
   Ctrl+Shift+C is terminal copy on Linux, and Ctrl+Shift+J is
   Chrome/Firefox console muscle memory. Interaction parity kept (one
   keystroke, same semantics), presentation adapted to platform.
+- 2026-07-23 — **The five-decision batch, per recommendation** (user
+  approval "lets do the ux batch per your recommendations"):
+  header diet (4 buttons + primary menu; nav keyboard-only), omnibar
+  nav cluster + profile popover (switch-by-split, construct-only
+  session), one-accent attention tiers on the GNOME accent
+  (`@accent_bg_color` — deliberately not macOS's fixed blue), debug
+  button behind `CMUX_DEBUG_UI=1`, full desktop-alert suppression
+  contract. All screenshot-verified under Xvfb before landing.

@@ -3061,3 +3061,41 @@ in-pane before anything happens — a headless driver has to send "2\n".
 
 `tmux-compat-smoke.sh` (5 assertions) pins both server contracts and
 the in-pane round trip, Claude-free. 13 suites, 163 assertions green.
+
+### The UX batch: five decisions in one pass (2026-07-23)
+
+The UX-PARITY decision queue, approved per recommendation and landed
+together — every piece screenshot-verified under Xvfb before commit:
+
+- **Header diet** — 14 persistent buttons → 4 (sidebar, split×2,
+  browser) + a GNOME primary menu owning find/zoom/devtools/console/
+  rename/open-folder/close-pane/preferences *with their accelerators*
+  (adwaita-swift MenuButton registers them; GTK localizes the shortcut
+  labels in the popover for free — "Umschalt+Strg+F" on a German
+  system). Workspace/pane stepping went keyboard-only, re-bound at
+  window level since their buttons had carried the bindings.
+- **Omnibar** — back/forward/reload cluster + trailing profile button.
+  The profile popover lists profiles (pane's own marked) and picking
+  one opens the same page as a new split in that container —
+  `network-session` is construct-only, so in-place switching cannot
+  exist on WebKitGTK; routed through the same v2BrowserOpenSplit path
+  as `browser open --profile` (shared-behavior rule).
+- **Attention tiers** — macOS's one-accent three-tier language on the
+  GNOME accent: flash ring (tier 1, double blink ~0.9s) and persistent
+  unread pane ring (tier 2) as CSS outlines from one app-level
+  provider (`AttentionStyle`); the sidebar dot stays tier 3 until the
+  rich-row work. Tier 2 syncs from the scene body (the saveIfChanged
+  idiom) — widget-class writes only, so every notification mutation
+  path is covered by one line. Restyling the flash also fixed a latent
+  use-after-free: the opacity version captured the widget pointer
+  across its timers; the ring re-resolves the registry every tick.
+- **Debug button** behind `CMUX_DEBUG_UI=1`.
+- **Suppression contract** — all three documented rules (workspace
+  active / window focused / panel open) in ONE decision path,
+  `DesktopNotifier.deliver`, with outcome breadcrumbs (`cmux: desktop
+  notify sent|suppressed(reason)`) replacing three drift-prone inline
+  copies of rule one. ui-commands asserts the breadcrumb exists.
+
+Localization note: the port's user-facing strings remain bare English
+by existing convention (no i18n infra on Linux yet); the menu's
+shortcut labels are the exception GTK localizes itself.

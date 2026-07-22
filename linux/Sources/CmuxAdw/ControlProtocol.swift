@@ -2089,17 +2089,16 @@ struct ControlCommandHandler {
             body: (params["body"] as? String) ?? ""
         ))
         tabs.wrappedValue[index].needsAttention = true
-        // Desktop delivery only for tabs the user isn't looking at,
-        // approximating macOS's suppress-when-focused behavior.
-        if tab.id != selection.wrappedValue {
-            DesktopNotifier.send(
-                id: "cmux-\(tab.id.uuidString)",
-                title: (params["title"] as? String) ?? "Notification",
-                body: [(params["subtitle"] as? String) ?? "", (params["body"] as? String) ?? ""]
-                    .filter { !$0.isEmpty }
-                    .joined(separator: " — ")
-            )
-        }
+        // One decision path for all senders: DesktopNotifier.deliver
+        // applies the full macOS suppression contract.
+        DesktopNotifier.deliver(
+            tabId: tab.id,
+            selection: selection.wrappedValue,
+            title: (params["title"] as? String) ?? "Notification",
+            body: [(params["subtitle"] as? String) ?? "", (params["body"] as? String) ?? ""]
+                .filter { !$0.isEmpty }
+                .joined(separator: " — ")
+        )
         return v2Ok(id: id, result: [
             "workspace_id": tab.id.uuidString,
             "notification_created": true
@@ -2243,17 +2242,14 @@ struct ControlCommandHandler {
         if let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }) {
             tabs.wrappedValue[index].needsAttention = true
         }
-        // Desktop delivery only for tabs the user isn't looking at,
-        // approximating macOS's suppress-when-focused behavior.
-        if tabId != selection.wrappedValue {
-            DesktopNotifier.send(
-                id: "cmux-\(tabId.uuidString)",
-                title: title,
-                body: [parts.count > 1 ? parts[1] : "", parts.count > 2 ? parts[2] : ""]
-                    .filter { !$0.isEmpty }
-                    .joined(separator: " — ")
-            )
-        }
+        DesktopNotifier.deliver(
+            tabId: tabId,
+            selection: selection.wrappedValue,
+            title: title,
+            body: [parts.count > 1 ? parts[1] : "", parts.count > 2 ? parts[2] : ""]
+                .filter { !$0.isEmpty }
+                .joined(separator: " — ")
+        )
     }
 
     private func clearAllAttention() {

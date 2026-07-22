@@ -77,8 +77,18 @@ enum BrowserURLBar {
         states.removeValue(forKey: surfaceId)
     }
 
+    /// Called when a profile is picked in the popover: (surface, profile,
+    /// current URL). Set once at app startup; opens a new split in that
+    /// profile — WebKit's `network-session` is construct-only, so a live
+    /// pane cannot switch containers in place (macOS swaps the data store
+    /// under the view; our honest equivalent is "same page, new pane,
+    /// chosen container"). Recorded in UX-PARITY.
+    static var onProfileChosen: ((UUID, UUID, String) -> Void)?
+
     /// Builds the bar for a browser surface; the caller puts it above the
-    /// web view.
+    /// web view. Layout mirrors macOS's omnibar: navigation cluster on the
+    /// left (back / forward / reload), the entry as the flexible middle,
+    /// the profile button trailing (UX-PARITY decision 2, 2026-07-23).
     static func build(
         webView: UnsafeMutablePointer<WebKitWebView>,
         surfaceId: UUID
@@ -93,13 +103,48 @@ enum BrowserURLBar {
         gtk_widget_set_margin_bottom(row, 4)
         gtk_widget_set_margin_start(row, 6)
         gtk_widget_set_margin_end(row, 6)
-        gtk_box_append(
-            UnsafeMutableRawPointer(row).assumingMemoryBound(to: GtkBox.self),
-            entry
-        )
 
+        let box = UnsafeMutableRawPointer(row).assumingMemoryBound(to: GtkBox.self)
         let state = BrowserURLBarState(surfaceId: surfaceId, webView: webView, entry: entry)
         states[surfaceId] = state
+
+        func navButton(_ icon: String, _ tooltip: String, _ callback: @convention(c) (
+            UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
+        ) -> Void) {
+            guard let button = gtk_button_new_from_icon_name(icon) else { return }
+            gtk_widget_add_css_class(button, "flat")
+            gtk_widget_set_tooltip_text(button, tooltip)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(button), "clicked",
+                unsafeBitCast(callback, to: GCallback.self),
+                Unmanaged.passRetained(state).toOpaque(),
+                browserURLBarStateDestroy, GConnectFlags(0)
+            )
+            gtk_box_append(box, button)
+        }
+        navButton("go-previous-symbolic", "Back", browserURLBarBack)
+        navButton("go-next-symbolic", "Forward", browserURLBarForward)
+        navButton("view-refresh-symbolic", "Reload", browserURLBarReload)
+
+        gtk_box_append(box, entry)
+
+        // Profile button + its (single, content-rebuilt-per-open) popover.
+        if let profileButton = gtk_button_new_from_icon_name("system-users-symbolic") {
+            gtk_widget_add_css_class(profileButton, "flat")
+            gtk_widget_set_tooltip_text(profileButton, "Browser profile")
+            if let popover = gtk_popover_new() {
+                gtk_widget_set_parent(popover, profileButton)
+                state.profilePopover = popover
+            }
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(profileButton), "clicked",
+                unsafeBitCast(browserURLBarProfileClicked, to: GCallback.self),
+                Unmanaged.passRetained(state).toOpaque(),
+                browserURLBarStateDestroy, GConnectFlags(0)
+            )
+            gtk_box_append(box, profileButton)
+        }
+
         g_signal_connect_data(
             UnsafeMutableRawPointer(entry), "activate",
             unsafeBitCast(browserURLBarActivate, to: GCallback.self),
@@ -108,12 +153,51 @@ enum BrowserURLBar {
         )
         return row
     }
+
+    /// Fills the profile popover with one row per profile (the pane's own
+    /// marked), then pops it up.
+    static func presentProfilePopover(for state: BrowserURLBarState) {
+        guard let popover = state.profilePopover,
+              let list = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2) else { return }
+        let paneProfile = BrowserProfileAssignments.live[state.surfaceId]
+        for profile in BrowserProfiles.all {
+            let isCurrent = paneProfile == profile.id
+                || (paneProfile == nil && profile.isBuiltInDefault)
+            guard let item = gtk_button_new_with_label(
+                (isCurrent ? "✓  " : "\u{2003}  ") + profile.displayName
+            ) else { continue }
+            gtk_widget_add_css_class(item, "flat")
+            if let label = gtk_button_get_child(
+                UnsafeMutableRawPointer(item).assumingMemoryBound(to: GtkButton.self)
+            ) {
+                gtk_widget_set_halign(label, GTK_ALIGN_START)
+            }
+            let choice = BrowserProfileChoice(state: state, profileId: profile.id)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(item), "clicked",
+                unsafeBitCast(browserURLBarProfileChosen, to: GCallback.self),
+                Unmanaged.passRetained(choice).toOpaque(),
+                browserProfileChoiceDestroy, GConnectFlags(0)
+            )
+            gtk_box_append(
+                UnsafeMutableRawPointer(list).assumingMemoryBound(to: GtkBox.self),
+                item
+            )
+        }
+        let popoverPtr = UnsafeMutableRawPointer(popover).assumingMemoryBound(to: GtkPopover.self)
+        gtk_popover_set_child(popoverPtr, list)
+        gtk_popover_popup(popoverPtr)
+    }
 }
 
 final class BrowserURLBarState {
     let surfaceId: UUID
     let webView: UnsafeMutablePointer<WebKitWebView>
     let entry: UnsafeMutablePointer<GtkWidget>
+    /// The (single) profile popover, parented to the profile button; its
+    /// content is rebuilt on every open so it always reflects the live
+    /// profile list.
+    var profilePopover: UnsafeMutablePointer<GtkWidget>?
     init(surfaceId: UUID, webView: UnsafeMutablePointer<WebKitWebView>, entry: UnsafeMutablePointer<GtkWidget>) {
         self.surfaceId = surfaceId
         self.webView = webView
@@ -121,9 +205,72 @@ final class BrowserURLBarState {
     }
 }
 
+/// One popover row's target: which profile for which bar.
+final class BrowserProfileChoice {
+    let state: BrowserURLBarState
+    let profileId: UUID
+    init(state: BrowserURLBarState, profileId: UUID) {
+        self.state = state
+        self.profileId = profileId
+    }
+}
+
 let browserURLBarStateDestroy: GClosureNotify = { data, _ in
     guard let data else { return }
     Unmanaged<BrowserURLBarState>.fromOpaque(data).release()
+}
+
+let browserProfileChoiceDestroy: GClosureNotify = { data, _ in
+    guard let data else { return }
+    Unmanaged<BrowserProfileChoice>.fromOpaque(data).release()
+}
+
+/// Navigation cluster (the pane-local slice of macOS's omnibar buttons).
+let browserURLBarBack: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
+) -> Void = { _, userData in
+    guard let userData else { return }
+    let state = Unmanaged<BrowserURLBarState>.fromOpaque(userData).takeUnretainedValue()
+    webkit_web_view_go_back(state.webView)
+}
+
+let browserURLBarForward: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
+) -> Void = { _, userData in
+    guard let userData else { return }
+    let state = Unmanaged<BrowserURLBarState>.fromOpaque(userData).takeUnretainedValue()
+    webkit_web_view_go_forward(state.webView)
+}
+
+let browserURLBarReload: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
+) -> Void = { _, userData in
+    guard let userData else { return }
+    let state = Unmanaged<BrowserURLBarState>.fromOpaque(userData).takeUnretainedValue()
+    webkit_web_view_reload(state.webView)
+}
+
+let browserURLBarProfileClicked: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
+) -> Void = { _, userData in
+    guard let userData else { return }
+    let state = Unmanaged<BrowserURLBarState>.fromOpaque(userData).takeUnretainedValue()
+    BrowserURLBar.presentProfilePopover(for: state)
+}
+
+let browserURLBarProfileChosen: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
+) -> Void = { _, userData in
+    guard let userData else { return }
+    let choice = Unmanaged<BrowserProfileChoice>.fromOpaque(userData).takeUnretainedValue()
+    if let popover = choice.state.profilePopover {
+        gtk_popover_popdown(
+            UnsafeMutableRawPointer(popover).assumingMemoryBound(to: GtkPopover.self)
+        )
+    }
+    let url = webkit_web_view_get_uri(choice.state.webView)
+        .map { String(cString: $0) } ?? "about:blank"
+    BrowserURLBar.onProfileChosen?(choice.state.surfaceId, choice.profileId, url)
 }
 
 /// Enter in the address bar.
