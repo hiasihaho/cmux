@@ -43,6 +43,7 @@ binary all pass. Re-add to Now with a repro if it resurfaces.
 
 | Gap | Notes | Effort |
 |---|---|---|
+| Test-harness roadmap | unified `run.sh` entry point, flake-hunter, assertion-count ledger, binary-freshness preflight, `cmux doctor`, dual-backend gate — inventory + invest-when rules live in `linux/tests/README.md` §Harness roadmap | S–M each |
 | Ephemeral browser panes | `webkit_network_session_new_ephemeral`; roadmap/07 leftover | S |
 | Browser profile popover UI | verbs are done; macOS has per-pane profile UI | M |
 | `surface.health` / `surface.action` / `drag_to_split` | health pairs well with the dogfood harness | M |

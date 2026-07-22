@@ -46,6 +46,42 @@ success.
 | [`ghostty-embed-smoke.c`](ghostty-embed-smoke.c) | Minimal C harness that hosts a Ghostty surface in a plain GtkApplication (proves the embedding shim independent of cmux) |
 | [`ghostty-resize-bisect.sh`](ghostty-resize-bisect.sh) | X11 screenshot-diff detector for the (fixed) post-resize freeze; kept for reference — see the caveats in its header |
 
+## Harness roadmap — enhancement ideas, and when to invest
+
+The harness is development infrastructure for every future cmux version,
+so its improvement ideas deserve the same treatment as product gaps: an
+inventory kept where decisions are made, instead of a re-survey each
+time someone wonders "should we build X now?". This section is that
+inventory. GAPS.md carries one pointer row; the reasoning lives here.
+
+**When to invest (and when not to):**
+
+1. **After a flake class repeats.** One flake gets a targeted fix
+   (poll-don't-sleep); the same *class* appearing a third time has
+   earned a harness feature that hunts it.
+2. **After hand-instrumenting twice.** Anything a debugging round adds
+   by hand for the second time — refcount prints, timing probes, marker
+   greps — belongs in the harness or the `debug.surfaces` doctor verb,
+   so the third round starts with it for free.
+3. **When invocation needs explaining.** If running something takes
+   more than one obvious command, or a flag exists that nobody can
+   discover without reading the source, wrap it.
+4. **Never speculatively.** Ideas wait here until a rule above fires;
+   an unused harness feature is maintenance debt with no rent paid.
+
+**The inventory:**
+
+| Idea | What / why | Effort |
+|---|---|---|
+| Unified entry point (`run.sh`) | One front door for the whole harness: `--list` (suites, one-line coverage, per-suite requirements), pattern filtering, `--keep`, `--repeat N`, `--until-fail`. **Flags first, prompts as sugar:** an interactive picker appears only with no args on a TTY — agents, CI, and scripts always get non-interactive behavior, never a menu waiting for input | S |
+| Binary-freshness preflight | Suites test `.build/debug/cmux-adw` as-is; forgetting `swift build` silently tests yesterday's binary and every verdict lies. Warn when the binary is older than the newest source file under `linux/Sources`, with a `--build` flag to fix it inline | S |
+| Flake-hunter mode | `--repeat N` / `--until-fail` with per-iteration timing on one suite. The 2026-07-22 load-flake hunt re-ran suites by hand to build confidence; statistical confidence should be one flag | S |
+| Assertion-count ledger | Expected per-suite assertion counts in a manifest; `run-all` warns when a count *drops*. An early `exit 0` that skips half a suite currently reads as green — the same class as macOS's "Executed 0 tests" trap (unwired test files, see CLAUDE.md) | S |
+| Per-suite timing trend | `run-all` already times the gate; recording per-suite durations and flagging a suite at >2× its usual time would name load flakes as load flakes the moment they happen, instead of after a debugging round | S |
+| Preflight doctor (`cmux doctor`) | Merge lib.sh's environment checks (deps, ports, display) with the `debug.surfaces` verb (GAPS batch 5) into one command that says why an environment will or won't work — for the harness, the dogfood loop, and eventually users | M |
+| Dual-backend gate | Run the full suite matrix under `CMUX_TERM=ghostty`. This is the precondition for flipping the default terminal backend (shim increment 3): the flip happens when the ghostty-mode gate is as green as the VTE one | M |
+| CI | The suites are already headless-capable (Xvfb, private displays, own instances, sequential by design) — a GitHub Actions Linux runner could run the gate per push. Open questions: WebKitGTK/dependency provisioning and the ~6–7 min gate runtime | M–L |
+
 ## webdriver-smoke.sh
 
 ```sh
