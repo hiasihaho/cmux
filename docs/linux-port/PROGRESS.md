@@ -2980,3 +2980,26 @@ The debugging ledger, each with a permanent artifact:
 - ui-commands grew the increment section (respawn + replay + eager +
   live reload, 39 assertions); the refusal assertion it replaces died
   young, as it should.
+
+### The docs crawl: dogfooding the browser stack on the product's own manual (2026-07-22)
+
+To understand how cmux concepts are *meant* (user request), the port
+crawled `https://cmux.com/docs/*` through its own browser verbs — not a
+headless agent, a visible pane in a background workspace of the daily
+instance. One surface, 21 navigations (`goto` → `wait --load-state
+complete` → `get text body`), 20 pages, **zero verb failures** — the
+navigation-barrier and CLI-transfer fixes from the pocketyoga cycle
+held on a second real site. Two observations, neither a defect: the
+site locale-redirected to `/de/` (WebKitGTK faithfully sends the host's
+Accept-Language — crawl pinned `/en/` for canonical terms), and a
+locale-prefixed nav initially hid links from a too-narrow selector.
+
+Yield: `CONCEPTS.md` (the distillation), five new GAPS rows (OSC
+777/99 verify, agent-native session resume, shortcut rebinding,
+keyboard batch, TextBox), concept annotations on the Later families,
+and one bug found by the parallel UX survey (pane-tab drag desync →
+GAPS Now). The headline discovery: the macOS feature surface is
+substantially larger than the sweep's method inventory suggested —
+right sidebar (Vault/Dock/files), canvas layout, diff/markdown
+viewers, status lanes, workspace templates, agent resume — all now
+recorded with intent, not just method names.

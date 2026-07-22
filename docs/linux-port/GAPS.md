@@ -30,6 +30,7 @@ Effort: **S** ≤ half a session · **M** one session · **L** multi-session.
 |---|---|---|---|
 | Browser JS console pane | macOS `showBrowserJavaScriptConsole` opens a console directly (distinct from DevTools); `browser devtools console` sends `browser.console.show` | CATCHUP item 5 | M |
 | Bare Ghostty pane relocation respawns the shell | break/join (and move) of a never-tabbed Ghostty pane restarts its shell — cwd survives, scrollback and processes do not. Forensics 2026-07-22 (PROGRESS): container refcount reaches the parent's-last-ref state despite the registry's ref; one extra ref keeps the shell but leaks the io thread. Tabbed panes relocate safely (reconciliation path). Belongs to roadmap/05 lifecycle hardening; `debug.surfaces` is the probe | GAPS batch 5 | M |
+| Pane-tab drag-reorder desyncs the model | AdwTabBar lets the user drag tabs but no `page-reordered` handler updates the model — a drag silently diverges UI from model (reorder exists only as the `surface.reorder` verb). Wire the signal or disable the drag | UX survey 2026-07-22 | S |
 
 **Watch list** (observed once, not reproducible on the current binary):
 `list-panes` with no `--workspace` said "Workspace not found" after a
@@ -42,6 +43,11 @@ binary all pass. Re-add to Now with a repro if it resurfaces.
 |---|---|---|
 | Test-harness roadmap (remainder) | the four S-items landed 2026-07-22 (`run.sh` front door, freshness preflight, flake-hunter, assertion ledger); remaining: timing trend, interactive picker (deferred), `cmux doctor`, dual-backend ghostty gate, CI — inventory + invest-when rules in `linux/tests/README.md` §Harness roadmap | S–M each |
 | Ephemeral browser panes | `webkit_network_session_new_ephemeral`; roadmap/07 leftover | S |
+| OSC 777 / OSC 99 notification ingestion | docs promise both terminal notify protocols (docs/notifications); verify what the ghostty shim / VTE already surface, then wire to the notification store. Verify-first | docs crawl 2026-07-22 → CONCEPTS.md | S |
+| Agent-native session resume on restore | macOS hooks capture the agent's session id and restore relaunches `claude --resume <id>` (17 agents documented). The port restores shells only — this very session was resumed by hand-carrying ids in text files. `cmux hooks setup` exists in the merged CLI; server + restore side missing | docs crawl 2026-07-22 → CONCEPTS.md | M |
+| Shortcut rebinding (`shortcuts.bindings`) | macOS: every cmux-owned shortcut rebindable via Settings/cmux.json incl. two-step chords and explicit unbind; ours are hardcoded. Settings file exists — wire bindings through it | docs crawl 2026-07-22 | M |
+| Keyboard muscle-memory batch | equalize splits (⌃⌘=), reopen last closed surface (⌘⇧T), focus history (⌘[/⌘]) — small, documented, daily-use | docs crawl 2026-07-22 | S–M |
+| TextBox composer (beta upstream) | prompt-compose surface above the terminal, per-surface visibility/focus persisted; agent-first workflow piece | docs crawl 2026-07-22 → CONCEPTS.md | M–L |
 | Browser profile popover UI | verbs are done; macOS has per-pane profile UI | M |
 | `surface.health` / `surface.action` / `drag_to_split` | health pairs well with the dogfood harness | M |
 | `workspace.reorder` / `workspace.action` | sidebar order is user-visible state | M |
@@ -57,8 +63,12 @@ binary all pass. Re-add to Now with a repro if it resurfaces.
 ## Later / only if needed — honest macOS-only feature families
 
 The sweep's remaining ~130 methods. `unknown_method` is the correct
-answer until a Linux user actually needs one; they are listed by family
-so a future decision has the inventory ready:
+answer until a Linux user actually needs one. Since the 2026-07-22 docs
+crawl these are no longer bare method names — [CONCEPTS.md](CONCEPTS.md)
+records what each family is *for* (canvas = freeform 2D pane layout;
+vault = transcript search; dock = right-sidebar terminal controls;
+`system.top` = task manager; `markdown.open`/diff = read surfaces;
+feed = agent approval stream; groups = anchor-owned sidebar sections):
 
 `vm.*` (13) · `workspace.remote.*` + `remotes.*` (14) · SSH/PTY attach
 family · `workspace.group.*` (13) · `canvas.*` (12) · `feed.*` (5) ·

@@ -265,6 +265,9 @@ linux/scripts/dogfood.sh "focus…" [min]      # QA agent cycle (CMUX_SOCKET_PAT
 
 ## Doc map
 
+- **CONCEPTS.md** — how cmux is *meant*: the official-docs
+  distillation (crawled 2026-07-22 via the port's own browser stack);
+  read before deciding whether/how to build a macOS feature.
 - **FEATURES.md** — user-facing feature overview; marks parity vs the
   small set of beyond-macOS additions (verify ★ claims vs Sources/).
 - **PROGRESS.md** — chronological evidence log + gotchas (append, same
