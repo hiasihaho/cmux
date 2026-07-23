@@ -3208,3 +3208,33 @@ Note: `markdown.open` is still unimplemented on Linux (macOS-only, GAPS
 Later) — implementing it natively would turn this into a first-class
 cmux markdown panel with the same vendored assets. Good future board
 item; the browser-pane viewer covers the need today.
+
+### The parity dashboard + an automated macOS-surface survey (2026-07-23)
+
+Answering "how do we track drift against a macOS that keeps moving?" —
+the user's call was the heaviest option: a roll-up board AND automated
+discovery. Two deliverables:
+
+1. **`macos-surface-survey.py`** — the app-side twin of
+   capabilities-sweep.py. The sweep catches new CLI *verbs*; this catches
+   new macOS *app* surface — the enablement is that since the catch-up
+   merge the macOS Sources/ live in this tree, so it extracts the
+   enumerable sets (the 125-case `Action` command registry, 11
+   `PanelType`s, 18 settings sections) and diffs them against a reviewed
+   `macos-surface-ledger.json`. A future merge that adds a command shows
+   it as `NEW (triage)`; `--check` exits nonzero to gate. Each extractor
+   asserts a sane minimum so a shape change fails loudly instead of
+   faking "no drift". Proven: dropping a ledger entry flags it NEW.
+   Seeded coverage: commands 40 done / 27 gap / 58 later (32%), panels
+   2/11, settings 1/18 done.
+2. **PARITY-DASHBOARD.md** — the board of boards: a coverage mermaid
+   diagram, the discovery cadence (both tripwires after every merge →
+   GAPS), and links to the six single-responsibility ledgers. Explicitly
+   NOT a new backlog — an index. Live-viewable as page ⓪ of the wiring
+   atlas (the viewer resolves the `../` path), verified rendering through
+   the browser verbs.
+
+Design stance recorded: keep the focused ledgers (each one update
+trigger), don't merge into one "source of truth" doc (rot). The tools
+are the live truth; the dashboard is the human view; one-shot surveys
+(UX, docs crawl) complement but don't replace the repeatable tripwires.

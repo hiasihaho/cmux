@@ -14,10 +14,13 @@ fix next and how big it is*. A gap lives here from discovery to fix.
    instance → suite assertion (regression policy: red first where
    feasible) → PROGRESS entry → commit → push. No gap closes without a
    test that would notice it reopening.
-3. **After every upstream merge:** run
-   `linux/scripts/capabilities-sweep.py` (both protocol generations) and
-   fold new findings in here. Quiet renames of claimed features are
-   always **Now**.
+3. **After every upstream merge:** run BOTH tripwires and fold new
+   findings in here — `linux/scripts/capabilities-sweep.py` (CLI verbs,
+   both protocol generations) and `linux/scripts/macos-surface-survey.py`
+   (macOS commands / panel types / settings sections, vs
+   `macos-surface-ledger.json`). Quiet renames of claimed features are
+   always **Now**; genuinely new macOS items get a ledger disposition.
+   [PARITY-DASHBOARD.md](PARITY-DASHBOARD.md) rolls both up.
 4. **Honest errors are a valid state.** A macOS-only feature returning
    `unknown_method` is not a bug; it graduates to a row here only when
    we decide to build it.

@@ -276,6 +276,10 @@ linux/scripts/dogfood.sh "focus…" [min]      # QA agent cycle (CMUX_SOCKET_PAT
 
 ## Doc map
 
+- **PARITY-DASHBOARD.md** — the board of boards: coverage-by-subsystem
+  roll-up (from `macos-surface-survey.py`), the discovery cadence, and
+  links to every focused ledger. Start here to see "how much of macOS,
+  and how we find what's left". Live-viewable as page ⓪ of the atlas.
 - **MENTAL-MODEL.md** — the one-page shape of the system, mermaid
   diagrams: supervision loop, hierarchy, attention pipeline, Claude
   lifecycle, tmux shim, UI geography, doc map, port heat map. Start

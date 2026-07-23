@@ -1,0 +1,482 @@
+{
+ "_README": "Reviewed disposition of macOS's enumerable surface vs the Linux port. macos-surface-survey.py diffs the live macOS Sources/ against this; NEW items (a future merge adds a command/panel/section) appear as 'needs triage', STALE items (macOS removed one) as 'ledger drift'. disposition: done|gap|later|na. Seeded 2026-07-23 by name+known-state; refine an area's entries when you touch it.",
+ "commands": {
+  "openSettings": {
+   "disposition": "done"
+  },
+  "reloadConfiguration": {
+   "disposition": "done"
+  },
+  "showHideAllWindows": {
+   "disposition": "later"
+  },
+  "globalSearch": {
+   "disposition": "later"
+  },
+  "newWindow": {
+   "disposition": "later"
+  },
+  "closeWindow": {
+   "disposition": "later"
+  },
+  "toggleFullScreen": {
+   "disposition": "later"
+  },
+  "quit": {
+   "disposition": "done"
+  },
+  "toggleSidebar": {
+   "disposition": "done"
+  },
+  "newTab": {
+   "disposition": "done"
+  },
+  "newBrowserWorkspace": {
+   "disposition": "later"
+  },
+  "saveLayoutTemplate": {
+   "disposition": "later"
+  },
+  "openFolder": {
+   "disposition": "done"
+  },
+  "reopenPreviousSession": {
+   "disposition": "gap"
+  },
+  "goToWorkspace": {
+   "disposition": "gap"
+  },
+  "commandPalette": {
+   "disposition": "gap"
+  },
+  "commandPaletteNext": {
+   "disposition": "gap"
+  },
+  "commandPalettePrevious": {
+   "disposition": "gap"
+  },
+  "sendFeedback": {
+   "disposition": "later"
+  },
+  "showNotifications": {
+   "disposition": "done"
+  },
+  "jumpToUnread": {
+   "disposition": "done"
+  },
+  "toggleUnread": {
+   "disposition": "later"
+  },
+  "markOldestUnreadAndJumpNext": {
+   "disposition": "later"
+  },
+  "focusRightSidebar": {
+   "disposition": "later"
+  },
+  "switchRightSidebarToFiles": {
+   "disposition": "later"
+  },
+  "switchRightSidebarToFind": {
+   "disposition": "later"
+  },
+  "switchRightSidebarToSessions": {
+   "disposition": "later"
+  },
+  "switchRightSidebarToFeed": {
+   "disposition": "later"
+  },
+  "switchRightSidebarToDock": {
+   "disposition": "later"
+  },
+  "triggerFlash": {
+   "disposition": "done"
+  },
+  "nextSurface": {
+   "disposition": "done"
+  },
+  "prevSurface": {
+   "disposition": "done"
+  },
+  "moveSurfaceLeft": {
+   "disposition": "done"
+  },
+  "moveSurfaceRight": {
+   "disposition": "done"
+  },
+  "selectSurfaceByNumber": {
+   "disposition": "gap"
+  },
+  "nextSidebarTab": {
+   "disposition": "done"
+  },
+  "prevSidebarTab": {
+   "disposition": "done"
+  },
+  "moveWorkspaceUp": {
+   "disposition": "gap"
+  },
+  "moveWorkspaceDown": {
+   "disposition": "gap"
+  },
+  "focusHistoryBack": {
+   "disposition": "gap"
+  },
+  "focusHistoryForward": {
+   "disposition": "gap"
+  },
+  "selectWorkspaceByNumber": {
+   "disposition": "gap"
+  },
+  "renameTab": {
+   "disposition": "done"
+  },
+  "renameWorkspace": {
+   "disposition": "done"
+  },
+  "editWorkspaceDescription": {
+   "disposition": "gap"
+  },
+  "markWorkspaceDone": {
+   "disposition": "later"
+  },
+  "cycleWorkspaceStatus": {
+   "disposition": "later"
+  },
+  "toggleChecklistItemComplete": {
+   "disposition": "later"
+  },
+  "closeTab": {
+   "disposition": "done"
+  },
+  "closeOtherTabsInPane": {
+   "disposition": "done"
+  },
+  "closeWorkspace": {
+   "disposition": "done"
+  },
+  "newWorkspaceGroup": {
+   "disposition": "later"
+  },
+  "groupSelectedWorkspaces": {
+   "disposition": "later"
+  },
+  "toggleFocusedWorkspaceGroupCollapsed": {
+   "disposition": "later"
+  },
+  "reopenClosedBrowserPanel": {
+   "disposition": "gap"
+  },
+  "newSurface": {
+   "disposition": "done"
+  },
+  "toggleTerminalCopyMode": {
+   "disposition": "gap"
+  },
+  "focusTextBoxInput": {
+   "disposition": "gap"
+  },
+  "cycleTextBoxSubmitAction": {
+   "disposition": "gap"
+  },
+  "attachTextBoxFile": {
+   "disposition": "gap"
+  },
+  "sendCtrlFToTerminal": {
+   "disposition": "gap"
+  },
+  "clearScreenKeepScrollback": {
+   "disposition": "done"
+  },
+  "focusLeft": {
+   "disposition": "done"
+  },
+  "focusRight": {
+   "disposition": "done"
+  },
+  "focusUp": {
+   "disposition": "done"
+  },
+  "focusDown": {
+   "disposition": "done"
+  },
+  "splitRight": {
+   "disposition": "done"
+  },
+  "splitDown": {
+   "disposition": "done"
+  },
+  "toggleSplitZoom": {
+   "disposition": "done"
+  },
+  "equalizeSplits": {
+   "disposition": "gap"
+  },
+  "splitBrowserRight": {
+   "disposition": "gap"
+  },
+  "splitBrowserDown": {
+   "disposition": "gap"
+  },
+  "toggleCanvasLayout": {
+   "disposition": "later"
+  },
+  "canvasRevealFocusedPane": {
+   "disposition": "later"
+  },
+  "canvasOverview": {
+   "disposition": "later"
+  },
+  "canvasZoomIn": {
+   "disposition": "later"
+  },
+  "canvasZoomOut": {
+   "disposition": "later"
+  },
+  "canvasZoomReset": {
+   "disposition": "later"
+  },
+  "canvasTidy": {
+   "disposition": "later"
+  },
+  "canvasAlignLeft": {
+   "disposition": "later"
+  },
+  "canvasAlignRight": {
+   "disposition": "later"
+  },
+  "canvasAlignTop": {
+   "disposition": "later"
+  },
+  "canvasAlignBottom": {
+   "disposition": "later"
+  },
+  "canvasEqualizeWidths": {
+   "disposition": "later"
+  },
+  "canvasEqualizeHeights": {
+   "disposition": "later"
+  },
+  "canvasDistributeHorizontally": {
+   "disposition": "later"
+  },
+  "canvasDistributeVertically": {
+   "disposition": "later"
+  },
+  "toggleRightSidebar": {
+   "disposition": "later"
+  },
+  "fileExplorerOpenSelection": {
+   "disposition": "later"
+  },
+  "fileExplorerOpenSelectionFinderAlias": {
+   "disposition": "later"
+  },
+  "saveFilePreview": {
+   "disposition": "later"
+  },
+  "openBrowser": {
+   "disposition": "done"
+  },
+  "focusBrowserAddressBar": {
+   "disposition": "done"
+  },
+  "browserBack": {
+   "disposition": "done"
+  },
+  "browserForward": {
+   "disposition": "done"
+  },
+  "browserReload": {
+   "disposition": "done"
+  },
+  "browserHardReload": {
+   "disposition": "gap"
+  },
+  "browserZoomIn": {
+   "disposition": "done"
+  },
+  "browserZoomOut": {
+   "disposition": "done"
+  },
+  "browserZoomReset": {
+   "disposition": "done"
+  },
+  "markdownZoomIn": {
+   "disposition": "later"
+  },
+  "markdownZoomOut": {
+   "disposition": "later"
+  },
+  "markdownZoomReset": {
+   "disposition": "later"
+  },
+  "find": {
+   "disposition": "done"
+  },
+  "findInDirectory": {
+   "disposition": "gap"
+  },
+  "findNext": {
+   "disposition": "gap"
+  },
+  "findPrevious": {
+   "disposition": "gap"
+  },
+  "hideFind": {
+   "disposition": "gap"
+  },
+  "useSelectionForFind": {
+   "disposition": "gap"
+  },
+  "toggleBrowserDeveloperTools": {
+   "disposition": "done"
+  },
+  "showBrowserJavaScriptConsole": {
+   "disposition": "done"
+  },
+  "toggleBrowserFocusMode": {
+   "disposition": "later"
+  },
+  "toggleReactGrab": {
+   "disposition": "later"
+  },
+  "openDiffViewer": {
+   "disposition": "later"
+  },
+  "diffViewerScrollDown": {
+   "disposition": "later"
+  },
+  "diffViewerScrollUp": {
+   "disposition": "later"
+  },
+  "diffViewerScrollHalfPageDown": {
+   "disposition": "later"
+  },
+  "diffViewerScrollHalfPageUp": {
+   "disposition": "later"
+  },
+  "diffViewerScrollDownEmacs": {
+   "disposition": "later"
+  },
+  "diffViewerScrollUpEmacs": {
+   "disposition": "later"
+  },
+  "diffViewerScrollToBottom": {
+   "disposition": "later"
+  },
+  "diffViewerScrollToTop": {
+   "disposition": "later"
+  },
+  "diffViewerOpenFileSearch": {
+   "disposition": "later"
+  },
+  "diffViewerNextFile": {
+   "disposition": "later"
+  },
+  "diffViewerPreviousFile": {
+   "disposition": "later"
+  }
+ },
+ "panel_types": {
+  "terminal": {
+   "disposition": "done"
+  },
+  "browser": {
+   "disposition": "done"
+  },
+  "markdown": {
+   "disposition": "later"
+  },
+  "filePreview": {
+   "disposition": "later"
+  },
+  "rightSidebarTool": {
+   "disposition": "later"
+  },
+  "customSidebar": {
+   "disposition": "later"
+  },
+  "agentSession": {
+   "disposition": "later"
+  },
+  "project": {
+   "disposition": "later"
+  },
+  "extensionBrowser": {
+   "disposition": "later"
+  },
+  "workspaceTodo": {
+   "disposition": "later"
+  },
+  "cloudVMLoading": {
+   "disposition": "na"
+  }
+ },
+ "settings_sections": {
+  "account": {
+   "disposition": "na"
+  },
+  "app": {
+   "disposition": "gap"
+  },
+  "terminal": {
+   "disposition": "gap"
+  },
+  "textBox": {
+   "disposition": "later"
+  },
+  "sleepyMode": {
+   "disposition": "later"
+  },
+  "mobile": {
+   "disposition": "later"
+  },
+  "networking": {
+   "disposition": "later"
+  },
+  "sidebarAppearance": {
+   "disposition": "later"
+  },
+  "customSidebars": {
+   "disposition": "later"
+  },
+  "betaFeatures": {
+   "disposition": "later"
+  },
+  "automation": {
+   "disposition": "later"
+  },
+  "browser": {
+   "disposition": "gap"
+  },
+  "browserImport": {
+   "disposition": "later"
+  },
+  "globalHotkey": {
+   "disposition": "later"
+  },
+  "keyboardShortcuts": {
+   "disposition": "gap"
+  },
+  "workspaceColors": {
+   "disposition": "later"
+  },
+  "settingsJSON": {
+   "disposition": "done"
+  },
+  "reset": {
+   "disposition": "later"
+  }
+ },
+ "linux_only": {
+  "note": "Port surfaces with no macOS counterpart \u2014 deliberate additions, tracked so the survey does not flag them as unknowns.",
+  "panel_types": [
+   "inspector"
+  ],
+  "settings": [
+   "scrollbackLimit(slider)",
+   "searchURL",
+   "terminalBackend(ghostty|vte)"
+  ]
+ }
+}
