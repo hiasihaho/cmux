@@ -142,6 +142,41 @@ fi
 echo "== starting the $target_desc on the new binary"
 "$START" "$slot" "${passthrough[@]+"${passthrough[@]}"}"
 
+# ---- stamp the promote manifest (ADR-0011) ------------------------------
+# Records what this slot now runs: repo SHA at promotion plus the live
+# instance's capabilities snapshot. The features board reads the daily
+# manifest for its "daily" column. Best-effort — never fails a promote.
+stamp_manifest() {
+    local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/cmux"
+    mkdir -p "$state_dir"
+    python3 - "$sock" "$slot" "$state_dir/promote-$slot.json" \
+        "$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)" <<'PY3'
+import json, socket, sys, time, datetime
+sock_path, slot, out, sha = sys.argv[1:5]
+for _ in range(20):                       # the instance may still be booting
+    try:
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(5)
+        s.connect(sock_path)
+        s.sendall(b'{"id":1,"method":"system.capabilities"}\n')
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+        methods = json.loads(data)["result"]["methods"]
+        json.dump({"slot": slot, "date": datetime.date.today().isoformat(),
+                   "git_sha": sha, "methods": methods}, open(out, "w"), indent=1)
+        print(f"   manifest: {out} ({len(methods)} methods @ {sha[:10]})")
+        sys.exit(0)
+    except OSError:
+        time.sleep(0.5)
+sys.exit(1)
+PY3
+}
+stamp_manifest || echo "   (manifest stamp failed — features board daily column stays stale)"
+
 echo
 echo "Promoted. Session restore brings the layout back;"
 echo "resume Claude in its pane with:  claude --continue"

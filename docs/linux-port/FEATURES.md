@@ -3,6 +3,10 @@
 What the GTK4/libadwaita Linux port does today, described for use rather
 than for porting. Two companion docs go deeper: **PARITY.md** (per-verb
 status vs macOS) and **PROGRESS.md** (how each piece was built + verified).
+Per-feature deep pages (purpose/usage/implementation, with measured
+mac/dev/daily status columns) are growing in the **features atlas**
+(`docs/linux-port/features/`, `atlas-serve.sh features`, ADR-0011); as it
+fills out, this file folds into it.
 
 Legend: **✅ parity** (also in macOS cmux) · **★ beyond macOS** (Linux
 has it, macOS doesn't — verified against `Sources/` on 2026-07-20) ·

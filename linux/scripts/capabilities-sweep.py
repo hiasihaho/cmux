@@ -27,32 +27,13 @@ import os
 import sys
 from collections import defaultdict
 
-root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import capslib
+
+root = capslib.ROOT
 os.chdir(root)
 
-sent = set()
-for f in glob.glob("CLI/*.swift"):
-    src = open(f).read()
-    sent |= set(re.findall(r'method:\s*"([a-z_][a-z0-9_.]*)"', src))
-    sent |= set(re.findall(r'method\s*=\s*"([a-z_][a-z0-9_.]*)"', src))
-sent = {m for m in sent if "." in m}
-
-served = set()
-SERVER_FILES = [
-    "linux/Sources/CmuxAdw/ControlProtocol.swift",
-    "linux/Sources/CmuxAdw/BrowserAutomation.swift",
-    "linux/Sources/CmuxAdw/BrowserSurfaces.swift",
-    "linux/Sources/CmuxAdw/BrowserFind.swift",
-    "linux/Sources/CmuxAdw/PaneSearch.swift",
-    "linux/Sources/CmuxAdw/BrowserWebDriver.swift",
-    "linux/Sources/CmuxAdw/InspectorSurfaces.swift",
-]
-for f in SERVER_FILES:
-    src = open(f).read()
-    # `case "a", "b":` lines list every alias; split them out.
-    for line in re.findall(r'case ("[a-z_][a-z0-9_.", ]*"):', src):
-        served |= set(re.findall(r'"([a-z_][a-z0-9_.]*)"', line))
-    served |= set(re.findall(r'method == "([a-z_][a-z0-9_.]*)"', src))
+sent = capslib.cli_sent()
+served = capslib.linux_served()
 
 missing = sorted(m for m in sent - served if "." in m)
 
@@ -84,9 +65,8 @@ if v1_missing:
 # dispatcher handles. Everything above is informational (macOS-only verbs
 # error honestly); THIS is a hard failure — a stale advertised list lies
 # to agents that introspect capabilities before calling.
-adv_match = re.search(r'"methods": \[(.*?)\]', open("linux/Sources/CmuxAdw/ControlProtocol.swift").read(), re.S)
-advertised = set(re.findall(r'"([a-z_][a-z0-9_.]*)"', adv_match.group(1))) if adv_match else set()
-served_v2 = {m for m in served if "." in m}
+advertised = capslib.linux_advertised()
+served_v2 = served
 unadvertised = sorted(served_v2 - advertised)
 undispatched = sorted(advertised - served_v2)
 drift = False

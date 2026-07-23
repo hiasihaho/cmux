@@ -18,21 +18,30 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # registered is treated as a literal repo-relative directory.
 atlas_dir() {
   case "$1" in
-    wiring) echo "docs/linux-port/wiring" ;;
-    adr)    echo "docs/linux-port/adr" ;;
-    *)      echo "$1" ;;
+    wiring)   echo "docs/linux-port/wiring" ;;
+    adr)      echo "docs/linux-port/adr" ;;
+    features) echo "docs/linux-port/features" ;;
+    *)        echo "$1" ;;
   esac
 }
 
 name="${1:-}"; port="${2:-8199}"
 if [ -z "$name" ]; then
   echo "registered atlases:"
-  echo "  wiring  → docs/linux-port/wiring   (component wiring diagrams)"
-  echo "  adr     → docs/linux-port/adr      (decision records + decision graph)"
+  echo "  wiring    → docs/linux-port/wiring   (component wiring diagrams)"
+  echo "  adr       → docs/linux-port/adr      (decision records + decision graph)"
+  echo "  features  → docs/linux-port/features (feature board, regenerated on serve)"
   echo "usage: atlas-serve.sh <name> [port]"
   exit 0
 fi
 dir="$(atlas_dir "$name")"
+
+# The features board is generated (machine-local daily manifest feeds it,
+# so it's gitignored, not committed — ADR-0011): regenerate on serve so
+# the rendered board always reflects the current checkout + last promote.
+if [ "$name" = "features" ]; then
+  python3 "$ROOT/linux/scripts/features-board.py"
+fi
 [ -f "$ROOT/$dir/index.json" ] || { echo "atlas-serve: $dir has no index.json" >&2; exit 1; }
 
 URL="http://127.0.0.1:$port/docs/linux-port/atlas/viewer.html?atlas=/$dir"

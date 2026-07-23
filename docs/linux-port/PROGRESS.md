@@ -3481,3 +3481,41 @@ its CLI never sends (mobile.*, terminal.*, remote.tmux.*), and its CLI
 sends families its own capabilities array omits (canvas.*,
 workspace.todo/status.*, remotes.*, handled in ControlCommandCoordinator
 — macOS's advertised list has drifted too; upstreaming candidate).
+
+### Features board: measured status over authored pages (2026-07-24)
+
+ADR-0011 (Accepted, implemented same day) + ADR-0012 (Proposed: pin
+dashboards to the sidebar). The features atlas
+(`docs/linux-port/features/`, `atlas-serve.sh features`) gives the
+feature-level overview the verb/command ledgers don't: per-feature pages
+authored with purpose/usage/implementation, status columns *measured* —
+the anti-drift lesson from the same-day capabilities incident.
+
+Pieces:
+- `linux/scripts/capslib.py` — the capability parsing (CLI-sent,
+  Linux-served/advertised, mac advertised/served) extracted from
+  `capabilities-sweep.py` so the sweep and the board measure identically.
+  Found a mac-column subtlety on the way: the shared CLI carries
+  Linux-added verbs (`pane.zoom`, `session.save`), so "CLI sends it" must
+  not count as "macOS has it"; and macOS dispatches `canvas.*` without
+  string case labels anywhere in `Sources/` (name-mapped dynamically), so
+  those read as absent — documented limitation in `mac_methods()`.
+- `linux/scripts/features-board.py` — emits `_board.md` + `index.json`
+  from the pages' front matter (`verbs:` mappings → per-verb mac/dev/
+  daily table; ⚠ when an authored claim contradicts measurement).
+  `--check` fails on verb typos. Generated files are **gitignored** (the
+  daily column reads machine-local state); `atlas-serve.sh features`
+  regenerates on serve, so there is no staleness class at all.
+- `promote.sh` stamps `promote-<slot>.json` (state dir) after starting
+  the instance: date, repo SHA, live capabilities snapshot — the board's
+  *daily* column. Verified against dev2 (`--slot dev2 --no-build`:
+  manifest with 131 methods stamped, instance stopped after).
+- Seed pages calibrate granularity (one FEATURES.md bullet ≈ one page):
+  browser tabs (full parity), pane zoom (mac 🟡 — command exists, verb is
+  ours), session persistence (mac verb `session.restore_previous` vs our
+  `session.save`), workspace groups (mac-only, 0/17 verbs).
+
+Daily column reads "?" until the next real promote stamps
+`promote-daily.json` — correct by design (the manifest records
+promote-time truth; hand-stamping now would claim daily runs HEAD, which
+it doesn't).
