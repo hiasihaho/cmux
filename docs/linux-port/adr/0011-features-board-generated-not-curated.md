@@ -69,6 +69,15 @@ know.
 
 ## Consequences
 
+- **Uniqueness is verified, not asserted (2026-07-24).** A `mac: none`
+  page (a port-unique feature) is cross-checked against the measured
+  macOS-served set: ★ when its mapped verbs are genuinely absent,
+  ★ᵃ when it has no verb to measure (authored judgment, flagged as
+  such), and **⚠ false** when macOS actually serves the verbs — the
+  same measured-over-asserted discipline applied to the 'unique to
+  cmux-adw' claim, with a dedicated summary section on the board.
+
+
 - Authored pages can still rot — but the rot surface shrinks to prose
   and feature-level judgments; every mapping is machine-checked, and the
   ⚠ mechanism turns contradictions into board content instead of silent

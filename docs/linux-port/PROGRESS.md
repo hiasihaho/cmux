@@ -3549,3 +3549,23 @@ state) and D (workflow engine) stay open/paced per the ADR.
 Fixed a `set -e` gotcha found in testing: `[ cond ] && x=…` at statement
 level aborts a function when the test is false (it silently emptied the
 no-filter path, swallowed inside `$(_ids …)`); an `if` is the safe form.
+
+### Features board: uniqueness verified + first unique pages (2026-07-24)
+
+Extended the features-board generator (ADR-0011) to answer "is this
+*really* a cmux-adw-unique feature?" — not by trusting the authored `mac:`
+glyph but by MEASURING it. A `mac: none` page now gets a Unique column:
+★ (verb-verified — its mapped verbs are absent from the macOS
+advertised∪dispatched set), ★ᵃ (authored — no verb to measure, judgment
+flagged as such), or **⚠ false** (macOS actually serves the verbs — the
+claim is rejected). Plus a "Unique to cmux-adw" summary section. Proved
+the ⚠ guard fires on a deliberately-bogus page.
+
+Authored the first three genuinely-unique pages, each verified against
+Sources/ before claiming uniqueness: browser.identify (★ verb-verified —
+confirmed not in the macOS-served set), the Ghostty/VTE backend chooser
+(★ᵃ — macOS is Ghostty-only, no VTE in Sources), and ephemeral browser
+panes (★ᵃ — macOS's only `ephemeral` hits are an unrelated URLSession
+config + a tmux mirror, not leave-no-trace panes). The existing four
+pages are parity features (blank Unique column). `--check` green, 7
+pages. Board files stay gitignored (generated); pages + generator commit.

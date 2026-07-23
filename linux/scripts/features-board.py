@@ -108,18 +108,39 @@ def main():
         f"- **daily** = the running daily instance ({daily_src})",
         "- mac/linux glyphs are the pages' authored judgment; ⚠ = it",
         "  contradicts the per-verb measurement — trust the verbs, fix the page",
+        "- **Unique** column: ★ = a feature the port has that macOS does NOT",
+        "  (`mac: none`). ★ verb-verified (mapped verbs absent from macOS),",
+        "  ★ᵃ authored-only (no verb to measure — rests on the page's judgment),",
+        "  ⚠ = claims unique but macOS serves the mapped verbs — a FALSE claim.",
         "",
-        "| Feature | Area | macOS | Linux | Verbs (dev) | Verbs (daily) |",
-        "|---|---|---|---|---|---|",
+        "| Feature | Area | macOS | Unique | Linux | Verbs (dev) | Verbs (daily) |",
+        "|---|---|---|---|---|---|---|",
     ]
+    uniques = []   # (fn, fm, note) for the "Unique to cmux-adw" summary
     for fn, fm in pages:
         verbs = fm["verbs"]
         dev_n, total = verb_marks(verbs, served)
+        mac_n, _ = verb_marks(verbs, mac)
         warn = ""
         if fm.get("linux") == "full" and dev_n < total:
             warn = " ⚠"
         if fm.get("linux") == "none" and dev_n == total and total:
             warn = " ⚠"
+        # Uniqueness — VERIFIED, not just asserted: a `mac: none` page is a
+        # port-unique feature, but the claim is only trustworthy if the
+        # measurement agrees. When it has mapped verbs, they must be ABSENT
+        # from macOS; if macOS actually serves them, the uniqueness is false.
+        uniq_cell = ""
+        if fm.get("mac") == "none":
+            if not verbs:
+                uniq_cell = "★ᵃ"
+                uniques.append((fn, fm, "authored — no verb to measure"))
+            elif mac_n == 0:
+                uniq_cell = "★"
+                uniques.append((fn, fm, "verb-verified — macOS serves none of its verbs"))
+            else:
+                uniq_cell = "⚠ false"
+                uniques.append((fn, fm, f"CLAIM SUSPECT — macOS serves {mac_n}/{total} of its verbs"))
         if daily is not None and verbs:
             daily_n, _ = verb_marks(verbs, daily)
             daily_cell = f"{daily_n}/{total}"
@@ -131,8 +152,22 @@ def main():
         lines.append(
             f"| [{fm['title']}]({fn}) | {fm.get('area', '')} "
             f"| {GLYPH.get(fm.get('mac', ''), '?')} "
+            f"| {uniq_cell} "
             f"| {GLYPH.get(fm.get('linux', ''), '?')}{warn} "
             f"| {dev_cell} | {daily_cell} |")
+
+    # ---- Unique to cmux-adw (the port's own additions) ------------------
+    lines += ["", "## Unique to cmux-adw (not in macOS)", ""]
+    if uniques:
+        lines.append("Features the Linux port has that macOS cmux does not — "
+                     "`mac: none`, with the uniqueness cross-checked against the "
+                     "measured macOS verb set where verbs exist:")
+        lines.append("")
+        for fn, fm, note in uniques:
+            lines.append(f"- **[{fm['title']}]({fn})** ({fm.get('area','')}) — {note}")
+    else:
+        lines.append("*No `mac: none` feature pages yet — author one for each "
+                     "genuinely port-unique feature so this list is real.*")
 
     lines += ["", "## Verb detail", ""]
     for fn, fm in pages:
