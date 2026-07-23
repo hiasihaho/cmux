@@ -100,3 +100,29 @@ collision → teardown left nothing behind.
 **One writer per worktree** stays the rule: the orchestrator does not
 edit a teammate's worktree while it works. New GAPS a teammate discovers
 go in its report, then into GAPS / the survey ledger at integration.
+
+## Real-run refinements (discovered scoping the first batch, 2026-07-23)
+
+Two things the synthetic testbed couldn't show — both reshape a real
+batch (the "unproven" risk ADR-0001 named):
+
+1. **Shared registration/tracker files are integrator-owned, not
+   teammate-owned.** Two code packages would both touch `run-all.sh` (test
+   registration) and the shared trackers (`PARITY.md`, `GAPS.md`,
+   `PROGRESS.md`) — a guaranteed overlap. Rule: teammates touch only their
+   subsystem files **plus their own NEW test file** (a fresh path never
+   conflicts); the integrator does the `run-all.sh` registration and the
+   tracker updates at merge time, from each report. This keeps teammate
+   scopes genuinely disjoint. Verb-dispatch files (`ControlProtocol.swift`)
+   can be in *one* package's exclusive scope when only that package needs
+   them.
+
+2. **Build cost is asymmetric — it decides batch shape.** A worktree's
+   `linux/.build` and the ghostty shim don't exist fresh, so a
+   *code-changing* package pays a full submodule-init + ghostty-build +
+   `swift build` per worktree (minutes). A *tests/CLI-only* package
+   (e.g. teams-siblings) needs **no** build — it drives the already-built
+   main binary via `scratch.sh`. So the cheap way to parallelize is
+   **one code package + several tests/research/CLI packages**, not N code
+   packages each rebuilding the world. A first real batch should pair one
+   code package with a build-free one.
