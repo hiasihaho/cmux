@@ -3453,3 +3453,31 @@ worktree lacked a `linux/` dir (synthetic testbed) — now guarded.
 Norm recorded in PARALLEL-DOGFOOD.md: `review <id>` a surprising report's
 pane before acting. ADR-0009 → Accepted; the decision graph regenerated
 (0009 now green).
+
+### system.capabilities drift fixed + sweep self-check (2026-07-24)
+
+A parity-dashboard question ("do we know exactly which socket methods
+are missing?") surfaced that the answer was yes — `capabilities-sweep.py`
+lists all 127 by name — but also that the port's own advertised
+`system.capabilities` list had drifted 16 methods behind the dispatcher:
+`browser.tab.*` (4), `browser.profiles.*` (5), `browser.find_in_page`,
+`browser.highlight`, `browser.inspect`, `search.panes`, `pane.zoom`,
+`surface.action`, `notification.create_for_caller`. All were dispatched
+fine; they just weren't advertised, so an agent introspecting
+capabilities before calling was under-told. The reverse direction
+(advertised-but-not-dispatched) was clean.
+
+Fix: added the 16 to the `"methods"` array in `ControlProtocol.swift`,
+and gave `capabilities-sweep.py` a hard-failing self-check — it now
+parses the advertised array and diffs it against the dispatched case
+labels in both directions, exiting 1 on any mismatch (the CLI-vs-server
+report above it stays informational). Verified live on a scratch
+instance: 131 methods over the wire, all 16 present.
+
+Trap for the ledger: the two "missing methods" baselines differ.
+The sweep's 127 is CLI-sendable vs Linux-dispatched; diffing macOS's
+*advertised* server list instead gives 134 — macOS advertises methods
+its CLI never sends (mobile.*, terminal.*, remote.tmux.*), and its CLI
+sends families its own capabilities array omits (canvas.*,
+workspace.todo/status.*, remotes.*, handled in ControlCommandCoordinator
+— macOS's advertised list has drifted too; upstreaming candidate).

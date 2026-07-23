@@ -81,6 +81,10 @@ flowchart TB
 
 - **capabilities-sweep.py** — the verb tripwire. Catches the CLI quietly
   changing what it dials (how `cmux notify` and `list-windows` broke).
+  Since 2026-07-24 it also self-checks the server's advertised
+  `system.capabilities` list against the dispatcher (both directions)
+  and exits 1 on drift — the hand-maintained list had gone 16 methods
+  stale, under-telling introspecting agents what the port can do.
 - **macos-surface-survey.py** — the *app* tripwire (new 2026-07-23).
   Extracts macOS's enumerable app surface — the 125-case command
   registry, panel types, settings sections — and diffs it against the

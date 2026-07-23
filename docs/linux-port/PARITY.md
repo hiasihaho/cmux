@@ -20,7 +20,7 @@ measured by diffing the two capability lists, not estimated.
 
 | Method | Status | Notes |
 |---|---|---|
-| system.ping / capabilities / identify | ✅ | capabilities reflects real method list since phase 5b |
+| system.ping / capabilities / identify | ✅ | capabilities matches the dispatcher — guarded since 2026-07-24 by `capabilities-sweep.py`'s self-check (exits 1 on drift), after the hand-maintained list was found 16 methods stale |
 | system.tree | ✅ | one-call topology with active/caller markers (2026-07-22); the CLI's tree renderer works unchanged |
 | window.list | ✅ | single window; stable app-lifetime id |
 | window.create / close / current / focus | ❌ | multi-window is a later phase |

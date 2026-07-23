@@ -13,6 +13,13 @@ printed an error only agents ever saw. A method in this report is not
 necessarily work to do (most are macOS-only features that error
 honestly); the dangerous ones are methods sent by COMMANDS THE PORT
 CLAIMS TO SUPPORT — check new entries against PARITY.md.
+
+Also self-checks the server's ADVERTISED capability list (the hardcoded
+`"methods"` array in system.capabilities) against what the dispatcher
+actually handles, in both directions, and exits 1 on drift. Added
+2026-07-24 after the list was found 16 methods stale (browser.tab.*,
+browser.profiles.*, pane.zoom, …) — agents that introspect capabilities
+were under-told what the port can do.
 """
 import re
 import glob
@@ -73,4 +80,28 @@ if v1_missing:
     for m in v1_missing:
         print(f"  {m}")
 
+# Self-check: the advertised system.capabilities list must match what the
+# dispatcher handles. Everything above is informational (macOS-only verbs
+# error honestly); THIS is a hard failure — a stale advertised list lies
+# to agents that introspect capabilities before calling.
+adv_match = re.search(r'"methods": \[(.*?)\]', open("linux/Sources/CmuxAdw/ControlProtocol.swift").read(), re.S)
+advertised = set(re.findall(r'"([a-z_][a-z0-9_.]*)"', adv_match.group(1))) if adv_match else set()
+served_v2 = {m for m in served if "." in m}
+unadvertised = sorted(served_v2 - advertised)
+undispatched = sorted(advertised - served_v2)
+drift = False
+if unadvertised:
+    drift = True
+    print(f"\n[DRIFT] dispatched but not advertised in system.capabilities ({len(unadvertised)})")
+    for m in unadvertised:
+        print(f"  {m}")
+if undispatched:
+    drift = True
+    print(f"\n[DRIFT] advertised in system.capabilities but not dispatched ({len(undispatched)})")
+    for m in undispatched:
+        print(f"  {m}")
+if drift:
+    print("\nFix the \"methods\" array in ControlProtocol.swift (system.capabilities).")
+    sys.exit(1)
+print("\ncapabilities self-check: advertised list matches dispatcher")
 sys.exit(0)
