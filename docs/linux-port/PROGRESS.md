@@ -3286,3 +3286,24 @@ DevTools-as-pane (0004), focused-ledgers-and-discovery-cadence (0005),
 ghostty-embed-strategy (0006, kept "open review" to demonstrate the log
 tracks not-fully-settled decisions too). Next: run the first real
 parallel-dogfood batch (browser + teams-siblings).
+
+### Build-isolation for parallel code packages — solved (2026-07-23)
+
+The blocker for real parallel code batches: a fresh worktree has no
+ghostty shim and no Swift .build, so a naive code package rebuilds the
+world (minutes) per worktree. Solved by sharing what's identical across
+worktrees on the same commit:
+  - shim: symlink <wt>/ghostty/zig-out → the main checkout's zig-out
+    (no per-worktree zig build);
+  - .build: btrfs REFLINK copy (cp --reflink=auto, copy-on-write) — the
+    worktree's build writes break extent sharing, so main's .build is
+    never touched.
+Measured: seed 0.9s, first incremental build 29s (vs minutes
+from-scratch), worktree binary independent and linking the shared shim
+(ldd → ~/cmux/ghostty/zig-out/lib/libghostty-gtk.so). Baked into
+`pkg-harness.sh add --build`; tests/CLI packages skip it (they drive the
+main binary via scratch.sh). Also fixed the harness base ref: init now
+records the --from repo's current branch (so a real batch forks from
+linux-port, not a stale main). ADR-0001 consequences updated: build
+isolation resolved. Ready for the first real batch when there's time to
+watch it.

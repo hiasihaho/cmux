@@ -117,12 +117,22 @@ batch (the "unproven" risk ADR-0001 named):
    can be in *one* package's exclusive scope when only that package needs
    them.
 
-2. **Build cost is asymmetric — it decides batch shape.** A worktree's
-   `linux/.build` and the ghostty shim don't exist fresh, so a
-   *code-changing* package pays a full submodule-init + ghostty-build +
-   `swift build` per worktree (minutes). A *tests/CLI-only* package
-   (e.g. teams-siblings) needs **no** build — it drives the already-built
-   main binary via `scratch.sh`. So the cheap way to parallelize is
-   **one code package + several tests/research/CLI packages**, not N code
-   packages each rebuilding the world. A first real batch should pair one
-   code package with a build-free one.
+2. **Build cost is asymmetric — but solved.** A worktree's `linux/.build`
+   and the ghostty shim don't exist fresh. A naive code package would pay a
+   full submodule-init + ghostty-build + `swift build` (minutes); a
+   tests/CLI-only package (teams-siblings) needs no build at all (it drives
+   the main binary via `scratch.sh`). The code-package cost is removed by
+   **sharing** what's identical across worktrees on the same commit
+   (`pkg-harness.sh add <id> --build`):
+   - **shim** — symlink `<wt>/ghostty/zig-out` → the main checkout's
+     `zig-out` (no per-worktree zig build).
+   - **`.build`** — a **btrfs reflink** copy (`cp --reflink`, ~1s,
+     copy-on-write): the worktree's build writes break extent sharing, so
+     main's `.build` is never touched, and the first build is
+     **incremental (~30s)** instead of from-scratch.
+
+   Measured 2026-07-23: seed 0.9s, first incremental build 29s, worktree
+   binary independent and linking the shared shim. So code packages *do*
+   parallelize cheaply — the constraint is btrfs (or any reflink/CoW fs)
+   for the instant-safe seed; without it, `--reflink=auto` falls back to a
+   ~2s plain copy, still far cheaper than a full rebuild.

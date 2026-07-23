@@ -50,8 +50,16 @@ Tooling: `linux/scripts/pkg-harness.sh`; protocol + report frame in
 - **Forecloses:** nothing permanently; a package that *needs* to touch
   another's files simply isn't parallel-eligible in the same batch.
 - **Unproven:** the mechanics passed on a synthetic testbed; the first real
-  run (claude-teams teammates on real code) may surface build/test-timing
-  or supervision needs a no-op rehearsal can't.
+  run (claude-teams teammates on real code) may surface supervision needs a
+  no-op rehearsal can't.
+- **Build-isolation: resolved 2026-07-23.** Scoping batch 1 revealed a
+  code package would rebuild the world per worktree. Fixed by sharing what
+  is identical on the same commit — symlink the ghostty shim, btrfs-reflink
+  the `.build` (CoW-safe) — so the first worktree build is incremental
+  (~30s measured), not from-scratch (minutes). Baked into
+  `pkg-harness.sh add --build`. Also learned: shared registration/tracker
+  files (`run-all.sh`, PARITY/GAPS/PROGRESS) are integrator-owned, not
+  teammate-owned. Both in [PARALLEL-DOGFOOD.md](../PARALLEL-DOGFOOD.md).
 
 ## Links
 

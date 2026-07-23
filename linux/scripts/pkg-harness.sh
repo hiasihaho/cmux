@@ -28,12 +28,15 @@ SANDBOX="${CMUX_PKG_SANDBOX:-$HOME/.local/state/cmux/pkg-sandbox}"
 SRC="$SANDBOX/src"
 BARE="$SANDBOX/integration.git"
 PKGDIR="$SANDBOX/.pkg"
-BASE_REF="main"
 
 cmd="${1:-help}"; shift || true
 
 die() { echo "pkg-harness: $*" >&2; exit 1; }
 say() { echo "▸ $*"; }
+# The base branch packages fork from. `init` records it (the --from repo's
+# current branch, so a real batch forks from linux-port, not a stale main);
+# everything else reads it back. Falls back to main for old sandboxes.
+BASE_REF="$(cat "$SANDBOX/.base" 2>/dev/null || echo main)"
 
 # scope paths → normalized dir prefixes (trailing slash) or exact file paths.
 _norm() { sed 's:/*$::' | sed 's:$:/:' ; }   # ensure trailing slash for prefix match
@@ -55,6 +58,12 @@ init)
   from="synthetic"
   [ "${1:-}" = "--from" ] && from="$2"
   rm -rf "$SANDBOX"; mkdir -p "$SANDBOX" "$PKGDIR"
+  # Base = the source repo's current branch (so a real batch forks from
+  # whatever we're working on, e.g. linux-port), or main for the synthetic
+  # testbed. Recorded for add/integrate to read back.
+  if [ "$from" = "synthetic" ]; then BASE_REF="main"
+  else BASE_REF="$(git -C "$from" symbolic-ref --short HEAD 2>/dev/null || echo main)"; fi
+  echo "$BASE_REF" > "$SANDBOX/.base"
   if [ "$from" = "synthetic" ]; then
     # A tiny repo shaped like the port's parallel clusters, so the rehearsal
     # exercises real-looking disjoint scopes without touching real code.
@@ -78,12 +87,33 @@ init)
 
 add)
   id="${1:-}"; shift || true; [ -n "$id" ] || die "add needs an <id>"
-  scope=""
-  [ "${1:-}" = "--scope" ] && { scope="$2"; shift 2; }
+  scope=""; want_build=0
+  while [ $# -gt 0 ]; do case "$1" in
+    --scope) scope="$2"; shift 2;;
+    --build) want_build=1; shift;;    # code package: share shim + seed .build
+    *) die "add: unknown arg $1";;
+  esac; done
   [ -n "$scope" ] || die "add needs --scope \"p1 p2 …\""
   [ -d "$SRC" ] || die "run init first"
   wt="$SANDBOX/wt-$id"; br="pkg-$id"
   ( cd "$SRC"; git worktree add -q "$wt" -b "$br" "$BASE_REF" )
+  if [ "$want_build" = 1 ]; then
+    # Build-isolation (proven 2026-07-23): a code package's worktree needs
+    # the ghostty shim + a Swift .build, but both can be SHARED cheaply so
+    # the first build is incremental (~30s), not from-scratch (minutes):
+    #   - shim: symlink to the main checkout's zig-out (identical on the
+    #     same ghostty commit; no per-worktree zig build).
+    #   - .build: btrfs reflink copy (~1s, copy-on-write — the worktree's
+    #     build writes break extent sharing, so main's .build is untouched).
+    # Only meaningful when --from was the real repo; a synthetic testbed
+    # has neither, so guard on their presence.
+    if [ -d "$ROOT/ghostty/zig-out" ]; then
+      mkdir -p "$wt/ghostty"; ln -sfn "$ROOT/ghostty/zig-out" "$wt/ghostty/zig-out"
+    fi
+    if [ -d "$ROOT/linux/.build" ] && [ ! -e "$wt/linux/.build" ]; then
+      cp -a --reflink=auto "$ROOT/linux/.build" "$wt/linux/.build"
+    fi
+  fi
   mkdir -p "$PKGDIR/$id"
   printf '%s\n' $scope > "$PKGDIR/$id/scope"
   cat > "$PKGDIR/$id/meta" <<EOF
@@ -91,9 +121,10 @@ branch=$br
 worktree=$wt
 instance=pkg-$id
 profile=pkg-$id
+build=$want_build
 status=open
 EOF
-  say "package '$id' → worktree $wt on branch $br  (scope: $scope)"
+  say "package '$id' → worktree $wt on branch $br$([ "$want_build" = 1 ] && echo ' (shim shared + .build seeded)')  (scope: $scope)"
   ;;
 
 check)
