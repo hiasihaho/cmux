@@ -6,10 +6,12 @@
 # it is driving tmux, the calls land on `cmux __tmux-compat` and teammates
 # become native cmux splits.
 #
-# The underlying agent binaries (codex/omc/omx and opencode's oh-my-openagent
-# plugin) are NOT installed here, so this suite CANNOT spawn a real teammate —
-# those assertions are honestly SKIPPED. What it *does* verify is the Linux
-# launcher + shim SETUP path, which is where the port-specific risk lives.
+# omc/omx and opencode's oh-my-openagent plugin are NOT installed here, so this
+# suite CANNOT spawn a real teammate for them — those assertions are honestly
+# SKIPPED. `codex` IS now installed, so codex-teams is driven far enough to prove
+# it launches its Codex app-server (below); a full authenticated split still
+# skips. What the suite verifies is the Linux launcher + shim/app-server SETUP
+# path, which is where the port-specific risk lives.
 #
 # Findings that shaped the suite (each contradicts the naive "every sibling
 # writes ~/.cmuxterm/<name>-bin/tmux then fails at exec" assumption, which only
@@ -27,11 +29,17 @@
 #     code): `exec "${CMUX_OMO_CMUX_BIN:-cmux}" __tmux-compat "$@"`.
 #   * codex-teams writes NO ~/.cmuxterm tmux shim at all; it drives panes
 #     through the Codex app-server + watcher. Its "shim" assertion is therefore
-#     that no such directory appears (ASSERT), plus a documented SKIP.
+#     that no such directory appears (ASSERT). With codex present we also assert
+#     it actually launches `codex app-server --listen ws://127.0.0.1:<port>` and
+#     the loopback port binds — the mechanism reaching the stage a shim can't.
+#     The `codex app-server` child escapes codex-teams' process group and
+#     survives its SIGTERM, so the suite reaps it explicitly by that port.
 #
 # Everything runs against this suite's own isolated instance on a private X
 # display; launcher probes use a hermetic $HOME so the real ~/.cmuxterm is
-# never touched. Safe to run under the full gate.
+# never touched (the codex probe's HOME only symlinks in `codex`, keeping
+# ~/.codex + ~/.cmuxterm isolated and codex unauthenticated). Safe under the
+# full gate: with codex absent the app-server assertion honestly SKIPs.
 #
 #   teams-siblings-smoke.sh [--keep]
 #
@@ -45,7 +53,25 @@ source "$(dirname "$0")/lib.sh"
 WORK="/tmp/cmux-$APP_ID_SUFFIX-work"
 rm -rf "$WORK"; mkdir -p "$WORK"
 FAKEBIN="$WORK/fakebin"; mkdir -p "$FAKEBIN"
-suite_cleanup() { rm -rf "$WORK"; }
+
+# Codex app-servers this suite launched. codex-teams starts
+# `codex app-server --listen ws://127.0.0.1:<port>` as a child that escapes its
+# process group and ignores its SIGTERM, so we reap it explicitly by the loopback
+# port it binds. Guard the process-group kill so we can never target our OWN pgid.
+CODEX_TEAMS_PORTS=""; CODEX_TEAMS_PGIDS=""
+MY_PGID=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')
+codex_teams_reap() {
+    local pgid port pid
+    for pgid in $CODEX_TEAMS_PGIDS; do
+        [ -n "$pgid" ] && [ "$pgid" != "$MY_PGID" ] && kill -TERM -"$pgid" 2>/dev/null
+    done
+    for port in $CODEX_TEAMS_PORTS; do
+        pid=$(ss -ltnpH 2>/dev/null | grep "127.0.0.1:$port " | grep -oE 'pid=[0-9]+' | cut -d= -f2 | head -1)
+        [ -n "$pid" ] && kill "$pid" 2>/dev/null
+        rm -f "/tmp/cmux-codex-teams-$port-app-server.log" "/tmp/cmux-codex-teams-$port-watcher.log" 2>/dev/null
+    done
+}
+suite_cleanup() { codex_teams_reap; rm -rf "$WORK"; }
 
 # Agent binaries are absent here, so the resolver only ever sees system dirs it
 # always appends (/usr/bin, /bin, ...) — none of which hold codex/omc/omx, and
@@ -137,6 +163,53 @@ else
     ok "codex-teams writes no ~/.cmuxterm tmux shim (app-server mechanism)"
 fi
 
+# --------------------- codex present: codex-teams launches the Codex app-server
+# codex is installed now, so codex-teams gets PAST binary resolution into its real
+# mechanism: it spawns `codex app-server --listen ws://127.0.0.1:<port>` and waits
+# on an initialize handshake before starting the root agent. We run it under a
+# $HOME that only symlinks `codex` in (so ~/.codex + ~/.cmuxterm stay isolated and
+# codex is unauthenticated), launched backgrounded with /dev/null stdin (the root
+# codex then EOFs out), watch for the app-server's loopback port to bind, then
+# reap. A real subagent split still needs an authenticated interactive codex —
+# that stays an honest skip below.
+info "codex present: codex-teams launches the Codex app-server on a loopback ws — the stage a tmux shim never reaches"
+CODEX_BIN=$(command -v codex 2>/dev/null || true)
+if [ -z "$CODEX_BIN" ]; then
+    skip "codex-teams launches the Codex app-server" "codex is not installed"
+elif ! command -v setsid >/dev/null 2>&1; then
+    skip "codex-teams launches the Codex app-server" "setsid unavailable to isolate/reap the app-server process group"
+else
+    CXHOME="$WORK/h/cx-present"; mkdir -p "$CXHOME/.local/bin"
+    ln -sf "$CODEX_BIN" "$CXHOME/.local/bin/codex"   # resolver scans $HOME/.local/bin
+    CX_OUT="$WORK/cx-present.out"
+    before_logs=$(ls /tmp/cmux-codex-teams-*-app-server.log 2>/dev/null)
+    setsid env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID -u CMUX_SOCKET -u CMUX_SOCKET_PATH \
+        HOME="$CXHOME" PATH="$CLEAN_PATH" CMUX_SOCKET_PATH="$SOCK" \
+        "$CLI" codex-teams </dev/null >"$CX_OUT" 2>&1 &
+    cx_pid=$!
+    cx_pgid=$(ps -o pgid= -p "$cx_pid" 2>/dev/null | tr -d ' ')
+    [ -n "$cx_pgid" ] && CODEX_TEAMS_PGIDS="$CODEX_TEAMS_PGIDS $cx_pgid"
+    cx_newlog=""
+    for _ in $(seq 1 30); do
+        sleep 0.5
+        for f in $(ls /tmp/cmux-codex-teams-*-app-server.log 2>/dev/null); do
+            printf '%s\n' "$before_logs" | grep -qxF "$f" || { cx_newlog="$f"; break; }
+        done
+        [ -n "$cx_newlog" ] && break
+        grep -qi "not found" "$CX_OUT" 2>/dev/null && break
+    done
+    cx_port=$(printf '%s' "$cx_newlog" | grep -oE '[0-9]+' | head -1)
+    [ -n "$cx_port" ] && CODEX_TEAMS_PORTS="$CODEX_TEAMS_PORTS $cx_port"
+    if [ -n "$cx_port" ] && ss -ltnpH 2>/dev/null | grep -q "127.0.0.1:$cx_port "; then
+        ok "codex-teams launches codex app-server on a loopback ws (127.0.0.1:$cx_port — past binary resolution)"
+    elif grep -qi "not found" "$CX_OUT" 2>/dev/null; then
+        skip "codex-teams launches the Codex app-server" "codex not resolvable in the probe HOME"
+    else
+        skip "codex-teams launches the Codex app-server" "app-server did not bind within timeout (codex may require login); see $CX_OUT"
+    fi
+    codex_teams_reap
+fi
+
 # ---------------------------- the shim, run AS tmux in a pane, resolves via compat
 # The strongest link: take the omc shim the launcher actually wrote, drop it on
 # PATH as `tmux` inside a live pane (whose CMUX_* env is the identity
@@ -171,12 +244,13 @@ else
 fi
 
 # ------------------------------------------------------------- honest skips
-# Spawning a real teammate split needs the agent binaries, which are absent.
-info "skips: spawning a real teammate split needs the agent binaries, which are not installed"
+# A real teammate split needs the agent binary installed AND (for codex) an
+# authenticated, interactive session — beyond what this environment can drive.
+info "skips: a real teammate split needs the agent installed and (for codex) an authenticated interactive session"
 skip "omc spawns a teammate split"         "omc (oh-my-claude-sisyphus) is not installed"
 skip "omx spawns a teammate split"         "omx (oh-my-codex) is not installed"
 skip "omo spawns a teammate split"         "opencode is present but its oh-my-openagent plugin install (bun/npm) is a real side effect; not driven"
-skip "codex-teams spawns a teammate split" "codex is not installed"
+skip "codex-teams spawns a teammate split" "codex is installed and its app-server launches (asserted above), but a real subagent split needs an authenticated, interactive codex session driving a subagent — not exercised"
 skip "omo writes its tmux shim"            "omo installs its plugin via bun/npm before the shim-write; shim form is shared code, verified via omc/omx"
 skip "codex-teams shim redirects to __tmux-compat" "codex-teams has no tmux shim; it drives panes through the app-server watcher"
 
