@@ -1,8 +1,8 @@
 # 0009 — Agent work visibility: structured reporting, pane-review, and name↔pane mapping
 
-- **Status:** Proposed (open — decision deferred)
+- **Status:** Accepted (2026-07-24)
 - **Date:** 2026-07-24
-- **Deciders:** hias + Claude (open for discussion)
+- **Deciders:** hias + Claude
 
 ## Context
 
@@ -35,25 +35,42 @@ agent's pane**, not from the report. Two frictions compound it:
 
 ## Decision
 
-**OPEN.** Current lean: **C (both)**. The **name↔pane mapping is the
-load-bearing piece** — either a harness-maintained `name → surface_ref`
-registry recorded at spawn, or making cmux teammate **pane titles = the
-agent's name** (a cmux-level label change), or both. With the mapping,
-pane-review becomes `read the pane named X`; without it, B stays manual.
+**Accepted: C (both), implemented 2026-07-24.**
+
+1. **Richer report template** — `pkg-report-template.md` gains required
+   decision-carrying fields: findings, product bugs discovered, harness
+   friction, honest limitations/skips, escalations (in addition to the
+   surface-identity line below).
+2. **Agent-populated name↔surface registry** — the load-bearing piece,
+   built the reliable way. *Not* a pane-title change: Claude Code
+   continuously overwrites the pane title with its own activity, so an
+   OSC/harness-set title won't stick. Instead, **each agent records its
+   own `$CMUX_SURFACE_ID` from inside its pane** (authoritative — the
+   pane knows its own id) into `.pkg/<id>/surface` as its first action.
+   The harness reads it back: `pkg-harness pane <id>` → the surface ref,
+   `panes` → all mappings, `review <id>` → reads that agent's screen.
+3. **The norm** — "review the pane before acting on a *surprising*
+   report" (`pkg-harness review <id>`), recorded in PARALLEL-DOGFOOD.md.
+
+The agent-writes-its-own-id approach sidesteps the cross-layer title
+problem and is dead simple (one `echo` in the task prompt + a file read
+in the harness).
 
 ## Consequences
 
-- Richer reports risk being *ignored if too long* — keep the frame tight,
-  add fields that carry decisions (bugs/escalations/friction), not prose.
-- Pane-review needs the mapping **and** a norm; the mapping alone is inert
-  without the habit of using it, and the habit is painful without the
-  mapping.
-- Pane-title = agent-name is a small cmux change with broad payoff (every
-  human glance at the split tree becomes legible), and it doubles as part
-  of 0008's agent↔runtime registry.
-- This is self-reinforcing: better visibility is *how the harness keeps
-  improving from its own users' friction* — the loop that produced the
-  lifecycle fix and the `.build` symlink.
+- Richer reports risk being *ignored if too long* — the template keeps a
+  tight frame and adds only decision-carrying fields (bugs/escalations/
+  friction), not prose.
+- The registry is only as populated as agents are diligent about the
+  `echo`; the task prompt makes it step 1, and a missing file degrades
+  to the old manual tree-walk, never breaks.
+- Reliable *because the pane reports its own identity* — no guessing by
+  spawn order or reading screens to infer who's who (the batch-1 friction).
+- Shares its shape with ADR-0008's agent↔runtime registry — the same
+  `.pkg/<id>/` record can carry the agent's scratch tags for reaping.
+- Self-reinforcing: better visibility is *how the harness keeps improving
+  from its own users' friction* — this very ADR came from the human
+  reading an agent's pane and finding the lifecycle bug.
 
 ## Links
 

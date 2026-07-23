@@ -90,12 +90,32 @@ collision → teardown left nothing behind.
 2. `init --from ~/cmux`, then `add` each package with its real file scope;
    `check`.
 3. Spawn one claude-teams teammate per package (native split), task =
-   scoped: "your worktree is <path>; touch only <scope>; test via
-   `scratch.sh <id>`; research via `browser --profile <id>`; fill
-   `pkg-report-template.md`; follow the same-commit docs rule."
+   scoped: "**Step 1: record your pane —
+   `echo \"$CMUX_SURFACE_ID $CMUX_WORKSPACE_ID\" > <sandbox>/.pkg/<id>/surface`**
+   (so the orchestrator can find you by name); your worktree is <path>;
+   touch only <scope>; test via `scratch.sh <id>`; research via
+   `browser --profile <id>`; fill `pkg-report-template.md` (every field —
+   Findings/Product-bugs/Harness-friction carry the work that reports
+   otherwise lose); follow the same-commit docs rule."
 4. `collect` → review reports + branch diffs → `integrate` clean ones →
    the human promotes the integrated base to origin when satisfied
    (nothing reaches origin automatically).
+
+**Visibility (ADR-0009).** Reports lose what the pane holds — the best
+finds of batches 1–2 came from reading an agent's pane, not its report.
+So each agent records its own `$CMUX_SURFACE_ID` (step 1 above), and the
+harness reads it back:
+
+```sh
+pkg-harness panes            # the name → pane registry
+pkg-harness review <id>      # read that agent's live screen by name
+```
+
+The **norm**: when a report is *surprising* (a bug, a blocker, a premise
+correction), `review <id>` the pane before acting — the full context is
+there, the report is a summary. And keep the report frame tight but
+complete; a finding that isn't in a field is invisible to the main
+session.
 
 **One writer per worktree** stays the rule: the orchestrator does not
 edit a teammate's worktree while it works. New GAPS a teammate discovers

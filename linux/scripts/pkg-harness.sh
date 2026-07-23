@@ -119,20 +119,22 @@ add)
     #     build writes break extent sharing, so main's .build is untouched).
     # Only meaningful when --from was the real repo; a synthetic testbed
     # has neither, so guard on their presence.
-    if [ -d "$ROOT/ghostty/zig-out" ]; then
-      mkdir -p "$wt/ghostty"; ln -sfn "$ROOT/ghostty/zig-out" "$wt/ghostty/zig-out"
+    if [ -d "$ROOT/ghostty/zig-out" ] && [ -d "$wt/ghostty" -o ! -e "$wt/ghostty" ]; then
+      mkdir -p "$wt/ghostty"; ln -sfn "$ROOT/ghostty/zig-out" "$wt/ghostty/zig-out" || true
     fi
-    if [ -d "$ROOT/linux/.build" ] && [ ! -e "$wt/linux/.build" ]; then
-      cp -a --reflink=auto "$ROOT/linux/.build" "$wt/linux/.build"
+    if [ -d "$wt/linux" ] && [ -d "$ROOT/linux/.build" ] && [ ! -e "$wt/linux/.build" ]; then
+      cp -a --reflink=auto "$ROOT/linux/.build" "$wt/linux/.build" || true
     fi
   else
     # Build-free (tests/CLI) package: it never compiles, but lib.sh resolves
     # the CLI from the worktree's linux/.build, so a bare worktree left the
     # agent hand-symlinking it every time (batch-2 harness-friction note).
     # A symlink to the main build is right here — a tests-only package tests
-    # the already-built main binary and never writes .build.
-    if [ -d "$ROOT/linux/.build" ] && [ ! -e "$wt/linux/.build" ]; then
-      ln -sfn "$ROOT/linux/.build" "$wt/linux/.build"
+    # the already-built main binary and never writes .build. Guard on the
+    # worktree actually having a linux/ dir (a synthetic testbed does not),
+    # or a failed ln aborts add under `set -e`.
+    if [ -d "$wt/linux" ] && [ -d "$ROOT/linux/.build" ] && [ ! -e "$wt/linux/.build" ]; then
+      ln -sfn "$ROOT/linux/.build" "$wt/linux/.build" || true
     fi
   fi
   mkdir -p "$PKGDIR/$id"
@@ -191,8 +193,41 @@ EOF
 list)
   for id in $(ls "$PKGDIR" 2>/dev/null || true); do
     . "$PKGDIR/$id/meta"
-    printf "  %-14s %-10s %s  scope=[%s]\n" "$id" "$status" "$branch" "$(tr '\n' ' ' < "$PKGDIR/$id/scope")"
+    surf=$(cat "$PKGDIR/$id/surface" 2>/dev/null | awk '{print $1}')
+    printf "  %-14s %-10s %s  pane=%s  scope=[%s]\n" "$id" "$status" "$branch" \
+      "${surf:-?}" "$(tr '\n' ' ' < "$PKGDIR/$id/scope")"
   done
+  ;;
+
+# --- ADR-0009: agent work visibility -----------------------------------
+# Each agent records its own $CMUX_SURFACE_ID (from inside its pane, so it
+# is authoritative) into .pkg/<id>/surface as step 1 of its task. These
+# read it back so the orchestrator can find and review the right agent by
+# name instead of walking the tree and guessing.
+pane)
+  id="${1:-}"; [ -n "$id" ] || die "pane needs an <id>"
+  surf=$(cat "$PKGDIR/$id/surface" 2>/dev/null | awk '{print $1}')
+  [ -n "$surf" ] || die "no surface recorded for '$id' (did the agent run the step-1 echo?)"
+  echo "$surf"
+  ;;
+
+panes)
+  echo "  agent → pane (from each agent's recorded \$CMUX_SURFACE_ID):"
+  for id in $(ls "$PKGDIR" 2>/dev/null || true); do
+    surf=$(cat "$PKGDIR/$id/surface" 2>/dev/null | awk '{print $1}')
+    printf "    %-16s %s\n" "$id" "${surf:-<not recorded>}"
+  done
+  ;;
+
+review)
+  # Read a live agent's pane by name — the pull channel. Uses the daily
+  # socket (the agent runs as a pane of the human's instance).
+  id="${1:-}"; [ -n "$id" ] || die "review needs an <id>"
+  surf=$(cat "$PKGDIR/$id/surface" 2>/dev/null | awk '{print $1}')
+  [ -n "$surf" ] || die "no surface recorded for '$id' — cannot review (fall back to 'cmux tree')"
+  echo "── agent '$id' pane ($surf) ─────────────────────────"
+  env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID CMUX_QUIET=1 \
+    "$ROOT/linux/.build/debug/cmux" read-screen --surface "$surf" 2>&1 | tail -"${2:-40}"
   ;;
 
 collect)

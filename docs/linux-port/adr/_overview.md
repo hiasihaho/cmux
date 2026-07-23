@@ -12,7 +12,7 @@ flowchart TD
     n0006["0006<br/>Ghostty embedded via a realize-gated GTK shim<br/><i>accepted</i>"]
     n0007["0007<br/>Where the parallel-agent harness lives: scri…<br/><i>proposed</i>"]
     n0008["0008<br/>Agent runtime lifecycle: what dismissal/deat…<br/><i>proposed</i>"]
-    n0009["0009<br/>Agent work visibility: structured reporting,…<br/><i>proposed</i>"]
+    n0009["0009<br/>Agent work visibility: structured reporting,…<br/><i>accepted</i>"]
     n0010["0010<br/>Visible isolated displays for agents (Xvfb →…<br/><i>proposed</i>"]
     n0001 --- n0007
     n0002 --- n0004
@@ -30,7 +30,7 @@ flowchart TD
     style n0006 fill:#2ea04322,stroke:#2ea043
     style n0007 fill:#d2992222,stroke:#d29922
     style n0008 fill:#d2992222,stroke:#d29922
-    style n0009 fill:#d2992222,stroke:#d29922
+    style n0009 fill:#2ea04322,stroke:#2ea043
     style n0010 fill:#d2992222,stroke:#d29922
 ```
 
@@ -44,7 +44,7 @@ flowchart TD
 | [0006](0006-ghostty-embed-strategy.md) | Ghostty embedded via a realize-gated GTK shim | accepted |
 | [0007](0007-harness-layer-and-extensibility.md) | Where the parallel-agent harness lives: scripts, skill, command, or plugin | proposed |
 | [0008](0008-agent-runtime-lifecycle.md) | Agent runtime lifecycle: what dismissal/death does to an agent's surfaces | proposed |
-| [0009](0009-agent-work-visibility.md) | Agent work visibility: structured reporting, pane-review, and name↔pane mapping | proposed |
+| [0009](0009-agent-work-visibility.md) | Agent work visibility: structured reporting, pane-review, and name↔pane mapping | accepted |
 | [0010](0010-visible-isolated-displays-for-agents.md) | Visible isolated displays for agents (Xvfb → a cmux pane) | proposed |
 
 Legend: 🟩 accepted · 🟨 proposed · 🟥 rejected · ⬜ superseded. Full record behind each node — pick it from the sidebar.

@@ -43,13 +43,15 @@ thing we later abandoned.
 | [0006](0006-ghostty-embed-strategy.md) | Ghostty embedded via a realize-gated GTK shim | Accepted (open review) |
 | [0007](0007-harness-layer-and-extensibility.md) | Where the parallel-agent harness lives: scripts / skill / command / plugin | **Proposed** |
 | [0008](0008-agent-runtime-lifecycle.md) | Agent runtime lifecycle: what dismissal/death does to an agent's surfaces | **Proposed** |
-| [0009](0009-agent-work-visibility.md) | Agent work visibility: structured reporting, pane-review, name↔pane mapping | **Proposed** |
+| [0009](0009-agent-work-visibility.md) | Agent work visibility: structured reporting, pane-review, name↔pane mapping | Accepted |
 | [0010](0010-visible-isolated-displays-for-agents.md) | Visible isolated displays for agents (Xvfb → a cmux pane) | **Proposed** |
 
-The 0007–0010 cluster (Proposed 2026-07-24) came out of running batches
-1–2: open architectural questions about how the parallel-agent harness
-should be housed, how agent runtime is cleaned up, how agent work reaches
-the main session, and whether agents' isolated displays can be made
-visible. They interlock (0008/0009 share an agent↔surface registry;
-0009/0010 share the "watch agent X" story) — decide as a set, not in
-isolation.
+The 0007–0010 cluster came out of running batches 1–2: architectural
+questions about how the parallel-agent harness should be housed, how
+agent runtime is cleaned up, how agent work reaches the main session, and
+whether agents' isolated displays can be made visible. **0009 is Accepted
+and implemented (2026-07-24)** — richer report template + an
+agent-populated name↔pane registry (`pkg-harness panes/pane/review`).
+0007, 0008, 0010 remain **Proposed**. They interlock (0008 reuses 0009's
+agent↔surface registry; 0010 builds the "watch agent X" story on top of
+0009's name mapping), so decide the rest with 0009's shape in mind.

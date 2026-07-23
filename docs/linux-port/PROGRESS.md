@@ -3431,3 +3431,25 @@ hand-kept discipline as the dashboard + surface survey). An atlas is now
 "a directory + index.json"; adding a third is trivial. Ties to ADR-0007
 (this IS the harness generalizing into reusable pieces) — worth folding
 into that decision.
+
+### ADR-0009 implemented — agent work visibility (2026-07-24)
+
+Accepted and built. Two parts:
+- **Richer report template** (`pkg-report-template.md`): added
+  decision-carrying required fields — Findings, Product bugs discovered,
+  Honest limitations/skips, Harness friction, Escalations — plus a
+  surface-identity line. The frame stays tight; the point is that a
+  finding not in a field is invisible to the main session.
+- **Agent-populated name↔pane registry** (the reliable approach — NOT a
+  pane-title change, since Claude Code overwrites titles): each agent
+  records its own `$CMUX_SURFACE_ID` from inside its pane into
+  `.pkg/<id>/surface` as task step 1, and the harness reads it back —
+  `pkg-harness panes` / `pane <id>` / `review <id>` (reads the agent's
+  live screen by name). No more walking the tree and guessing who's who.
+
+Also hardened a latent bug the visibility test surfaced: the batch-2
+`.build`-symlink friction fix could abort `add` under `set -e` when a
+worktree lacked a `linux/` dir (synthetic testbed) — now guarded.
+Norm recorded in PARALLEL-DOGFOOD.md: `review <id>` a surprising report's
+pane before acting. ADR-0009 → Accepted; the decision graph regenerated
+(0009 now green).
