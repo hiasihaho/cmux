@@ -3271,3 +3271,18 @@ Next: run it for real with claude-teams teammates on a disjoint cluster
 (browser / keyboard / teams-siblings / sidebar-ui), integrator reviews,
 human promotes. A `parallel-dogfood` skill can encode the protocol once
 the real run confirms the flow.
+
+### ADR workflow: decisions become trackable + reviewable (2026-07-23)
+
+Decisions were captured but scattered (UX-PARITY's decisions list,
+roadmap/ docs, PROGRESS prose, commit bodies). Added a proper ADR log —
+`docs/linux-port/adr/` — numbered records with a Proposed→Accepted→
+Superseded lifecycle, a template, and an index (adr/README.md). ADRs hold
+the decision + rationale + alternatives; GAPS holds backlog, PROGRESS
+evidence, roadmap detailed design. Seeded with the parallel-dogfood
+harness (0001) plus five backfilled load-bearing decisions:
+interaction-parity-sacred (0002), out-of-band scrollback (0003),
+DevTools-as-pane (0004), focused-ledgers-and-discovery-cadence (0005),
+ghostty-embed-strategy (0006, kept "open review" to demonstrate the log
+tracks not-fully-settled decisions too). Next: run the first real
+parallel-dogfood batch (browser + teams-siblings).

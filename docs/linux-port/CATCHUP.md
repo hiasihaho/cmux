@@ -276,6 +276,11 @@ linux/scripts/dogfood.sh "focus…" [min]      # QA agent cycle (CMUX_SOCKET_PAT
 
 ## Doc map
 
+- **adr/** — Architecture Decision Records: numbered, status-tracked
+  decisions with rationale + alternatives (interaction-parity-sacred,
+  out-of-band scrollback, DevTools-as-pane, focused-ledgers, ghostty
+  embed, parallel-dogfood). Record a *decision* here; start at
+  `adr/README.md`. Proposed → Accepted → Superseded lifecycle.
 - **PARALLEL-DOGFOOD.md** — the harness for running several agents on
   DISJOINT work packages at once (worktree + scratch instance + browser
   profile each), integrated via a local bare repo. Mechanics proven on
