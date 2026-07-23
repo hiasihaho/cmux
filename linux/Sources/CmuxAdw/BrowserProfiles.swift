@@ -22,12 +22,17 @@ enum BrowserProfiles {
         let createdAt: TimeInterval
         let isBuiltInDefault: Bool
 
+        /// The reserved leave-no-trace profile: an in-memory-only session
+        /// resolvable by name but never stored, never listed.
+        var isEphemeral: Bool { id == BrowserProfiles.ephemeralID }
+
         /// URL/socket-safe identifier derived from the name — same rules
         /// as macOS: the built-in default always slugs to "default",
         /// others lowercase, collapse non-alphanumerics to "-", trim,
         /// and fall back to the UUID when nothing is left.
         var slug: String {
             if isBuiltInDefault { return "default" }
+            if isEphemeral { return BrowserProfiles.ephemeralName }
             var out = ""
             var lastDash = true
             for scalar in displayName.lowercased().unicodeScalars {
@@ -63,6 +68,21 @@ enum BrowserProfiles {
     }
 
     static let builtInDefaultID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+
+    /// The reserved "ephemeral" profile: a virtual, leave-no-trace container.
+    /// Unlike stored profiles it is never written to the store nor shown in
+    /// `browser profiles list`; it only exists so a pane opened with
+    /// `--profile ephemeral` is born into a fresh in-memory WebKit session
+    /// that persists no cookies, storage, or cache and dies with the pane.
+    static let ephemeralID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+    static let ephemeralName = "ephemeral"
+
+    /// The synthetic definition returned when resolving the reserved name —
+    /// `createdAt: 0` and `isBuiltInDefault: false`, `slug`/`displayName`
+    /// both "ephemeral" via the `isEphemeral` shortcut.
+    static var ephemeralDefinition: Definition {
+        Definition(id: ephemeralID, displayName: "Ephemeral", createdAt: 0, isBuiltInDefault: false)
+    }
 
     private static var loaded: StoreFile?
 
@@ -116,6 +136,11 @@ enum BrowserProfiles {
     /// never silently pick the wrong container.
     static func resolve(_ query: String) throws -> Definition {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The reserved leave-no-trace profile resolves by name or id even
+        // though it never appears in the store.
+        if trimmed.lowercased() == ephemeralName || UUID(uuidString: trimmed) == ephemeralID {
+            return ephemeralDefinition
+        }
         let profiles = load().profiles
         if let uuid = UUID(uuidString: trimmed),
            let exact = profiles.first(where: { $0.id == uuid }) {
@@ -139,6 +164,7 @@ enum BrowserProfiles {
         case ambiguous(String)
         case duplicateName(String)
         case builtInDefault(String)
+        case reserved(String)
         case inUse(String, Int)
 
         var message: String {
@@ -147,6 +173,7 @@ enum BrowserProfiles {
             case .ambiguous(let q): return "Multiple cmux browser profiles match '\(q)'. Use the profile ID instead."
             case .duplicateName(let n): return "A browser profile named '\(n)' already exists."
             case .builtInDefault(let op): return "The built-in default profile cannot be \(op)."
+            case .reserved(let n): return "'\(n)' is a reserved browser profile name."
             case .inUse(let n, let count): return "Browser profile '\(n)' is in use by \(count) open pane\(count == 1 ? "" : "s")."
             }
         }
@@ -157,6 +184,12 @@ enum BrowserProfiles {
     static func create(named rawName: String) throws -> Definition {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { throw ProfileError.notFound(rawName) }
+        // "ephemeral" is a virtual reserved container; a stored profile that
+        // slugs to it would be unreachable (resolve special-cases the name).
+        let reservedProbe = Definition(id: UUID(), displayName: name, createdAt: 0, isBuiltInDefault: false)
+        guard name.lowercased() != ephemeralName, reservedProbe.slug != ephemeralName else {
+            throw ProfileError.reserved(name)
+        }
         var file = load()
         guard !file.profiles.contains(where: { $0.displayName.lowercased() == name.lowercased() }) else {
             throw ProfileError.duplicateName(name)
@@ -174,6 +207,11 @@ enum BrowserProfiles {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         let profile = try resolve(query)
         guard !profile.isBuiltInDefault else { throw ProfileError.builtInDefault("renamed") }
+        guard !profile.isEphemeral else { throw ProfileError.reserved(profile.displayName) }
+        let renamedProbe = Definition(id: UUID(), displayName: name, createdAt: 0, isBuiltInDefault: false)
+        guard name.lowercased() != ephemeralName, renamedProbe.slug != ephemeralName else {
+            throw ProfileError.reserved(name)
+        }
         var file = load()
         guard !file.profiles.contains(where: {
             $0.id != profile.id && $0.displayName.lowercased() == name.lowercased()
@@ -189,6 +227,7 @@ enum BrowserProfiles {
     static func delete(_ query: String, liveCount: (UUID) -> Int) throws -> Definition {
         let profile = try resolve(query)
         guard !profile.isBuiltInDefault else { throw ProfileError.builtInDefault("deleted") }
+        guard !profile.isEphemeral else { throw ProfileError.reserved(profile.displayName) }
         let inUse = liveCount(profile.id)
         guard inUse == 0 else { throw ProfileError.inUse(profile.displayName, inUse) }
         var file = load()
@@ -206,6 +245,9 @@ enum BrowserProfiles {
     /// meaning cleared. (macOS clears live stores; noted in PARITY.)
     static func clear(_ query: String, liveCount: (UUID) -> Int) throws -> Definition {
         let profile = try resolve(query)
+        // Ephemeral panes hold nothing on disk to clear; there is no
+        // container to reset.
+        guard !profile.isEphemeral else { throw ProfileError.reserved(profile.displayName) }
         let inUse = liveCount(profile.id)
         guard inUse == 0 else { throw ProfileError.inUse(profile.displayName, inUse) }
         sessions.removeValue(forKey: profile.id)
@@ -214,6 +256,9 @@ enum BrowserProfiles {
     }
 
     static func noteUsed(_ id: UUID) {
+        // The ephemeral profile is virtual — it must never become the
+        // remembered "current" profile of the store.
+        guard id != ephemeralID else { return }
         var file = load()
         guard file.lastUsedProfileID != id else { return }
         file.lastUsedProfileID = id
@@ -232,6 +277,13 @@ enum BrowserProfiles {
     /// (the built-in default profile — pre-profile state lives there).
     static func session(for id: UUID) -> OpaquePointer? {
         guard id != builtInDefaultID else { return nil }
+        // Ephemeral: a brand-new in-memory session for every pane. Never
+        // cached — two ephemeral panes must not share a jar, nothing touches
+        // disk, and the data dies when the web view releases the session
+        // (the caller drops our construction ref; see makeWebView).
+        if id == ephemeralID {
+            return webkit_network_session_new_ephemeral()
+        }
         if let cached = sessions[id] { return cached }
         let base = directory(for: id)
         let data = base.appendingPathComponent("data")

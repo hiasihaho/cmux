@@ -67,6 +67,14 @@ enum BrowserSurfaceFactory {
                 )
             }
         }
+        // An ephemeral session is minted fresh per pane (never cached), so it
+        // arrives with a construction ref we own. The web view took its own
+        // ref via the construct-only `network-session` property, so drop ours
+        // — the session then lives and dies with this one pane. Persistent
+        // sessions are cached and intentionally kept alive, so leave them.
+        if profileId == BrowserProfiles.ephemeralID {
+            g_object_unref(UnsafeMutableRawPointer(session))
+        }
         guard let created else { return webkit_web_view_new() }
         return UnsafeMutableRawPointer(created).assumingMemoryBound(to: GtkWidget.self)
     }
@@ -278,7 +286,7 @@ extension ControlCommandHandler {
             case .notFound: code = "not_found"
             case .ambiguous: code = "ambiguous"
             case .duplicateName: code = "already_exists"
-            case .builtInDefault, .inUse: code = "invalid_request"
+            case .builtInDefault, .reserved, .inUse: code = "invalid_request"
             }
             return v2BrowserError(id: id, code: code, message: profileError.message)
         }
