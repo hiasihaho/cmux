@@ -99,9 +99,37 @@ shim resolves *every* list/target/send through it, so its absence
 silently broke the whole read half while splits still worked. Guarded
 now by `linux/tests/tmux-compat-smoke.sh`.
 
-## Sibling launchers
+## Sibling launchers — NOT homogeneous (corrected 2026-07-23, batch 1)
 
-`codex-teams`, `omc`, `omo`, `omx` ride the *same* shim surface with
-their own launcher env quirks — each shim writes to its own
-`~/.cmuxterm/<name>-bin/tmux`. Verified individually only for
-claude-teams so far; the others are a one-scratch-run-each GAPS row.
+The four "sibling" launchers are **not** one uniform shim family. The
+parallel-dogfood `teams-siblings` package (verified against `CLI/cmux.swift`)
+found they differ in *how* they integrate — only three use the tmux shim,
+and they don't even write it the same way:
+
+```mermaid
+flowchart TB
+    subgraph shimfamily["tmux-shim family (write ~/.cmuxterm/&lt;name&gt;-bin/tmux → __tmux-compat)"]
+        omc["omc / omx<br/>resolve the agent binary FIRST,<br/>then write the shim<br/>(binary absent ⇒ NO shim)"]
+        omo["omo<br/>resolves `opencode`, installs the<br/>oh-my-openagent plugin (bun/npm,<br/>a real network side effect), then shim"]
+        claude["claude-teams<br/>writes the shim, then execs claude<br/>(the only 'write shim then exec' one)"]
+    end
+    codex["codex-teams<br/>NO tmux shim — a Codex<br/>app-server + watcher<br/>(ws://127.0.0.1, tracks the surface<br/>codex runs in)"]
+
+    style codex fill:#f8514922,stroke:#f85149
+    style claude fill:#2ea04322,stroke:#2ea043
+```
+
+- **claude-teams** — writes the shim, then execs the agent (verified
+  end-to-end; ✅).
+- **omc / omx** — resolve the agent binary *before* writing the shim, so
+  an absent binary exits early with no shim written. Same `__tmux-compat`
+  substrate once the shim exists.
+- **omo** — resolves `opencode` (not a literal `omo`) and installs its
+  oh-my-openagent plugin (a real bun/npm side effect) *before* the shim.
+- **codex-teams** — writes **no** tmux shim at all; it runs a Codex
+  **app-server + watcher** over a loopback WebSocket and tracks the pane
+  codex runs in that way. A fundamentally different integration.
+
+`teams-siblings-smoke.sh` verifies the launcher/shim setup path (14
+assertions); the real "teammate becomes a split" leg is skipped because
+the agent binaries aren't installed here (see GAPS).

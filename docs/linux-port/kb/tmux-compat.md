@@ -56,17 +56,28 @@ down cleanly. Two server additions were needed beyond this table:
 stands confirmed.
 
 **Implication for the port:** every socket verb the shim needs exists on Linux.
-The launchers (`cmux claude-teams`, `codex-teams`, `omc`, `omo`, `omx`) and
-`__tmux-compat` itself are shared-CLI code that already compiles on Linux —
-what is *unverified* is runtime behavior (shim script writing under
-`~/.cmuxterm/`, auto-layout/equalize behavior, macOS-pathed assumptions).
-A dogfood cycle running `cmux claude-teams` inside the port is the natural
-next probe; it exercises nothing but verbs marked ✅ above.
+`__tmux-compat` itself is shared-CLI code that already compiles on Linux.
 
-Shim environment contract: `TMUX` = fake socket path encoding current cmux
-workspace+pane; `TMUX_PANE` = fake pane id mapped to the current cmux pane;
-`CMUX_SOCKET_PATH` = the real control socket. Shim binary dirs:
-`~/.cmuxterm/{claude-teams,omc,omo,omx}-bin/tmux`.
+**The launchers are NOT homogeneous (corrected 2026-07-23, dogfood batch 1
+against `CLI/cmux.swift`).** Only three use the tmux shim, and differently:
+
+| Launcher | Integration | Shim written? |
+|---|---|---|
+| `claude-teams` | writes shim, then execs `claude` (verified ✅ end-to-end) | yes, before exec |
+| `omc` / `omx` | resolve the agent binary FIRST, then write the shim | yes — but not if the binary is absent (early exit) |
+| `omo` | resolves `opencode`, installs the oh-my-openagent plugin (bun/npm side effect), then shim | yes, after the plugin install |
+| `codex-teams` | **Codex app-server + watcher** over a loopback WebSocket (`CMUX_CODEX_TEAMS_APP_SERVER_URL`); tracks the pane codex runs in | **no tmux shim at all** |
+
+So "they all ride the same shim surface" was wrong for codex-teams — it
+is a different integration entirely. What is still *unverified* is the
+real teammate-becomes-a-split behavior for all four (the agent binaries
+are not installed here; `teams-siblings-smoke.sh` verifies only the
+setup path — see GAPS).
+
+Shim environment contract (for the shim-writing launchers): `TMUX` = fake
+socket path encoding current cmux workspace+pane; `TMUX_PANE` = fake pane
+id mapped to the current cmux pane; `CMUX_SOCKET_PATH` = the real control
+socket. Shim binary dirs: `~/.cmuxterm/{claude-teams,omc,omo,omx}-bin/tmux`.
 
 ## 2. Remote tmux mirroring (`cmux ssh-tmux`, Beta-Features flag)
 
