@@ -3307,3 +3307,36 @@ records the --from repo's current branch (so a real batch forks from
 linux-port, not a stale main). ADR-0001 consequences updated: build
 isolation resolved. Ready for the first real batch when there's time to
 watch it.
+
+### Parallel-dogfood batch 1 — two teammates, real work, integrated (2026-07-23)
+
+First REAL run of the parallel-dogfood harness (ADR-0001): two
+claude-teams teammates as native splits, each on a disjoint package in
+its own worktree, integrated by this session as the integrator.
+
+- **browser (code):** ephemeral "leave-no-trace" browser panes via a
+  reserved virtual profile "ephemeral" — `browser open --profile
+  ephemeral` mints a fresh `webkit_network_session_new_ephemeral()` per
+  pane (no cookies/cache/storage on disk, dies with the pane), with
+  reserved-name guards on create/rename/delete/clear and the
+  construct-only-session ownership handled (g_object_unref the
+  construction ref only for ephemeral, since it's uncached).
+  browser-ephemeral-smoke: 10 passed. browser-profile regression: 14.
+- **teams-siblings (tests):** teams-siblings-smoke verifies the sibling
+  launchers' (codex-teams/omc/omx/omo) shim+env setup on Linux — 14
+  passed, 6 honest skips (agent binaries absent). It empirically
+  corrected the task's premise: omc/omx resolve their binary BEFORE
+  writing the shim (absent ⇒ no shim); codex-teams writes no tmux shim
+  (app-server path). A real finding a no-op rehearsal couldn't produce.
+
+Harness verdict: the isolation held perfectly — both branches
+scope-compliant (each touched only its declared files; browser correctly
+left ControlProtocol.swift untouched though in-scope), ~/cmux untouched
+until deliberate integration, build-isolation (shared shim + reflink
+.build) made the code teammate's builds fast. Integrator did what the
+teammates deliberately left: cherry-picked both branches, registered
+both suites (run-all.sh + suites.tsv: browser-ephemeral 10, teams-siblings
+20-with-skips-waived), updated PARITY/GAPS. Teammate-discovered follow-up
+(no URL-bar affordance for ephemeral) → GAPS Next. Both teammates filed
+proper reports; quality was high enough to merge with light review. The
+parallel-dogfood pattern works on real code.

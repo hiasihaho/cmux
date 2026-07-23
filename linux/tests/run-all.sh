@@ -54,6 +54,8 @@ SUITES=(
     settings-smoke
     ui-commands-smoke
     tmux-compat-smoke
+    browser-ephemeral-smoke
+    teams-siblings-smoke
 )
 
 if [ $# -gt 0 ]; then
