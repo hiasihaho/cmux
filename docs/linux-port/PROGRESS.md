@@ -3519,3 +3519,19 @@ Daily column reads "?" until the next real promote stamps
 `promote-daily.json` — correct by design (the manifest records
 promote-time truth; hand-stamping now would claim daily runs HEAD, which
 it doesn't).
+
+### ADR-0013 Proposed — pane tags & (maybe) attention workflows (2026-07-24)
+
+Captured the human's idea to extend 0009's name↔surface registry to also
+hold tags (address/group/attention by tag), and further out a tag-based
+state machine where panes run tools/skills/prompts on triggers — an
+attention-driven workflow engine. The ADR's job is discipline: it
+separates three levels — (B) tags on the registry (cheap, do when we next
+touch it), (C) pane state (only if useful, and as parity with the
+existing attention pipeline / macOS status lanes, not a new concept),
+(D) a trigger→action engine (do NOT build speculatively; it overlaps the
+Workflow tool, teams, notification hooks, custom-commands — set a
+trigger condition: only when a concrete workflow can't be expressed with
+those). Also records the workspace-groups relationship (a group ≈ a
+coarse UI-level tag; keep separable — groups are macOS parity, this is
+novel). Proposed; the graph regenerated (13 ADRs now).

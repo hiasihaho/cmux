@@ -16,6 +16,7 @@ flowchart TD
     n0010["0010<br/>Visible isolated displays for agents (Xvfb →…<br/><i>proposed</i>"]
     n0011["0011<br/>Features board: measured status, authored de…<br/><i>accepted</i>"]
     n0012["0012<br/>Pinned dashboards in the workspace sidebar<br/><i>proposed</i>"]
+    n0013["0013<br/>Pane tags, and (maybe) attention-driven work…<br/><i>proposed</i>"]
     n0001 --- n0007
     n0002 --- n0004
     n0007 --- n0008
@@ -26,6 +27,8 @@ flowchart TD
     n0010 --- n0009
     n0011 --- n0005
     n0011 --- n0012
+    n0013 --- n0008
+    n0013 --- n0009
     style n0001 fill:#2ea04322,stroke:#2ea043
     style n0002 fill:#2ea04322,stroke:#2ea043
     style n0003 fill:#2ea04322,stroke:#2ea043
@@ -38,6 +41,7 @@ flowchart TD
     style n0010 fill:#d2992222,stroke:#d29922
     style n0011 fill:#2ea04322,stroke:#2ea043
     style n0012 fill:#d2992222,stroke:#d29922
+    style n0013 fill:#d2992222,stroke:#d29922
 ```
 
 | # | Decision | Status |
@@ -54,5 +58,6 @@ flowchart TD
 | [0010](0010-visible-isolated-displays-for-agents.md) | Visible isolated displays for agents (Xvfb → a cmux pane) | proposed |
 | [0011](0011-features-board-generated-not-curated.md) | Features board: measured status, authored descriptions | accepted |
 | [0012](0012-pinned-dashboards-in-sidebar.md) | Pinned dashboards in the workspace sidebar | proposed |
+| [0013](0013-pane-tags-and-attention-workflows.md) | Pane tags, and (maybe) attention-driven workflows over them | proposed |
 
 Legend: 🟩 accepted · 🟨 proposed · 🟥 rejected · ⬜ superseded. Full record behind each node — pick it from the sidebar.
