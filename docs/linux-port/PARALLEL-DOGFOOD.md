@@ -1,0 +1,102 @@
+# Parallel-dogfood harness — many agents, disjoint packages, one clean git
+
+A way to run several agents (claude-teams teammates, or spawned agents)
+on **different** work packages at the same time, safely: each in its own
+git worktree + its own scratch cmux instance + its own browser profile,
+integrated through a local bare repo, without ever touching the human's
+live checkout or origin.
+
+Built and rehearsed 2026-07-23. Status: **mechanics proven on the
+testbed** (`linux/scripts/pkg-harness.sh`); not yet run with real
+teammates on real GAPS packages — that is the next step.
+
+## Why it is safe — one property does the work
+
+**Static scope-disjointness.** Every package declares the files it may
+touch. `pkg-harness.sh check` refuses to dispatch if two scopes overlap,
+so parallel branches merge conflict-free *by construction* — the guard is
+at dispatch time, not merge time. `collect` additionally asserts each
+branch changed only files inside its declared scope. An agent that strays
+is caught mechanically.
+
+```mermaid
+flowchart TB
+    backlog["GAPS / dashboard"] --> decomp["decompose into packages,<br/>each with a FILE SCOPE"]
+    decomp --> check{"scopes pairwise<br/>disjoint?"}
+    check -->|no| fix["merge/split packages<br/>(the guard working)"]
+    fix --> decomp
+    check -->|yes| dispatch["dispatch in parallel"]
+
+    subgraph iso["per package — full isolation"]
+        wt["git worktree<br/>(own branch off base)"]
+        sc["scratch.sh instance<br/>(own socket/display/config)"]
+        pr["browser profile<br/>(own WebKit container)"]
+    end
+    dispatch --> iso
+    iso --> report["fill report template"]
+    report --> collect["collect: reports + diffstat<br/>+ scope compliance"]
+    collect --> integrate["integrate: merge clean<br/>branches via bare repo"]
+
+    style check fill:#d2992222,stroke:#d29922
+    style iso fill:#1f6feb22,stroke:#1f6feb
+```
+
+## The isolation stack (every layer already existed)
+
+| Layer | Primitive | What it isolates |
+|---|---|---|
+| git | `git worktree` + local **bare** integration repo | index, working tree, branch — no shared checkout |
+| runtime | `scratch.sh <tag>` | cmux instance: own app-id, socket, display (:140-:159), hermetic config |
+| research | `browser open --profile <tag>` / `--ephemeral` | cookies, cache, localStorage per agent |
+| results | the report template | structured convergence |
+
+The harness is *orchestration* over primitives we already shipped —
+worktree isolation, the scratch wrapper, browser profiles, claude-teams.
+
+## The tool
+
+```sh
+pkg-harness.sh init [--from <repo>]     # sandbox src + bare integration repo (default: synthetic testbed)
+pkg-harness.sh add <id> --scope "…"     # worktree + branch off base
+pkg-harness.sh check                    # assert scopes disjoint (refuses overlap)
+pkg-harness.sh list | collect           # status · reports + diffstat + scope compliance
+pkg-harness.sh integrate                # merge clean branches into base via the bare repo
+pkg-harness.sh verify-runtime <id> …    # prove per-agent instance + profile isolation
+pkg-harness.sh teardown                 # worktrees + instances + profiles + sandbox
+```
+
+Sandbox root: `$CMUX_PKG_SANDBOX` (default `~/.local/state/cmux/pkg-sandbox`).
+Nothing runs in `~/cmux`'s git.
+
+## Rehearsal result (2026-07-23)
+
+Full dance on the synthetic port-shaped testbed, every step green:
+init → add 3 disjoint packages (browser / keyboard / sidebar) → **check
+passed** (disjoint) → simulate in-scope work → **collect** (all
+scope-compliant) → **integrate** (3 branches merged clean via the bare
+repo) → **negative test**: a 4th package overlapping `sidebar`'s scope
+was **refused by check** (exit 1) → **verify-runtime**: two agents got
+distinct sockets + displays (:140/:141) and distinct profiles, no
+collision → teardown left nothing behind.
+
+## Running it for real (the intended flow with claude-teams)
+
+1. Pick a **disjoint cluster** from the dashboard. Good v1 sets (near-zero
+   file overlap): **browser** (ephemeral/download/viewport), **keyboard**
+   (rebinding + muscle-memory batch), **teams-siblings** (codex/omc smoke,
+   tests only), **sidebar-ui** (notification cards, tab icons). The one
+   hotspot is `CmuxApp.swift` (keyboard + sidebar both reach it) — keep it
+   in one package per batch, or split its concerns first.
+2. `init --from ~/cmux`, then `add` each package with its real file scope;
+   `check`.
+3. Spawn one claude-teams teammate per package (native split), task =
+   scoped: "your worktree is <path>; touch only <scope>; test via
+   `scratch.sh <id>`; research via `browser --profile <id>`; fill
+   `pkg-report-template.md`; follow the same-commit docs rule."
+4. `collect` → review reports + branch diffs → `integrate` clean ones →
+   the human promotes the integrated base to origin when satisfied
+   (nothing reaches origin automatically).
+
+**One writer per worktree** stays the rule: the orchestrator does not
+edit a teammate's worktree while it works. New GAPS a teammate discovers
+go in its report, then into GAPS / the survey ledger at integration.

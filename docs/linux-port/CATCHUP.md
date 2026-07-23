@@ -276,6 +276,12 @@ linux/scripts/dogfood.sh "focus…" [min]      # QA agent cycle (CMUX_SOCKET_PAT
 
 ## Doc map
 
+- **PARALLEL-DOGFOOD.md** — the harness for running several agents on
+  DISJOINT work packages at once (worktree + scratch instance + browser
+  profile each), integrated via a local bare repo. Mechanics proven on
+  the testbed 2026-07-23 (`linux/scripts/pkg-harness.sh`); the intended
+  flow spawns one claude-teams teammate per scoped package. Not yet run
+  on real GAPS packages — that is a next step.
 - **PARITY-DASHBOARD.md** — the board of boards: coverage-by-subsystem
   roll-up (from `macos-surface-survey.py`), the discovery cadence, and
   links to every focused ledger. Start here to see "how much of macOS,

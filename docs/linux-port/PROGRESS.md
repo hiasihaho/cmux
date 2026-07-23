@@ -3238,3 +3238,36 @@ Design stance recorded: keep the focused ledgers (each one update
 trigger), don't merge into one "source of truth" doc (rot). The tools
 are the live truth; the dashboard is the human view; one-shot surveys
 (UX, docs crawl) complement but don't replace the repeatable tripwires.
+
+### Parallel-dogfood harness — testbed proven (2026-07-23)
+
+Designed and rehearsed a harness for running several agents on DISJOINT
+work packages at once, to dogfood the claude-teams feature on real work.
+The realization: every hard primitive already existed this week — git
+worktree isolation, scratch.sh (per-agent cmux instance), browser
+profiles (per-agent WebKit container), claude-teams (teammates as
+splits). The harness is orchestration over them, not new invention.
+
+Safety property: STATIC scope-disjointness. Each package declares the
+files it may touch; `pkg-harness.sh check` refuses to dispatch on
+overlap (guard at dispatch time, not merge time), and `collect` asserts
+each branch changed only in-scope files. Disjoint branches merge
+conflict-free by construction, integrated through a LOCAL BARE repo so
+the human's checkout + origin are never touched until deliberate promote.
+
+Full rehearsal on a synthetic port-shaped testbed, every step green
+(PARALLEL-DOGFOOD.md): 3 disjoint packages init→add→check→simulate→
+collect(scope-compliant)→integrate(clean 3-way merge via bare repo); the
+NEGATIVE case (a 4th package overlapping a scope) was refused by check
+(exit 1); verify-runtime gave two agents distinct sockets+displays
+(:140/:141) + distinct profiles, no collision; teardown left nothing
+behind. Also answers the user's questions directly: worktrees yes (git
+layer), own browser profiles per agent yes (proven), local bare repo yes
+(the integration point + testbed).
+
+Tooling: linux/scripts/pkg-harness.sh (init/add/check/simulate/list/
+collect/integrate/verify-runtime/teardown) + pkg-report-template.md.
+Next: run it for real with claude-teams teammates on a disjoint cluster
+(browser / keyboard / teams-siblings / sidebar-ui), integrator reviews,
+human promotes. A `parallel-dogfood` skill can encode the protocol once
+the real run confirms the flow.
