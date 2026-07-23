@@ -53,6 +53,18 @@ _in_scope() {
   return 1
 }
 
+# Reap ONE package's worktree + reserved profile + manifest entry. A live
+# agent's own ad-hoc scratch instances are the agent's to clean (it made
+# them with its own tags); the harness only owns the worktree it created.
+_reap_one() {
+  local id="$1" worktree branch
+  [ -f "$PKGDIR/$id/meta" ] || { echo "  no such package: $id" >&2; return 1; }
+  . "$PKGDIR/$id/meta"
+  ( cd "$SRC" 2>/dev/null && git worktree remove --force "$worktree" 2>/dev/null ) || true
+  rm -rf "$HOME/.local/share/cmux/profiles/$id" 2>/dev/null || true
+  rm -rf "$PKGDIR/$id"
+}
+
 case "$cmd" in
 init)
   from="synthetic"
@@ -229,15 +241,31 @@ verify-runtime)
                || die "runtime isolation check failed"
   ;;
 
+release)
+  # Per-agent cleanup: run when an agent is DISMISSED (not when its branch
+  # merges). Integration reads the pushed branch, so a merged package's
+  # worktree can — and should — stay until its agent is truly done.
+  id="${1:-}"; [ -n "$id" ] || die "release needs an <id> (the dismissed agent's package)"
+  _reap_one "$id" && say "released '$id' (worktree + profile reaped; branch is safe in the bare repo)"
+  ;;
+
 teardown)
-  for id in $(ls "$PKGDIR" 2>/dev/null || true); do
-    . "$PKGDIR/$id/meta" 2>/dev/null || continue
-    ( cd "$SRC" 2>/dev/null && git worktree remove --force "$worktree" 2>/dev/null ) || true
-    "$ROOT/linux/scripts/scratch.sh" stop "pkgrt-$id" >/dev/null 2>&1 || true
-    rm -rf "$HOME/.local/share/cmux/profiles/$id" 2>/dev/null || true
-  done
+  # Full sandbox reap. THIS IS AGENT-DISMISSAL-TIME, not merge-time: it
+  # removes every worktree, so any still-live agent loses its working dir
+  # (the 2026-07-23 bug). `integrate` never needs the worktrees — the
+  # branches live in the bare repo — so integrate first, keep worktrees for
+  # the agents' lifetime, and teardown only when the whole batch is wound
+  # down. Refuses if packages remain, unless --force.
+  remaining=$(ls "$PKGDIR" 2>/dev/null | wc -l)
+  if [ "$remaining" -gt 0 ] && [ "${1:-}" != "--force" ]; then
+    echo "pkg-harness: $remaining package(s) still registered — their worktrees may belong to LIVE agents:" >&2
+    ls "$PKGDIR" 2>/dev/null | sed 's/^/    /' >&2
+    echo "  Release each dismissed agent with 'pkg-harness release <id>', or force the whole reap with 'pkg-harness teardown --force'." >&2
+    exit 1
+  fi
+  for id in $(ls "$PKGDIR" 2>/dev/null || true); do _reap_one "$id"; done
   rm -rf "$SANDBOX"
-  say "torn down: worktrees, scratch instances, profiles, sandbox"
+  say "torn down: worktrees, profiles, sandbox (agents' own scratch instances are theirs to stop)"
   ;;
 
 *)

@@ -136,3 +136,22 @@ batch (the "unproven" risk ADR-0001 named):
    parallelize cheaply — the constraint is btrfs (or any reflink/CoW fs)
    for the instant-safe seed; without it, `--reflink=auto` falls back to a
    ~2s plain copy, still far cheaper than a full rebuild.
+
+3. **Worktree lifecycle follows the AGENT, not the merge (fixed after
+   batch 1).** The first batch's integrator (me) ran `teardown` right after
+   integrating — and reaped the worktrees out from under still-live agents,
+   so a teammate asked to do more had no working dir. The teammate caught
+   it from the inside. The fix, both conceptual and enforced:
+   - **`integrate` is non-destructive** — it merges the *pushed* branch from
+     the bare repo and never touches a worktree. Safe to run anytime;
+     agents keep working after it.
+   - **`release <id>`** reaps one package's worktree when *that agent is
+     dismissed* — the merge is already safe in the bare repo, so the
+     worktree's only remaining job is to serve the still-live agent.
+   - **`teardown` refuses while packages remain** (run it only when the
+     whole batch is wound down) unless `--force`.
+
+   The mental-model correction: **teammates are persistent collaborators,
+   not fire-and-forget jobs.** They can be re-tasked, answer questions, and
+   spot harness flaws from inside a batch — so the harness lifecycle must
+   track the agent's lifetime, not the moment its branch merges.

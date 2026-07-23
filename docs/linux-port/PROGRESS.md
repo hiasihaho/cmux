@@ -3340,3 +3340,22 @@ both suites (run-all.sh + suites.tsv: browser-ephemeral 10, teams-siblings
 (no URL-bar affordance for ephemeral) → GAPS Next. Both teammates filed
 proper reports; quality was high enough to merge with light review. The
 parallel-dogfood pattern works on real code.
+
+### Harness lifecycle fix — worktrees follow the agent, not the merge (2026-07-24)
+
+Batch 1's teams-siblings teammate caught a bug from the inside: the
+integrator ran `pkg-harness teardown` right after integrating, reaping
+worktrees out from under still-live agents — so a teammate asked to do
+more (the human had just installed `codex` to extend the siblings test)
+had no working dir. Root cause was a mental-model error: teammates were
+treated as fire-and-forget jobs, but they're persistent collaborators
+that can be re-tasked and answer questions.
+
+Fix (pkg-harness.sh): `integrate` is already non-destructive (merges the
+pushed branch from the bare repo — never needs a worktree). Added
+`release <id>` for per-agent cleanup on dismissal, and `teardown` now
+refuses while packages remain (`--force` to override), so you can't reap
+a live agent's worktree by reflex. Documented in PARALLEL-DOGFOOD.md
+(refinement 3) and ADR-0001 consequences. This is the harness improving
+from its own users' friction — exactly the feedback loop a
+findings/friction channel (idea 2) is meant to formalize.

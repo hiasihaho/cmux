@@ -60,6 +60,15 @@ Tooling: `linux/scripts/pkg-harness.sh`; protocol + report frame in
   `pkg-harness.sh add --build`. Also learned: shared registration/tracker
   files (`run-all.sh`, PARITY/GAPS/PROGRESS) are integrator-owned, not
   teammate-owned. Both in [PARALLEL-DOGFOOD.md](../PARALLEL-DOGFOOD.md).
+- **Agent lifecycle ≠ merge lifecycle (learned running batch 1).** The
+  integrator ran `teardown` after integrating and reaped worktrees out
+  from under live agents — a teammate caught it from inside. Corrected:
+  `integrate` is non-destructive (reads the pushed branch), worktrees
+  persist for the agent's lifetime, `release <id>` reaps per-dismissal,
+  `teardown` refuses while packages remain. The real correction is a
+  mental model — teammates are **persistent collaborators, not
+  fire-and-forget jobs**: they can be re-tasked and spot harness flaws
+  from the inside, which is itself a reason the pattern works.
 
 ## Links
 
