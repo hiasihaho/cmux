@@ -1242,7 +1242,6 @@ struct ControlCommandHandler {
         guard let raw = params["surface_id"] as? String,
               let surfaceId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw),
               let tab = tabs.wrappedValue.first(where: { $0.contains(surfaceId: surfaceId) }),
-              let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id }),
               let pane = tab.panes.first(where: { p in p.surfaces.contains { $0.surfaceId == surfaceId } })
         else {
             return v2Error(id: id, code: "not_found", message: "Surface not found")
@@ -1250,17 +1249,28 @@ struct ControlCommandHandler {
         guard let position = resolveTabPosition(params: params, in: pane, excluding: surfaceId) else {
             return v2Error(id: id, code: "invalid_params", message: "reorder requires index, before, or after")
         }
-        guard let layout = tabs.wrappedValue[index].layout
-            .reorderingTab(surfaceId: surfaceId, to: position) else {
+        guard reorderSurfaceTab(tabId: tab.id, surfaceId: surfaceId, to: position) else {
             return v2Error(id: id, code: "internal_error", message: "Reorder failed")
         }
-        tabs.wrappedValue[index].layout = layout
         return v2Ok(id: id, result: [
             "workspace_id": tab.id.uuidString,
             "surface_id": surfaceId.uuidString,
             "pane_id": pane.paneId.uuidString,
             "index": position,
         ])
+    }
+
+    /// One mutation path for tab order within a pane: the tab strip's
+    /// drag handler and the `surface.reorder` verb both land here
+    /// (shared-behavior rule — the drag used to be accepted visually and
+    /// silently reverted by the next reconcile).
+    @discardableResult
+    func reorderSurfaceTab(tabId: UUID, surfaceId: UUID, to position: Int) -> Bool {
+        guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }),
+              let layout = tabs.wrappedValue[index].layout
+                  .reorderingTab(surfaceId: surfaceId, to: position) else { return false }
+        tabs.wrappedValue[index].layout = layout
+        return true
     }
 
     /// Moves a surface (tab) into another pane — possibly in another

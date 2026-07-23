@@ -187,6 +187,11 @@ struct CmuxApp: App {
                         },
                         onTabClosed: { tabId, _, surfaceId in
                             controlHandler.closeSurface(tabId: tabId, surfaceId: surfaceId)
+                        },
+                        onTabReordered: { tabId, _, surfaceId, position in
+                            controlHandler.reorderSurfaceTab(
+                                tabId: tabId, surfaceId: surfaceId, to: position
+                            )
                         }
                     )
                 })

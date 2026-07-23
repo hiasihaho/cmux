@@ -168,12 +168,23 @@ start_instance() {
     # "env: '': No such file or directory".
     local extra=()
     [ -n "${INSTANCE_ENV+x}" ] && extra=("${INSTANCE_ENV[@]}")
+    # Hermetic config by default: the instance must never read the
+    # developer's real ~/.config — a user-level ghostty theme typo pops a
+    # modal error dialog over the window and silently eats every
+    # pointer-driven assertion (2026-07-23, found by the tab-drag test's
+    # screenshot probe). Suites that need a config (settings-smoke) set
+    # their own XDG_CONFIG_HOME via INSTANCE_ENV, which wins (later env
+    # beats earlier).
+    local confighome="/tmp/cmux-$APP_ID_SUFFIX-confighome"
+    mkdir -p "$confighome"
     if [ "$USE_XVFB" = "1" ]; then
         env -u WAYLAND_DISPLAY DISPLAY="$XDISPLAY" GDK_BACKEND=x11 \
             CMUX_APP_ID=$APP_ID CMUX_SOCKET_PATH=$SOCK CMUX_SESSION_PATH=$SESSION \
+            XDG_CONFIG_HOME="$confighome" \
             "${extra[@]}" nohup "$APP" >"$LOG" 2>&1 &
     else
         env CMUX_APP_ID=$APP_ID CMUX_SOCKET_PATH=$SOCK CMUX_SESSION_PATH=$SESSION \
+            XDG_CONFIG_HOME="$confighome" \
             "${extra[@]}" nohup "$APP" >"$LOG" 2>&1 &
     fi
     local _

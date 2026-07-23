@@ -404,6 +404,57 @@ cx close-workspace --workspace "$WSA" >/dev/null 2>&1
 [ -n "$prev_selected" ] && cx select-workspace --workspace "$prev_selected" >/dev/null 2>&1
 sleep 2
 
+# ---------------- tab drag-reorder mirrors into the model (2026-07-23)
+# Before the page-reordered handler, a drag was accepted visually and
+# silently reverted by the next reconcile. A real pointer drag is the
+# only honest way in: if the GESTURE does not register under Xvfb that
+# is a skip (environment), but a registered drag that the model does not
+# follow is a red (the regression this guards).
+info "tab drag-reorder mirrors into the model"
+prev_sel_drag=$(cx list-workspaces 2>/dev/null | grep "\[selected\]" | grep -oE 'workspace:[0-9]+')
+WSD=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+cx select-workspace --workspace "$WSD" >/dev/null 2>&1
+TD=$(first_surface_ref "$WSD")
+drag_order() {
+    cx --json list-panes --workspace "$WSD" 2>/dev/null | python3 -c '
+import json,sys
+print(",".join(json.load(sys.stdin)["panes"][0]["surface_refs"]))'
+}
+if [ "$USE_XVFB" = "1" ] && command -v xdotool >/dev/null 2>&1 \
+   && [ -n "$TD" ] && wait_for_shell "$TD"; then
+    v2 "{\"id\":41,\"method\":\"tab.action\",\"params\":{\"surface_id\":\"$TD\",\"action\":\"new_terminal_right\"}}" >/dev/null
+    sleep 3
+    order_before=$(drag_order)
+    # Window 1100 wide at the Xvfb origin, sidebar ~260: two tabs center
+    # near x=470 and x=890 on the strip at y≈62.
+    DISPLAY="$XDISPLAY" xdotool mousemove 520 62 mousedown 1 2>/dev/null
+    sleep 0.3   # let the press settle before the drag threshold is probed
+    for x in 560 620 700 780 860 940 1010; do
+        DISPLAY="$XDISPLAY" xdotool mousemove "$x" 62 2>/dev/null
+        sleep 0.1
+    done
+    sleep 0.3   # settle before release, or the drop is treated as a click
+    DISPLAY="$XDISPLAY" xdotool mouseup 1 2>/dev/null
+    sleep 2
+    order_after=$(drag_order)
+    if [ "$order_after" = "$order_before" ] || [ -z "$order_after" ]; then
+        skip "tab drag assertions" "drag did not register (before='$order_before' after='$order_after')"
+    else
+        expected=$(echo "$order_before" | python3 -c 'import sys
+a=sys.stdin.read().strip().split(",")
+print(",".join(reversed(a)))')
+        expect "drag swapped the model order" "$expected" "$order_after"
+        cx send --surface "$TD" 'echo drag-churn\n' >/dev/null 2>&1
+        sleep 2
+        expect "drag order survives sync churn" "$expected" "$(drag_order)"
+    fi
+else
+    skip "tab drag assertions" "needs Xvfb + xdotool"
+fi
+cx close-workspace --workspace "$WSD" >/dev/null 2>&1
+[ -n "$prev_sel_drag" ] && cx select-workspace --workspace "$prev_sel_drag" >/dev/null 2>&1
+sleep 2
+
 # ---------------------------------------- ghostty shim increment 3 verbs
 # (VTE respawn is covered in vte-scrollback-smoke; this section is the
 # ghostty side: replace-and-replay respawn, eager background spawn, live

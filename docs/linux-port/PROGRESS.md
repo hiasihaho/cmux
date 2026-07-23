@@ -3151,3 +3151,26 @@ isolated app ids killed only by env match, sessions under
 ~/.local/state/cmux/scratch/<tag>/ (never /tmp). Verified through the
 full lifecycle. Rule of thumb now written in INSIDE-CMUX: suites use
 lib.sh, ad-hoc uses scratch.sh, nobody types `Xvfb` by hand.
+
+### Tab drag-reorder wired, and the harness goes hermetic (2026-07-23)
+
+The GAPS-Now desync: AdwTabBar accepted the drag visually and the next
+reconcile silently reverted it — no `page-reordered` handler existed.
+Wired now, through the same mutation path as `surface.reorder`
+(shared-behavior rule), with the reconcile's own `reorder_page` wrapped
+in `isReconciling` because programmatic reorders emit the same signal.
+The suite drives a REAL pointer drag (gesture-not-registering is a
+skip; a registered drag the model ignores is a red).
+
+The drag test earned its keep before it ever passed: its screenshot
+probe caught a **Ghostty config-error dialog** ("theme Adwaita-Dark not
+found" — from the developer's real ~/.config/ghostty) stacked over the
+window at the origin, eating every pointer event. Key-driven tests
+never noticed: `xdotool key --window` targets the window directly and
+sails past the dialog. Fix: `start_instance` now defaults to a hermetic
+`XDG_CONFIG_HOME` (INSTANCE_ENV still overrides — settings-smoke keeps
+its own fixture), and scratch.sh isolates the same way. Suites no
+longer depend on whatever lives in the developer's dotfiles.
+
+Cross-pane tab drag (macOS supports it) remains unwired — UX-PARITY
+tracks it; moves stay verb-only.

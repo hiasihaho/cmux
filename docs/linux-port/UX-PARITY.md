@@ -56,7 +56,7 @@ feature hiding in an unexpected place is a real cost anywhere.
 | Placement | top of every pane, 28pt, always present | top of pane, **autohides at 1 tab** | 🎨 autohide is good Adwaita and saves rows — keep |
 | Tab icons | per-panel-type SF Symbols (terminal.fill, globe, doc.richtext…) + state badges (dirty, loading, audio, notification) | text only | ❌ S–M — icons carry real signal (what's in this tab) |
 | Trailing actions | configurable buttons: new terminal, new browser, split right/down | none | ❌ S (`adw_tab_bar_set_end_action_widget`) |
-| Drag reorder | within pane + cross-pane move | drag possible but **desyncs the model** | ❌ **GAPS Now** (bug) |
+| Drag reorder | within pane + cross-pane move | within-pane drag mirrors into the model (`page-reordered` → the same mutation path as `surface.reorder`); suite drives a REAL pointer drag. Cross-pane drag stays unwired (moves are verb-only) | 🟡 within-pane ✅ 2026-07-23; cross-pane open |
 | Close/reopen | per-tab close; reopen-last-closed ⌘⇧T | close only | ❌ reopen is in the keyboard batch (GAPS) |
 
 ## 4. Terminal panes

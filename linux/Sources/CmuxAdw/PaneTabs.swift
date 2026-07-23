@@ -29,6 +29,12 @@ enum PaneTabs {
     /// Live tab views, keyed by pane. Survives layout rebuilds.
     private static var views: [UUID: PaneTabsView] = [:]
 
+    /// Reverse page→surface lookup for the drag-reorder handler, which
+    /// only has the pane's id and the page pointer.
+    static func surfaceId(paneId: UUID, page: OpaquePointer) -> UUID? {
+        views[paneId]?.surfaceId(forPage: page)
+    }
+
     /// True while pages are being reconciled against the model, so the
     /// close-page handler does not mistake it for a user closing a tab.
     static var isReconciling = false
@@ -37,7 +43,8 @@ enum PaneTabs {
         pane: PaneLeaf,
         tabId: UUID,
         onSelected: @escaping (UUID, UUID, UUID) -> Void,
-        onClosed: @escaping (UUID, UUID, UUID) -> Void
+        onClosed: @escaping (UUID, UUID, UUID) -> Void,
+        onReordered: @escaping (UUID, UUID, UUID, Int) -> Void
     ) -> UnsafeMutablePointer<GtkWidget>? {
         // Fast path: a single-surface pane that has never had tabs stays a
         // bare container — no AdwTabView in the tree at all, so the common
@@ -54,7 +61,8 @@ enum PaneTabs {
             view = existing
         } else {
             guard let created = PaneTabsView(
-                tabId: tabId, paneId: pane.paneId, onSelected: onSelected, onClosed: onClosed
+                tabId: tabId, paneId: pane.paneId,
+                onSelected: onSelected, onClosed: onClosed, onReordered: onReordered
             ) else { return nil }
             views[pane.paneId] = created
             view = created
@@ -171,7 +179,8 @@ final class PaneTabsView {
     init?(
         tabId: UUID, paneId: UUID,
         onSelected: @escaping (UUID, UUID, UUID) -> Void,
-        onClosed: @escaping (UUID, UUID, UUID) -> Void
+        onClosed: @escaping (UUID, UUID, UUID) -> Void,
+        onReordered: @escaping (UUID, UUID, UUID, Int) -> Void
     ) {
         guard let tabViewWidget = adw_tab_view_new(),
               let bar = adw_tab_bar_new(),
@@ -179,7 +188,8 @@ final class PaneTabsView {
         self.tabView = tabViewWidget
         self.wrapper = box
         self.state = PaneTabsState(tabId: tabId, paneId: paneId,
-                                   onSelected: onSelected, onClosed: onClosed)
+                                   onSelected: onSelected, onClosed: onClosed,
+                                   onReordered: onReordered)
 
         adw_tab_bar_set_view(bar, tabViewWidget)
         // Auto-hide: a pane down to one tab looks exactly like a pane that
@@ -210,6 +220,21 @@ final class PaneTabsView {
             Unmanaged.passRetained(state).toOpaque(),
             paneTabsStateDestroy, GConnectFlags(0)
         )
+        // A user drag emits this per position change. Without the handler
+        // the drag was accepted visually and silently reverted by the next
+        // reconcile — the model never heard about it (GAPS Now, found by
+        // the 2026-07-22 UX survey).
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(tabViewWidget), "page-reordered",
+            unsafeBitCast(paneTabsPageReordered, to: GCallback.self),
+            Unmanaged.passRetained(state).toOpaque(),
+            paneTabsStateDestroy, GConnectFlags(0)
+        )
+    }
+
+    /// Reverse page→surface lookup for the reorder handler.
+    func surfaceId(forPage page: OpaquePointer) -> UUID? {
+        pages.first { $0.value == page }?.key
     }
 
     /// Brings the pages in line with the model: drop what is gone, append
@@ -261,7 +286,11 @@ final class PaneTabsView {
             }
             if let page = pages[surface.surfaceId] {
                 adw_tab_page_set_title(page, PaneTabs.tabTitle(for: surface))
+                // reorder_page EMITS page-reordered — guard it, or every
+                // reconcile echoes back into the drag handler.
+                PaneTabs.isReconciling = true
                 adw_tab_view_reorder_page(tabView, page, Int32(index))
+                PaneTabs.isReconciling = false
             }
         }
 
@@ -313,16 +342,19 @@ final class PaneTabsState {
     var surfaceIds: [UUID] = []
     let onSelected: (UUID, UUID, UUID) -> Void
     let onClosed: (UUID, UUID, UUID) -> Void
+    let onReordered: (UUID, UUID, UUID, Int) -> Void
 
     init(
         tabId: UUID, paneId: UUID,
         onSelected: @escaping (UUID, UUID, UUID) -> Void,
-        onClosed: @escaping (UUID, UUID, UUID) -> Void
+        onClosed: @escaping (UUID, UUID, UUID) -> Void,
+        onReordered: @escaping (UUID, UUID, UUID, Int) -> Void
     ) {
         self.tabId = tabId
         self.paneId = paneId
         self.onSelected = onSelected
         self.onClosed = onClosed
+        self.onReordered = onReordered
     }
 }
 
@@ -360,6 +392,19 @@ let paneTabsClosePage: @convention(c) (
     guard index >= 0, index < state.surfaceIds.count else { return 1 }
     state.onClosed(state.tabId, state.paneId, state.surfaceIds[index])
     return 1   // GDK_EVENT_STOP: the model drives the actual removal
+}
+
+/// `page-reordered` (page, new position). Fires per position change while
+/// the user drags — and ALSO for every programmatic `reorder_page`, which
+/// is why reconcile wraps its ordering pass in `isReconciling`.
+let paneTabsPageReordered: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, Int32, UnsafeMutableRawPointer?
+) -> Void = { _, pagePtr, position, userData in
+    if PaneTabs.isReconciling { return }
+    guard let pagePtr, let userData else { return }
+    let state = Unmanaged<PaneTabsState>.fromOpaque(userData).takeUnretainedValue()
+    guard let surfaceId = PaneTabs.surfaceId(paneId: state.paneId, page: OpaquePointer(pagePtr)) else { return }
+    state.onReordered(state.tabId, state.paneId, surfaceId, Int(position))
 }
 
 // MARK: - pane.zoom

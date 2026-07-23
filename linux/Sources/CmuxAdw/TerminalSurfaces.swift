@@ -406,6 +406,10 @@ struct TerminalStackWidget: AdwaitaWidget {
     /// about which surface a pane is showing.
     var onTabSelected: (UUID, UUID, UUID) -> Void = { _, _, _ in }
     var onTabClosed: (UUID, UUID, UUID) -> Void = { _, _, _ in }
+    /// The user dragged a tab to a new position in its strip. Mirrored
+    /// into the model (same path as `surface.reorder`) — before this the
+    /// drag was accepted visually and silently reverted on the next sync.
+    var onTabReordered: (UUID, UUID, UUID, Int) -> Void = { _, _, _, _ in }
 
     func container<Data>(data: WidgetData, type: Data.Type) -> ViewStorage where Data: ViewRenderData {
         let stack = gtk_stack_new()
@@ -561,7 +565,8 @@ struct TerminalStackWidget: AdwaitaWidget {
                let pane = tab.panes.first(where: { $0.contains(surfaceId: zoomed) }) {
                 rootNode = PaneTabs.build(
                     pane: pane, tabId: tab.id,
-                    onSelected: onTabSelected, onClosed: onTabClosed
+                    onSelected: onTabSelected, onClosed: onTabClosed,
+                    onReordered: onTabReordered
                 )
             } else {
                 rootNode = buildNode(tab.layout, tabId: tab.id)
@@ -701,7 +706,8 @@ struct TerminalStackWidget: AdwaitaWidget {
                 pane: leaf,
                 tabId: tabId,
                 onSelected: onTabSelected,
-                onClosed: onTabClosed
+                onClosed: onTabClosed,
+                onReordered: onTabReordered
             )
         case .split(let orientation, let first, let second):
             let paned = gtk_paned_new(

@@ -59,12 +59,16 @@ start)
     xvfb_pid=$!
     sleep 2
     state_dir="$HOME/.local/state/cmux/scratch/$tag"
-    mkdir -p "$state_dir"
+    mkdir -p "$state_dir/confighome"
     shift 2
+    # Hermetic config, like the suite harness: a user-level ghostty theme
+    # typo pops a modal dialog over the window and eats pointer probes.
+    # Pass XDG_CONFIG_HOME=... as an extra arg to override deliberately.
     env -u WAYLAND_DISPLAY DISPLAY="$display" GDK_BACKEND=x11 \
         CMUX_APP_ID="$(app_id "$tag")" \
         CMUX_SOCKET_PATH="$(sock_path "$tag")" \
         CMUX_SESSION_PATH="$state_dir/session.json" \
+        XDG_CONFIG_HOME="$state_dir/confighome" \
         "$@" nohup "$APP" >"$state_dir/app.log" 2>&1 &
     printf 'display=%s\nxvfb_pid=%s\n' "$display" "$xvfb_pid" > "$(info_file "$tag")"
     for _ in $(seq 1 40); do

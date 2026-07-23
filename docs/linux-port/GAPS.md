@@ -29,7 +29,6 @@ Effort: **S** ≤ half a session · **M** one session · **L** multi-session.
 | Gap | Symptom / value | Source | Effort |
 |---|---|---|---|
 | Bare Ghostty pane relocation respawns the shell | break/join (and move) of a never-tabbed Ghostty pane restarts its shell — cwd survives, scrollback and processes do not. Forensics 2026-07-22 (PROGRESS): container refcount reaches the parent's-last-ref state despite the registry's ref; one extra ref keeps the shell but leaks the io thread. Tabbed panes relocate safely (reconciliation path). Belongs to roadmap/05 lifecycle hardening; `debug.surfaces` is the probe | GAPS batch 5 | M |
-| Pane-tab drag-reorder desyncs the model | AdwTabBar lets the user drag tabs but no `page-reordered` handler updates the model — a drag silently diverges UI from model (reorder exists only as the `surface.reorder` verb). Wire the signal or disable the drag | UX survey 2026-07-22 | S |
 
 **Watch list** (observed twice, minimal repro still missing):
 `list-panes` with no `--workspace` returns nothing after a restore
