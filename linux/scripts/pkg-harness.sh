@@ -53,6 +53,24 @@ _in_scope() {
   return 1
 }
 
+# --- ADR-0013 (B): tags on the registry. Free-form labels per package,
+# stored newline-separated in .pkg/<id>/tags, set by the orchestrator OR
+# self-applied by an agent (append to its own tags file). They let you
+# address and GROUP agents by tag rather than one-by-one by name.
+_tags_of() { tr '\n' ' ' < "$PKGDIR/$1/tags" 2>/dev/null | sed 's/ *$//'; }
+_has_tag() { grep -qxF "$2" "$PKGDIR/$1/tags" 2>/dev/null; }
+# Emit package ids, optionally filtered by a leading `--tag <t>` in "$@".
+_ids() {
+  local want="" id
+  # NB: `[ … ] && x=…` at statement level trips `set -e` when the test is
+  # false — an `if` is the safe form (bit us on the no-filter path).
+  if [ "${1:-}" = "--tag" ]; then want="${2:-}"; fi
+  for id in $(ls "$PKGDIR" 2>/dev/null || true); do
+    [ -z "$want" ] || _has_tag "$id" "$want" || continue
+    echo "$id"
+  done
+}
+
 # Reap ONE package's worktree + reserved profile + manifest entry. A live
 # agent's own ad-hoc scratch instances are the agent's to clean (it made
 # them with its own tags); the harness only owns the worktree it created.
@@ -191,12 +209,45 @@ EOF
   ;;
 
 list)
-  for id in $(ls "$PKGDIR" 2>/dev/null || true); do
+  # list [--tag <t>] — optionally only packages carrying a tag.
+  for id in $(_ids "$@"); do
     . "$PKGDIR/$id/meta"
     surf=$(cat "$PKGDIR/$id/surface" 2>/dev/null | awk '{print $1}')
-    printf "  %-14s %-10s %s  pane=%s  scope=[%s]\n" "$id" "$status" "$branch" \
-      "${surf:-?}" "$(tr '\n' ' ' < "$PKGDIR/$id/scope")"
+    printf "  %-14s %-10s %s  pane=%s  tags=[%s]  scope=[%s]\n" "$id" "$status" "$branch" \
+      "${surf:-?}" "$(_tags_of "$id")" "$(tr '\n' ' ' < "$PKGDIR/$id/scope")"
   done
+  ;;
+
+# --- ADR-0013 (B): tag management + tag-based addressing/grouping -------
+tag)
+  id="${1:-}"; shift || true
+  [ -n "$id" ] && [ $# -gt 0 ] || die "tag needs <id> <tag>..."
+  [ -d "$PKGDIR/$id" ] || die "no such package: $id"
+  for t in "$@"; do grep -qxF "$t" "$PKGDIR/$id/tags" 2>/dev/null || echo "$t" >> "$PKGDIR/$id/tags"; done
+  say "'$id' tags: [$(_tags_of "$id")]"
+  ;;
+
+untag)
+  id="${1:-}"; shift || true
+  [ -n "$id" ] && [ $# -gt 0 ] || die "untag needs <id> <tag>..."
+  [ -f "$PKGDIR/$id/tags" ] || { say "'$id' has no tags"; exit 0; }
+  for t in "$@"; do
+    grep -vxF "$t" "$PKGDIR/$id/tags" > "$PKGDIR/$id/tags.tmp" 2>/dev/null || : > "$PKGDIR/$id/tags.tmp"
+    mv "$PKGDIR/$id/tags.tmp" "$PKGDIR/$id/tags"
+  done
+  say "'$id' tags: [$(_tags_of "$id")]"
+  ;;
+
+tags)
+  # tags            → every package and its tags
+  # tags --tag <t>  → just the ids carrying <t> (the group), one per line
+  if [ "${1:-}" = "--tag" ]; then
+    _ids --tag "${2:-}"
+  else
+    for id in $(ls "$PKGDIR" 2>/dev/null || true); do
+      printf "    %-16s [%s]\n" "$id" "$(_tags_of "$id")"
+    done
+  fi
   ;;
 
 # --- ADR-0009: agent work visibility -----------------------------------
@@ -212,22 +263,36 @@ pane)
   ;;
 
 panes)
+  # panes [--tag <t>] — the name→pane registry, optionally a tag's group.
   echo "  agent → pane (from each agent's recorded \$CMUX_SURFACE_ID):"
-  for id in $(ls "$PKGDIR" 2>/dev/null || true); do
+  for id in $(_ids "$@"); do
     surf=$(cat "$PKGDIR/$id/surface" 2>/dev/null | awk '{print $1}')
-    printf "    %-16s %s\n" "$id" "${surf:-<not recorded>}"
+    printf "    %-16s %-40s tags=[%s]\n" "$id" "${surf:-<not recorded>}" "$(_tags_of "$id")"
   done
   ;;
 
 review)
-  # Read a live agent's pane by name — the pull channel. Uses the daily
-  # socket (the agent runs as a pane of the human's instance).
-  id="${1:-}"; [ -n "$id" ] || die "review needs an <id>"
-  surf=$(cat "$PKGDIR/$id/surface" 2>/dev/null | awk '{print $1}')
-  [ -n "$surf" ] || die "no surface recorded for '$id' — cannot review (fall back to 'cmux tree')"
-  echo "── agent '$id' pane ($surf) ─────────────────────────"
-  env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID CMUX_QUIET=1 \
-    "$ROOT/linux/.build/debug/cmux" read-screen --surface "$surf" 2>&1 | tail -"${2:-40}"
+  # review <id> [lines]        → read one agent's live pane
+  # review --tag <t> [lines]   → read EVERY pane in that tag group (the
+  #                              ADR-0013 payoff: address a group at once)
+  _review_one() {
+    local id="$1" lines="${2:-40}"
+    local surf; surf=$(cat "$PKGDIR/$id/surface" 2>/dev/null | awk '{print $1}')
+    if [ -z "$surf" ]; then echo "── agent '$id' — no surface recorded (skip)"; return; fi
+    echo "── agent '$id' pane ($surf) ─────────────────────────"
+    env -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID CMUX_QUIET=1 \
+      "$ROOT/linux/.build/debug/cmux" read-screen --surface "$surf" 2>&1 | tail -"$lines"
+  }
+  if [ "${1:-}" = "--tag" ]; then
+    tag="${2:-}"; lines="${3:-40}"
+    [ -n "$tag" ] || die "review --tag needs a <tag>"
+    found=0
+    for id in $(_ids --tag "$tag"); do found=1; _review_one "$id" "$lines"; echo; done
+    [ "$found" = 1 ] || die "no agents tagged '$tag'"
+  else
+    id="${1:-}"; [ -n "$id" ] || die "review needs an <id> (or --tag <t>)"
+    _review_one "$id" "${2:-40}"
+  fi
   ;;
 
 collect)

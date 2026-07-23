@@ -111,6 +111,17 @@ pkg-harness panes            # the name → pane registry
 pkg-harness review <id>      # read that agent's live screen by name
 ```
 
+**Tags (ADR-0013 B).** Agents can be grouped and addressed by tag, not
+one by one — the orchestrator sets them, or an agent self-tags (append to
+`.pkg/<id>/tags`, e.g. tag itself `blocked` when it needs input):
+
+```sh
+pkg-harness tag <id> <tags…>       # e.g. tag browser code review
+pkg-harness tags [--tag <t>]       # all tags, or the ids in a group
+pkg-harness list  --tag <t>        # only that group
+pkg-harness review --tag blocked   # read EVERY pane in a group at once
+```
+
 The **norm**: when a report is *surprising* (a bug, a blocker, a premise
 correction), `review <id>` the pane before acting — the full context is
 there, the report is a summary. And keep the report frame tight but

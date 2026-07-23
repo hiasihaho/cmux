@@ -3535,3 +3535,17 @@ trigger condition: only when a concrete workflow can't be expressed with
 those). Also records the workspace-groups relationship (a group ≈ a
 coarse UI-level tag; keep separable — groups are macOS parity, this is
 novel). Proposed; the graph regenerated (13 ADRs now).
+
+### ADR-0013 (B) implemented — tags on the registry (2026-07-24)
+
+The cheap, useful layer of the tag idea: `pkg-harness tag/untag <id>
+<tags…>`, `tags [--tag <t>]`, and a `--tag <t>` filter on
+`list`/`panes`/`review`. Tags live in `.pkg/<id>/tags` (orchestrator sets
+them, or an agent self-tags by appending — the bridge toward C without
+building C). The payoff: address/group agents by tag instead of one by
+one — `review --tag blocked` reads every pane in that group. C (pane
+state) and D (workflow engine) stay open/paced per the ADR.
+
+Fixed a `set -e` gotcha found in testing: `[ cond ] && x=…` at statement
+level aborts a function when the test is false (it silently emptied the
+no-filter path, swallowed inside `$(_ids …)`); an `if` is the safe form.

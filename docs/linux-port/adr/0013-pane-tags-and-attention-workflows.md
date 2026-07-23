@@ -1,8 +1,8 @@
 # 0013 — Pane tags, and (maybe) attention-driven workflows over them
 
-- **Status:** Proposed (open — deliberately paced)
+- **Status:** Proposed — **B implemented 2026-07-24**; C/D still open (paced)
 - **Date:** 2026-07-24
-- **Deciders:** hias + Claude (open for discussion)
+- **Deciders:** hias + Claude
 
 ## Context
 
@@ -48,8 +48,11 @@ parts of it:
 
 **OPEN, deliberately paced.** Current lean:
 
-- **B: yes, when we next touch the registry** — tags are cheap, natural,
-  and useful now (grouping/addressing agents in a batch).
+- **B: DONE 2026-07-24.** `pkg-harness tag/untag <id> <tags…>`,
+  `tags [--tag <t>]`, and a `--tag <t>` filter on `list`/`panes`/`review`
+  (`review --tag blocked` reads every pane in that group). Tags live in
+  `.pkg/<id>/tags`; the orchestrator sets them, or an agent self-tags by
+  appending to its own file. Address/group agents by tag, not one by one.
 - **C: only if pane-state proves useful**, and then built as *parity with
   status lanes* (reuse the attention pipeline), not a parallel concept.
 - **D: do NOT build speculatively.** Set a trigger condition: build a
