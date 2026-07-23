@@ -3359,3 +3359,32 @@ a live agent's worktree by reflex. Documented in PARALLEL-DOGFOOD.md
 (refinement 3) and ADR-0001 consequences. This is the harness improving
 from its own users' friction — exactly the feedback loop a
 findings/friction channel (idea 2) is meant to formalize.
+
+### Batch-2 follow-up: codex extension + a real product bug found (2026-07-24)
+
+After the lifecycle fix, the still-live teams-siblings teammate was
+re-provisioned a fresh worktree and re-tasked (human had installed
+`codex`). It un-skipped one real assertion: with codex present,
+`cmux codex-teams` now gets past binary resolution and launches its real
+mechanism — `codex app-server --listen ws://127.0.0.1:<port>` — and the
+suite verifies that loopback port actually binds (the stage a tmux shim
+never reaches). It ran codex under an isolated HOME (only `codex`
+symlinked in) with /dev/null stdin so unauthenticated codex EOFs out
+rather than blocking. 15 passed / 0 failed / 6 skipped with codex;
+verified the codex-absent path stays green too (14/0/7) so CI without
+codex is safe. The authenticated teammate-*split* stays honestly skipped
+(needs interactive-authed codex).
+
+The valuable find: **codex-teams leaks its `codex app-server` child on
+teardown.** Confirmed at source — `codexTeamsTerminateProcess` does only
+`process.terminate()` (SIGTERM to the immediate child); the app-server
+escapes the process group and ignores SIGTERM, orphaning a loopback-bound
+server on abnormal exit. Shared CLI ⇒ macOS affected. Recorded UPSTREAM
+§4f + GAPS Now (SIGKILL-escalation / killpg fix). A dogfood agent, tasked
+only with a test, found a real product bug in the shared CLI.
+
+Also acted on the teammate's harness-friction note: `pkg-harness add`
+(build-free packages) now symlinks the worktree's linux/.build to the
+main build, so lib.sh finds the prebuilt CLI without the agent
+hand-symlinking it. And the lifecycle fix worked — the worktree stayed
+put this time.

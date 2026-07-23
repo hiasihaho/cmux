@@ -138,3 +138,16 @@ navigation barrier's timeout branch reported failure without
 pane. The Linux port is fixed; macOS's barrier (`BrowserPanel`
 navigation paths) should be checked for the same pattern on the next VM
 round before any upstream PR claims parity here.
+
+### 4f. codex-teams orphans its `codex app-server` child on teardown — macOS affected
+
+Found on Linux 2026-07-24 by the teams-siblings dogfood (codex installed).
+`codexTeamsTerminateProcess` (CLI/cmux.swift) does only `process.terminate()`
+(SIGTERM to the immediate child). The `codex app-server` it starts
+(`codex app-server --listen ws://127.0.0.1:<port>`) escapes codex-teams'
+process group AND ignores SIGTERM, so an abnormal codex-teams exit leaves an
+orphaned app-server bound to a loopback port (observed directly while
+probing). Shared-CLI code — macOS has the same terminate path. Fix wants
+SIGTERM→wait→SIGKILL escalation and/or process-group signaling (killpg).
+Not fixed here (shared CLI, unverifiable on macOS from this host); flag for
+the next upstream PR touching codex-teams.

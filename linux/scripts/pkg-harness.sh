@@ -125,6 +125,15 @@ add)
     if [ -d "$ROOT/linux/.build" ] && [ ! -e "$wt/linux/.build" ]; then
       cp -a --reflink=auto "$ROOT/linux/.build" "$wt/linux/.build"
     fi
+  else
+    # Build-free (tests/CLI) package: it never compiles, but lib.sh resolves
+    # the CLI from the worktree's linux/.build, so a bare worktree left the
+    # agent hand-symlinking it every time (batch-2 harness-friction note).
+    # A symlink to the main build is right here — a tests-only package tests
+    # the already-built main binary and never writes .build.
+    if [ -d "$ROOT/linux/.build" ] && [ ! -e "$wt/linux/.build" ]; then
+      ln -sfn "$ROOT/linux/.build" "$wt/linux/.build"
+    fi
   fi
   mkdir -p "$PKGDIR/$id"
   printf '%s\n' $scope > "$PKGDIR/$id/scope"
