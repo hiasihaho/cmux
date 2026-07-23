@@ -3388,3 +3388,26 @@ Also acted on the teammate's harness-friction note: `pkg-harness add`
 main build, so lib.sh finds the prebuilt CLI without the agent
 hand-symlinking it. And the lifecycle fix worked — the worktree stayed
 put this time.
+
+### Four Proposed ADRs from the batch-1/2 learnings (2026-07-24)
+
+Running two real parallel-agent batches surfaced a cluster of open
+architectural questions (raised by the human). Captured as Proposed ADRs
+— decisions framed, not made — to think through as a set:
+- **0007** harness layer & extensibility (scripts vs skill vs built-in
+  command vs a cmux plugin system; cmux-mac has no code-plugin API, only
+  config+skill extensibility). Lean: skill now, built-in command as
+  eventual target, no plugin system just for this.
+- **0008** agent runtime lifecycle — nothing reaps an agent's scratch
+  instances / browsers on dismissal or death (they orphan, like the
+  codex-teams app-server). Lean: track+reap on release, plus a
+  liveness reaper; cmux-owned surface lifetime is the clean end-state.
+- **0009** agent work visibility — only part of agent work reaches main
+  via reports (this session's best findings came from reading the pane);
+  panes show agent TYPE not NAME. Lean: richer reports + a name↔pane
+  mapping so pane-review is systematic.
+- **0010** visible isolated displays — agent Xvfb runs are invisible,
+  which fights cmux's transparency ethos. Lean: proactive screenshot
+  stream now, x11vnc-to-pane as the live-visible aspiration.
+They interlock (0008/0009 share an agent↔surface registry; 0009/0010 the
+"watch agent X" story). No implementation yet — the decisions come first.
