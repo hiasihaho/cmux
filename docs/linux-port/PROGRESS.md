@@ -3099,3 +3099,41 @@ together — every piece screenshot-verified under Xvfb before commit:
 Localization note: the port's user-facing strings remain bare English
 by existing convention (no i18n infra on Linux yet); the menu's
 shortcut labels are the exception GTK localizes itself.
+
+### Unfocused-split dimming, and the attention system becomes assertable (2026-07-23)
+
+macOS's `showsInactiveOverlay: isSplit && !isFocused`, as a fourth CSS
+class: unfocused panes of a split fade to 0.78 opacity, synced in the
+same scene-body pass as the rings. The enabling change: `debug.surfaces`
+now reports each container's `css_classes`, so the whole attention
+language — dim, unread ring, flash — is suite-assertable instead of
+screenshot-only. ui-commands grew four assertions (dim present on the
+unfocused pane, absent on the focused one, swaps on focus move, bell
+adds the unread ring).
+
+Test-harness lesson recorded the hard way: the new block switched
+workspace selection to test the swap, and the downstream respawn-replay
+assertion went red — its target's workspace must stay selected because
+an unmapped pane keeps its replay *pending* by design (the scrollback
+lesson resurfacing as test-ordering coupling). Suite blocks that change
+selection must capture and restore the incoming selection.
+
+### The corp-network accident: goto's timeout left the load running (2026-07-23)
+
+The dev box joined a corporate network and browser-navigation-smoke went
+red: its "unreachable" fixture address (10.255.255.1) is routable 10/8
+space there, and a real host answered in 227ms. Hardening the test with
+a local tarpit (accepts the TCP connection, never sends a byte) exposed
+a genuine barrier hole the instant-failing no-route path had hidden:
+**on timeout the barrier reported failure but never stopped the load.**
+The provisional navigation kept running — able to commit minutes later
+and yank the pane to a page the caller was told it never reached — and
+its hanging context answered evals with an empty document ('undefined'
+where the previous page's marker should be). Fix: the timeout branch
+now calls `webkit_web_view_stop_loading` before responding; the tarpit
+test is deterministic on any network, and the failed-navigation
+assertions went red→green across the fix in this session's runs.
+
+Transferable lesson: "reserved" addresses are only unreachable on the
+networks you tested from; a tarpit you own beats an address you assume.
+macOS's own barrier may share the hole — UPSTREAM.md §4e.

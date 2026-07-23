@@ -44,7 +44,7 @@ anything, then promote to Now.
 | Gap | Notes | Effort |
 |---|---|---|
 | Test-harness roadmap (remainder) | the four S-items landed 2026-07-22 (`run.sh` front door, freshness preflight, flake-hunter, assertion ledger); remaining: timing trend, interactive picker (deferred), `cmux doctor`, dual-backend ghostty gate, CI — inventory + invest-when rules in `linux/tests/README.md` §Harness roadmap | S–M each |
-| UX-parity ❌ cluster | from [UX-PARITY.md](UX-PARITY.md) 2026-07-22, no decision needed (missing, not deviations): unfocused-split dimming (the biggest orientation gap), GtkShortcutsWindow (Ctrl+?), notification card rows, surface-tab type icons, tab-bar end-action buttons, sidebar hover-close + context menu. The ❓ rows wait on the human's decision queue in that file | S each, batchable |
+| UX-parity ❌ cluster | from [UX-PARITY.md](UX-PARITY.md) 2026-07-22, no decision needed (missing, not deviations): ~~unfocused-split dimming~~ (done 2026-07-23), GtkShortcutsWindow (Ctrl+?), notification card rows, surface-tab type icons, tab-bar end-action buttons, sidebar hover-close + context menu. The ❓ rows wait on the human's decision queue in that file | S each, batchable |
 | Ephemeral browser panes | `webkit_network_session_new_ephemeral`; roadmap/07 leftover | S |
 | OSC 777 / OSC 99 notification ingestion | docs promise both terminal notify protocols (docs/notifications); verify what the ghostty shim / VTE already surface, then wire to the notification store. Verify-first | docs crawl 2026-07-22 → CONCEPTS.md | S |
 | codex-teams / omc / omo / omx smoke | claude-teams is verified end-to-end (2026-07-22, PARITY); its siblings ride the same shim surface but each launcher has its own env quirks — one scratch run each when convenient | teams probe 2026-07-22 | S |
@@ -52,7 +52,6 @@ anything, then promote to Now.
 | Shortcut rebinding (`shortcuts.bindings`) | macOS: every cmux-owned shortcut rebindable via Settings/cmux.json incl. two-step chords and explicit unbind; ours are hardcoded. Settings file exists — wire bindings through it | docs crawl 2026-07-22 | M |
 | Keyboard muscle-memory batch | equalize splits (⌃⌘=), reopen last closed surface (⌘⇧T), focus history (⌘[/⌘]) — small, documented, daily-use | docs crawl 2026-07-22 | S–M |
 | TextBox composer (beta upstream) | prompt-compose surface above the terminal, per-surface visibility/focus persisted; agent-first workflow piece | docs crawl 2026-07-22 → CONCEPTS.md | M–L |
-| Browser profile popover UI | verbs are done; macOS has per-pane profile UI | M |
 | `surface.health` / `surface.action` / `drag_to_split` | health pairs well with the dogfood harness | M |
 | `workspace.reorder` / `workspace.action` | sidebar order is user-visible state | M |
 | Download handling | decide-destination handler; `browser.download.wait` no-path branch | M |

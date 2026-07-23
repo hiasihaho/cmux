@@ -120,7 +120,7 @@ struct CmuxApp: App {
         let _ = SessionStore.saveIfChanged(tabs: tabs, selection: selection, tabCounter: tabCounter)
         // Widget-class writes only (no model state) — see AttentionStyle.
         let _ = AttentionStyle.install()
-        let _ = AttentionStyle.syncUnreadRings(notifications: notifications)
+        let _ = AttentionStyle.sync(notifications: notifications, tabs: tabs)
         Window(id: "main") { _ in
             OverlaySplitView(visible: $sidebarVisible) {
                 EitherView(showNotifications, view1: {

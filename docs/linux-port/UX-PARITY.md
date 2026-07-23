@@ -63,8 +63,8 @@ feature hiding in an unexpected place is a real cost anywhere.
 
 | Aspect | macOS | Linux port | Verdict |
 |---|---|---|---|
-| Focus indication | **unfocused splits dimmed** (Ghostty unfocused-split-fill/opacity) | none | ❌ **S, high value** — the port's biggest orientation gap in splits |
-| Unread ring | persistent blue rounded ring inside pane w/ unread notification | none | ❌ with the tier system |
+| Focus indication | **unfocused splits dimmed** (Ghostty unfocused-split-fill/opacity) | unfocused panes of a split fade to 0.78 opacity (`.cmux-unfocused`, AttentionStyle); asserted via `debug.surfaces` css_classes, not just screenshots | ✅ 2026-07-23 |
+| Unread ring | persistent blue rounded ring inside pane w/ unread notification | persistent accent outline (`.cmux-unread`) while a surface's notification is unread; suite-asserted | ✅ 2026-07-23 (UX batch) |
 | Find overlay | floating corner-snapping draggable bar (field, n/m, up/down, x) | Ghostty's built-in overlay (Ghostty panes); VTE none | 🎨 Ghostty overlay is native and fine; VTE gap recorded in PARITY |
 | TextBox docked below terminal | yes | no | ❌ GAPS (CONCEPTS) |
 

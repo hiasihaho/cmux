@@ -349,6 +349,61 @@ echo "$doc" | grep -q '"backend"' && echo "$doc" | grep -q '"parent_type"' \
     && ok "debug.surfaces reports widget lifecycle state" \
     || bad "debug.surfaces" "$(echo "$doc" | head -c 120)"
 
+# ----------------------- attention CSS classes (UX batch, 2026-07-23)
+# AttentionStyle speaks entirely in CSS classes and debug.surfaces
+# reports them — split dimming and unread rings are assertable, not
+# screenshot-only. Dimming contract: isSplit && !focusedPane, per pane.
+info "attention classes: split dimming follows focus, bell rings unread"
+# Restore the incoming selection afterwards: the respawn section's replay
+# assertion depends on its target's workspace staying selected/mapped
+# (an unmapped pane keeps its replay pending by design — the scrollback
+# lesson), and this block switches workspaces to test dimming.
+prev_selected=$(cx list-workspaces 2>/dev/null | grep "\[selected\]" | grep -oE 'workspace:[0-9]+')
+classes_of() {
+    v2 '{"id":31,"method":"debug.surfaces"}' | REF="$1" python3 -c '
+import json, sys, os
+for s in json.load(sys.stdin)["result"]["surfaces"]:
+    if s.get("ref") == os.environ["REF"]:
+        print(" ".join(s.get("css_classes", [])))'
+}
+WSA=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+cx select-workspace --workspace "$WSA" >/dev/null 2>&1
+TA=$(first_surface_ref "$WSA")
+if [ -n "$TA" ] && wait_for_shell "$TA"; then
+    cx new-split right --surface "$TA" >/dev/null 2>&1
+    sleep 3
+    TB=$(cx --json list-panes --workspace "$WSA" 2>/dev/null | python3 -c '
+import json,sys
+refs=[r for p in json.load(sys.stdin)["panes"] for r in p["surface_refs"]]
+print(refs[-1] if len(refs) > 1 else "")')
+    # The fresh split takes focus, so the ORIGINAL pane must be dimmed.
+    echo "$(classes_of "$TA")" | grep -q "cmux-unfocused" \
+        && ok "unfocused split pane carries the dim class" \
+        || bad "split dim" "TA classes: '$(classes_of "$TA")'"
+    echo "$(classes_of "$TB")" | grep -qv "cmux-unfocused" \
+        && ok "focused split pane is not dimmed" \
+        || bad "split dim" "TB classes: '$(classes_of "$TB")'"
+    v2 "{\"id\":32,\"method\":\"surface.focus\",\"params\":{\"surface_id\":\"$TA\"}}" >/dev/null
+    sleep 2
+    echo "$(classes_of "$TA")" | grep -qv "cmux-unfocused" \
+        && echo "$(classes_of "$TB")" | grep -q "cmux-unfocused" \
+        && ok "dimming swaps when focus moves" \
+        || bad "dim swap" "TA:'$(classes_of "$TA")' TB:'$(classes_of "$TB")'"
+    # Tier 2: a bell (past the 2s spawn suppression) rings the pane.
+    cx send --surface "$TB" 'printf "\a"\n' >/dev/null 2>&1
+    sleep 2
+    echo "$(classes_of "$TB")" | grep -q "cmux-unread" \
+        && ok "bell adds the unread ring class" \
+        || bad "unread ring" "TB classes: '$(classes_of "$TB")'"
+else
+    skip "attention class assertions" "the shell never started"
+fi
+# Leave no state behind: the respawn section below assumes the pre-block
+# workspace topology and selection.
+cx close-workspace --workspace "$WSA" >/dev/null 2>&1
+[ -n "$prev_selected" ] && cx select-workspace --workspace "$prev_selected" >/dev/null 2>&1
+sleep 2
+
 # ---------------------------------------- ghostty shim increment 3 verbs
 # (VTE respawn is covered in vte-scrollback-smoke; this section is the
 # ghostty side: replace-and-replay respawn, eager background spawn, live

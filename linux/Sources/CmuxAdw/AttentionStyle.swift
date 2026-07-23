@@ -24,6 +24,7 @@ enum AttentionStyle {
         let css = """
         .cmux-flash { outline: 3px solid @accent_bg_color; outline-offset: -3px; }
         .cmux-unread { outline: 2px solid alpha(@accent_bg_color, 0.85); outline-offset: -2px; }
+        .cmux-unfocused { opacity: 0.78; }
         """
         guard let provider = gtk_css_provider_new() else { return }
         gtk_css_provider_load_from_string(provider, css)
@@ -56,16 +57,33 @@ enum AttentionStyle {
         }
     }
 
-    /// Tier 2: ring every pane container iff one of its surfaces carries an
-    /// unread notification. Called from the scene body on every render —
-    /// the same idiom as `SessionStore.saveIfChanged` — so every mutation
-    /// path (bell, notify verbs, mark-read, dismiss, clear) is covered
-    /// without ten call sites. Widget-class writes only; no model state is
+    /// Tier 2 (unread rings) and split dimming in one registry pass.
+    /// Called from the scene body on every render — the same idiom as
+    /// `SessionStore.saveIfChanged` — so every mutation path (bell, notify
+    /// verbs, mark-read, dismiss, clear, focus moves) is covered without
+    /// ten call sites. Widget-class writes only; no model state is
     /// touched, so this cannot re-trigger rendering.
-    static func syncUnreadRings(notifications: [TerminalNotification]) {
+    ///
+    /// Dimming is macOS's `showsInactiveOverlay: isSplit && !isFocused`
+    /// (unfocused-split-fill/opacity): a workspace with one pane dims
+    /// nothing; in a split, every pane except the focused one drops to
+    /// 0.78 opacity — the orientation cue the port lacked (UX-PARITY §4).
+    static func sync(notifications: [TerminalNotification], tabs: [TerminalTab]) {
         let unread = Set(notifications.filter { !$0.isRead }.compactMap(\.surfaceId))
+        var dimmed: Set<UUID> = []
+        for tab in tabs {
+            let leaves = tab.panes
+            guard leaves.count > 1 else { continue }
+            let focusedPane = tab.focusedSurface?.paneId
+            for leaf in leaves where leaf.paneId != focusedPane {
+                for surface in leaf.surfaces {
+                    dimmed.insert(surface.surfaceId)
+                }
+            }
+        }
         for (surfaceId, container) in SurfaceRegistry.shared.containers {
             setClass("cmux-unread", on: container, enabled: unread.contains(surfaceId))
+            setClass("cmux-unfocused", on: container, enabled: dimmed.contains(surfaceId))
         }
     }
 

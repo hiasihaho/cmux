@@ -255,6 +255,19 @@ final class SurfaceRegistry {
                 UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self).pointee.ref_count)
             report["realized"] = gtk_widget_get_realized(widget) != 0
             report["mapped"] = gtk_widget_get_mapped(widget) != 0
+            // The attention system (AttentionStyle) speaks entirely in CSS
+            // classes — reporting them makes rings and split-dimming
+            // assertable by the suites instead of screenshot-only.
+            if let classes = gtk_widget_get_css_classes(widget) {
+                var list: [String] = []
+                var index = 0
+                while let item = classes[index] {
+                    list.append(String(cString: item))
+                    index += 1
+                }
+                report["css_classes"] = list
+                g_strfreev(classes)
+            }
             if let parent = gtk_widget_get_parent(widget) {
                 report["parent_type"] = String(cString: g_type_name(
                     UnsafeMutableRawPointer(parent)
