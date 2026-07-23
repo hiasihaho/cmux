@@ -3137,3 +3137,17 @@ assertions went red→green across the fix in this session's runs.
 Transferable lesson: "reserved" addresses are only unreachable on the
 networks you tested from; a tarpit you own beats an address you assume.
 macOS's own barrier may share the hole — UPSTREAM.md §4e.
+
+### scratch.sh — the ad-hoc instances get their own wrapper (2026-07-23)
+
+The human's catch: "didn't we have a wrapper for xvfb?" — the SUITES do
+(lib.sh start_xvfb, per-suite displays :90-:139); ad-hoc probes did
+not, and every scratch instance this week was hand-rolled onto a
+hardcoded :93 — which put a screenshot instance on a running gate's
+display and produced a false-red (2 phantom browser-navigation
+failures). `linux/scripts/scratch.sh` now owns the ad-hoc case:
+start/env/shot/stop/list, a free display strictly in :140-:159,
+isolated app ids killed only by env match, sessions under
+~/.local/state/cmux/scratch/<tag>/ (never /tmp). Verified through the
+full lifecycle. Rule of thumb now written in INSIDE-CMUX: suites use
+lib.sh, ad-hoc uses scratch.sh, nobody types `Xvfb` by hand.

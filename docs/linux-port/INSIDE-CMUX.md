@@ -38,6 +38,17 @@ linux/scripts/start.sh status            # who is running, which terminal backen
 # talk to it: CMUX_SOCKET_PATH=/tmp/cmux-dev.sock cmux ping
 ```
 
+For HEADLESS probes and screenshots, never hand-roll Xvfb — use the
+scratch wrapper (own display range :140-:159; the suites own :90-:139
+via lib.sh, and a hand-rolled `:93` once false-redded a running gate):
+
+```sh
+linux/scripts/scratch.sh start <tag>          # free display, isolated ids
+eval "$(linux/scripts/scratch.sh env <tag>)"  # point the CLI at it
+linux/scripts/scratch.sh shot <tag> out.png   # screenshot
+linux/scripts/scratch.sh stop <tag>           # kills by env match only
+```
+
 (`start.sh daily` starts the human's instance after a crash/close; it
 refuses to start a second one while the daily socket responds.) The raw
 env-var pattern behind it, if you ever need it manually:
