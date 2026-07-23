@@ -281,6 +281,9 @@ linux/scripts/dogfood.sh "focus…" [min]      # QA agent cycle (CMUX_SOCKET_PAT
   out-of-band scrollback, DevTools-as-pane, focused-ledgers, ghostty
   embed, parallel-dogfood). Record a *decision* here; start at
   `adr/README.md`. Proposed → Accepted → Superseded lifecycle.
+  Browse it as an ATLAS (decision graph + all records, live) with
+  `linux/scripts/atlas-serve.sh adr`; the graph regenerates via
+  `linux/scripts/adr-atlas-graph.py` (re-run when you add/re-status an ADR).
 - **PARALLEL-DOGFOOD.md** — the harness for running several agents on
   DISJOINT work packages at once (worktree + scratch instance + browser
   profile each), integrated via a local bare repo. Mechanics proven on

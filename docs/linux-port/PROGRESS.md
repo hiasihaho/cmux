@@ -3411,3 +3411,23 @@ architectural questions (raised by the human). Captured as Proposed ADRs
   stream now, x11vnc-to-pane as the live-visible aspiration.
 They interlock (0008/0009 share an agent↔surface registry; 0009/0010 the
 "watch agent X" story). No implementation yet — the decisions come first.
+
+### ADR atlas + a generic reusable atlas viewer (2026-07-24)
+
+Two atlases now (wiring + ADR), so the viewer became a reusable harness
+component instead of a per-atlas copy. `docs/linux-port/atlas/viewer.html`
+is generic — `?atlas=<dir>` renders any doc set with an index.json;
+`linux/scripts/atlas-serve.sh <name>` serves any registered atlas (wiring
+| adr | a literal dir). The old wiring/viewer.html was retired and
+wiring-serve.sh is now a thin shim over atlas-serve.sh, so both atlases
+share ONE viewer (verified: both render through it in a browser pane).
+
+The ADR atlas's value-add over a folder of markdown is a decision GRAPH:
+`adr-atlas-graph.py` reads the ADR files (status + cross-references) and
+generates `adr/_overview.md` — a status-coloured mermaid of all 10 ADRs
+and their interlocks, plus a status table. `--check` gates staleness, so
+the landscape stays current as ADRs are added (same generated-not-
+hand-kept discipline as the dashboard + surface survey). An atlas is now
+"a directory + index.json"; adding a third is trivial. Ties to ADR-0007
+(this IS the harness generalizing into reusable pieces) — worth folding
+into that decision.

@@ -1,4 +1,5 @@
 [
+  { "atlas": "Wiring atlas" },
   { "file": "../PARITY-DASHBOARD.md", "title": "⓪ Parity dashboard (board of boards)" },
   { "file": "index.md",              "title": "① Overview & how to read this" },
   { "file": "01-topology.md",        "title": "② Instance topology & sockets" },

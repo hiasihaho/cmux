@@ -1,0 +1,15 @@
+[
+  { "atlas": "ADR decision records" },
+  { "file": "_overview.md", "title": "◆ Decision landscape (graph)" },
+  { "file": "README.md",    "title": "How ADRs work (index + lifecycle)" },
+  { "file": "0001-parallel-dogfood-harness.md",              "title": "0001 · Parallel-dogfood harness ✅" },
+  { "file": "0002-interaction-parity-sacred.md",             "title": "0002 · Interaction parity sacred ✅" },
+  { "file": "0003-out-of-band-scrollback.md",                "title": "0003 · Out-of-band scrollback ✅" },
+  { "file": "0004-devtools-as-pane.md",                      "title": "0004 · DevTools as a pane ✅" },
+  { "file": "0005-focused-ledgers-and-discovery-cadence.md", "title": "0005 · Focused ledgers + discovery ✅" },
+  { "file": "0006-ghostty-embed-strategy.md",                "title": "0006 · Ghostty embed strategy ✅◑" },
+  { "file": "0007-harness-layer-and-extensibility.md",       "title": "0007 · Harness layer & extensibility ◷" },
+  { "file": "0008-agent-runtime-lifecycle.md",               "title": "0008 · Agent runtime lifecycle ◷" },
+  { "file": "0009-agent-work-visibility.md",                 "title": "0009 · Agent work visibility ◷" },
+  { "file": "0010-visible-isolated-displays-for-agents.md",  "title": "0010 · Visible isolated displays ◷" }
+]
