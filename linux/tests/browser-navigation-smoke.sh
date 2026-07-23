@@ -111,18 +111,52 @@ cx browser --surface "$S" goto "http://127.0.0.1:$PAGE_PORT/sel" --wait-selector
                       || bad "--wait-selector" "page is '$(page)'"
 
 # --- 5. a navigation that cannot commit must error, never report success.
+# A LOCAL tarpit (accepts the TCP connection, never sends a byte), not a
+# "reserved" address: 10.255.255.1 is perfectly routable on corporate
+# 10/8 networks — learned 2026-07-23 when the dev box joined one and this
+# test dialed a real host that answered in 227ms. Accept-and-stay-silent
+# makes the timeout deterministic on ANY network.
+TARPIT_INFO="/tmp/cmux-navtest-tarpit-$$"
+python3 - "$TARPIT_INFO" <<'PYT' &
+import socket, sys
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+s.listen(8)
+open(sys.argv[1], "w").write(str(s.getsockname()[1]))
+held = []
+while True:
+    try:
+        conn, _ = s.accept()
+        held.append(conn)   # keep it open, never respond
+    except Exception:
+        break
+PYT
+TARPIT_PID=$!
+for _ in $(seq 1 25); do [ -s "$TARPIT_INFO" ] && break; sleep 0.2; done
+TARPIT_PORT=$(cat "$TARPIT_INFO" 2>/dev/null)
 start_ms=$(date +%s%3N)
-out=$(cx browser --surface "$S" goto http://10.255.255.1/ --timeout-ms 2000 2>&1)
+out=$(cx browser --surface "$S" goto "http://127.0.0.1:${TARPIT_PORT:-1}/" --timeout-ms 2000 2>&1)
 rc=$?
+kill "$TARPIT_PID" 2>/dev/null
+rm -f "$TARPIT_INFO"
 elapsed=$(( $(date +%s%3N) - start_ms ))
 if [ "$rc" != "0" ] && echo "$out" | grep -qi timeout && [ "$elapsed" -lt 8000 ]; then
     ok "unreachable host times out honestly (${elapsed}ms, rc=$rc)"
 else
     bad "unreachable host" "rc=$rc elapsed=${elapsed}ms out='$out'"
 fi
-# and the old page must still be the one reported — no half-navigated limbo
-[ "$(page)" = "sel" ] && ok "failed navigation left the previous page intact" \
-                      || bad "post-timeout state" "page is '$(page)'"
+# and the old page must still be the one reported — no half-navigated limbo.
+# Poll briefly: with the tarpit the failed load is STOPPED at the timeout
+# (the no-route address failed instantly), and an eval issued mid-teardown
+# can catch the provisional context for a moment.
+post_page=""
+for _ in $(seq 1 10); do
+    post_page=$(page)
+    [ "$post_page" = "sel" ] && break
+    sleep 0.5
+done
+[ "$post_page" = "sel" ] && ok "failed navigation left the previous page intact" \
+                         || bad "post-timeout state" "page is '$post_page'"
 
 # --- 6. flags must not be folded into the URL (goto joined all args before).
 cx browser --surface "$S" goto "http://127.0.0.1:$PAGE_PORT/flagtest" --snapshot-after >/dev/null 2>&1

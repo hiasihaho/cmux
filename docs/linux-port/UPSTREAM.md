@@ -129,3 +129,12 @@ Fixed 2026-07-22 by scoping our block back to `inspect` only; upstream's
 block owns `devtools` again. Lesson now twice-paid: never alias a
 subcommand name in an upstream CLI file without grepping for an existing
 block that owns it lower down.
+
+### 4e. Possible macOS bug to verify: navigation timeout may not stop the load
+
+Found on Linux 2026-07-23 (PROGRESS "corp-network accident"): the
+navigation barrier's timeout branch reported failure without
+`stop_loading`, so the provisional load could commit later and yank the
+pane. The Linux port is fixed; macOS's barrier (`BrowserPanel`
+navigation paths) should be checked for the same pattern on the next VM
+round before any upstream PR claims parity here.

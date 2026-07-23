@@ -902,6 +902,16 @@ extension ControlCommandHandler {
             if barrier.committed {
                 succeed("committed")
             } else {
+                // Abandon the attempt, don't just report it: without an
+                // explicit stop the provisional load keeps running after
+                // the caller was told it failed — and can commit MINUTES
+                // later, yanking the pane to a page the caller believes
+                // it never reached. The hanging provisional context also
+                // answers evals with an empty document until it dies.
+                // Found 2026-07-23 when the dev box joined a corporate
+                // network and the "unreachable" fixture address turned
+                // into a connected-but-silent real host.
+                webkit_web_view_stop_loading(target.webView)
                 respond(self.baError(
                     id: id, code: "timeout",
                     message: "Navigation did not commit before timeout",
