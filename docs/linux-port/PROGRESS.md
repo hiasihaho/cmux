@@ -3174,3 +3174,37 @@ longer depend on whatever lives in the developer's dotfiles.
 
 Cross-pane tab drag (macOS supports it) remains unwired — UX-PARITY
 tracks it; moves stay verb-only.
+
+### The wiring atlas + a live viewer in our own browser (2026-07-23)
+
+Comprehensive component-level docs of the port, as mermaid graphs that
+read from the code — `docs/linux-port/wiring/` (9 pages, ~30 diagrams:
+topology/sockets, the claude-teams shim, control protocol, surface
+lifecycle, attention pipeline, session+scrollback, browser stack,
+build→promote). Sibling to MENTAL-MODEL (that is *what cmux is*; this is
+*how our port is wired inside*).
+
+The viewer is the point as much as the docs: `wiring/viewer.html` +
+`linux/scripts/wiring-serve.sh` render markdown+inline-mermaid in a cmux
+browser pane, **live-reloading** on `.md` edits — the human-AI loop the
+human asked for (agent edits a diagram, human watches it change,
+comments, iterate). It reuses cmux's OWN vendored mermaid.min.js /
+marked.min.js (`Resources/markdown-viewer/`) served from the repo root,
+so no CDN — robust on the corp network. Assessed palma's viewers first:
+its milkdown editor bundle is self-contained (0 CDN refs, inline mermaid
++ visual canvas) but coupled to palma's server API; its plain viewer
+needs CDN. A thin own-viewer beat reverse-engineering either.
+
+Verified through the browser verbs: all 9 pages render every mermaid
+block to an SVG (1/1…4/4, zero syntax errors), driven and screenshotted
+via `cmux browser eval/screenshot` on a background workspace. Two bugs
+found and fixed in the loop: the viewer read `location.hash` only at
+load (no hashchange listener — nav-clicks worked, URL/back-forward
+didn't), and same-fragment `browser goto` does not reload the document
+(cache-bust query per doc forces a real reload — worth remembering for
+any future browser-driven verification).
+
+Note: `markdown.open` is still unimplemented on Linux (macOS-only, GAPS
+Later) — implementing it natively would turn this into a first-class
+cmux markdown panel with the same vendored assets. Good future board
+item; the browser-pane viewer covers the need today.

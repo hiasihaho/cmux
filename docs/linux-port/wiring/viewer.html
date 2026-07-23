@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cmux Linux port — wiring atlas</title>
+<!--
+  A self-contained viewer for the wiring atlas: markdown + inline mermaid,
+  live-reloading, for the human-AI collaboration loop (edit .md → the human
+  sees the graph update in a cmux browser pane).
+
+  It reuses the LOCAL libraries cmux already ships in
+  Resources/markdown-viewer/ (mermaid, marked) — no CDN, so it works on any
+  network. Serve the REPO ROOT so both the libs and the docs resolve:
+
+      cd ~/cmux && python3 -m http.server 8199
+      # then open http://127.0.0.1:8199/docs/linux-port/wiring/viewer.html
+
+  Or use linux/scripts/wiring-serve.sh, which does exactly that.
+-->
+<link rel="stylesheet" href="/Resources/markdown-viewer/github-markdown.css">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #0d1117; color: #c9d1d9;
+    font-family: -apple-system, "Segoe UI", "Cantarell", sans-serif; }
+  #layout { display: grid; grid-template-columns: 250px 1fr; height: 100vh; }
+  #nav { border-right: 1px solid #21262d; overflow-y: auto; padding: 14px 10px;
+    background: #0b0e13; }
+  #nav h1 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+    color: #7d8590; margin: 4px 8px 12px; }
+  #nav a { display: block; padding: 7px 10px; border-radius: 6px; color: #c9d1d9;
+    text-decoration: none; font-size: 13.5px; line-height: 1.3; }
+  #nav a:hover { background: #161b22; }
+  #nav a.active { background: #1f6feb33; color: #58a6ff; }
+  #main { overflow-y: auto; padding: 0 8px; }
+  .markdown-body { box-sizing: border-box; max-width: 960px; margin: 0 auto;
+    padding: 34px 28px 120px; background: transparent; }
+  .markdown-body pre { background: #161b22; }
+  .mermaid { background: #0d1117; text-align: center; margin: 18px 0;
+    border: 1px solid #21262d; border-radius: 8px; padding: 14px; overflow-x: auto; }
+  .mermaid svg { max-width: 100%; height: auto; }
+  #status { position: fixed; bottom: 10px; right: 14px; font-size: 11px;
+    color: #7d8590; background: #161b22cc; border: 1px solid #21262d;
+    padding: 4px 9px; border-radius: 20px; }
+  .err { color: #f85149; white-space: pre-wrap; font-family: monospace;
+    font-size: 12px; padding: 10px; border: 1px solid #f8514955; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div id="layout">
+  <nav id="nav"><h1>Wiring atlas</h1><div id="nav-links">…</div></nav>
+  <div id="main"><article id="doc" class="markdown-body">Loading…</article></div>
+</div>
+<div id="status">idle</div>
+
+<script src="/Resources/markdown-viewer/mermaid.min.js"></script>
+<script src="/Resources/markdown-viewer/marked.min.js"></script>
+<script>
+  const HERE = "/docs/linux-port/wiring/";
+  const status = (t) => { document.getElementById("status").textContent = t; };
+
+  mermaid.initialize({ startOnLoad: false, theme: "dark",
+    themeVariables: { fontSize: "14px" }, flowchart: { htmlLabels: true, curve: "basis" },
+    securityLevel: "loose" });
+
+  // marked: turn ```mermaid fences into <pre class="mermaid"> the lib renders.
+  const renderer = new marked.Renderer();
+  const origCode = renderer.code.bind(renderer);
+  renderer.code = (code, lang) => {
+    const body = (typeof code === "object") ? code.text : code;
+    const language = (typeof code === "object") ? code.lang : lang;
+    if ((language || "").trim() === "mermaid") {
+      return '<pre class="mermaid">' + body.replace(/</g, "&lt;") + "</pre>";
+    }
+    return origCode(code, language);
+  };
+  marked.setOptions({ renderer, gfm: true, breaks: false });
+
+  let current = null, lastText = null;
+
+  async function fetchDoc(name) {
+    const r = await fetch(HERE + name + "?_=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status + " for " + name);
+    return r.text();
+  }
+
+  async function render(name, force) {
+    let text;
+    try { text = await fetchDoc(name); }
+    catch (e) { document.getElementById("doc").innerHTML =
+      '<div class="err">' + e.message + "</div>"; return; }
+    if (!force && text === lastText) return;   // no change → skip re-render
+    lastText = text;
+    const doc = document.getElementById("doc");
+    doc.innerHTML = marked.parse(text);
+    try {
+      await mermaid.run({ nodes: doc.querySelectorAll("pre.mermaid") });
+      status("rendered " + name + " · " + new Date().toLocaleTimeString());
+    } catch (e) { status("mermaid error — see blocks"); }
+  }
+
+  async function buildNav() {
+    // index.json lists the docs in order; fall back to a single index.md.
+    let docs;
+    try { docs = await (await fetch(HERE + "index.json?_=" + Date.now(),
+      { cache: "no-store" })).json(); }
+    catch (e) { docs = [{ file: "index.md", title: "Index" }]; }
+    const nav = document.getElementById("nav-links");
+    nav.innerHTML = "";
+    for (const d of docs) {
+      const a = document.createElement("a");
+      a.textContent = d.title; a.href = "#" + d.file;
+      a.onclick = (ev) => { ev.preventDefault(); select(d.file); };
+      a.dataset.file = d.file;
+      nav.appendChild(a);
+    }
+    return docs;
+  }
+
+  function select(name) {
+    current = name;
+    location.hash = name;
+    document.querySelectorAll("#nav-links a").forEach(
+      (a) => a.classList.toggle("active", a.dataset.file === name));
+    render(name, true);
+  }
+
+  (async () => {
+    const docs = await buildNav();
+    const known = new Set(docs.map((d) => d.file));
+    const initial = (known.has(location.hash.slice(1)) && location.hash.slice(1))
+      || (docs[0] && docs[0].file) || "index.md";
+    select(initial);
+    // URL / back-forward / `browser goto #doc` navigation: WebKit fires
+    // hashchange for same-page fragment nav, so honor it (the viewer only
+    // read the hash on first load before — nav-clicks worked, links didn't).
+    window.addEventListener("hashchange", () => {
+      const want = location.hash.slice(1);
+      if (want && want !== current && known.has(want)) select(want);
+    });
+    // Live reload: re-fetch the current doc; re-render only when it changed.
+    setInterval(() => { if (current) render(current, false); }, 1500);
+  })();
+</script>
+</body>
+</html>

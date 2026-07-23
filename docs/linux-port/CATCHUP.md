@@ -280,6 +280,13 @@ linux/scripts/dogfood.sh "focus…" [min]      # QA agent cycle (CMUX_SOCKET_PAT
   diagrams: supervision loop, hierarchy, attention pipeline, Claude
   lifecycle, tmux shim, UI geography, doc map, port heat map. Start
   here for the big picture.
+- **wiring/** — the component-level wiring ATLAS (2026-07-23): 9 pages,
+  ~30 mermaid diagrams reading straight from the code (topology,
+  claude-teams shim, control protocol, surface lifecycle, attention,
+  persistence, browser, build/promote). View it live with
+  `linux/scripts/wiring-serve.sh` → open the printed URL in a cmux
+  browser pane; the viewer live-reloads on `.md` edits (the human-AI
+  loop). Uses cmux's own vendored mermaid — no CDN.
 - **CONCEPTS.md** — how cmux is *meant*: the official-docs
   distillation (crawled 2026-07-22 via the port's own browser stack);
   read before deciding whether/how to build a macOS feature.

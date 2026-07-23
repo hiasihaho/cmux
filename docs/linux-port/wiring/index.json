@@ -1,0 +1,11 @@
+[
+  { "file": "index.md",              "title": "① Overview & how to read this" },
+  { "file": "01-topology.md",        "title": "② Instance topology & sockets" },
+  { "file": "02-claude-teams.md",    "title": "③ claude-teams / tmux shim" },
+  { "file": "03-control-protocol.md","title": "④ CLI ↔ socket ↔ dispatch" },
+  { "file": "04-surface-lifecycle.md","title": "⑤ Model → view → surfaces" },
+  { "file": "05-attention.md",       "title": "⑥ Attention pipeline" },
+  { "file": "06-persistence.md",     "title": "⑦ Session & scrollback" },
+  { "file": "07-browser.md",         "title": "⑧ Browser stack" },
+  { "file": "08-build-promote.md",   "title": "⑨ Build → scratch → promote" }
+]
