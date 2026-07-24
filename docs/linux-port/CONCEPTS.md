@@ -54,9 +54,12 @@ unbuilt floor is multi-window (GAPS).
   project-scoped configs get the trust prompt — corrected 2026-07-24,
   full map in [MACOS-UX.md](MACOS-UX.md) §5), and a **file explorer**.
 
-**Port status:** left sidebar is a flat list with a text attention dot;
-no groups, pins, lanes, context menus, or drag order. The right sidebar
-does not exist as a concept.
+**Port status (2026-07-24):** left sidebar has groups (sections,
+chevrons, colors/icons, palette, context menus, hover affordances,
+drag membership/reorder — features/04 + MACOS-UX mirror), workspace
+colors, and drag order; still missing: workspace-level pins, status
+lanes, rich metadata rows. The right sidebar now exists as the minimal
+Dock (terminal controls; Vault/file-explorer still absent).
 
 ## The agent-supervision loop, piece by piece
 
@@ -88,7 +91,7 @@ are hardcoded; no project configs, no trust flow, no templates.
 
 | Concept (doc page) | One-line essence | Port |
 |---|---|---|
-| Workspace groups | collapsible anchor-owned sidebar sections, full CLI | ❌ GAPS Later (`workspace.group.*`, 13 verbs) |
+| Workspace groups | collapsible anchor-owned sidebar sections, full CLI | ✅ 2026-07-24 — 17 verbs wire-parity + full sidebar comfort slice (features/04) |
 | TextBox (beta) | prompt composer above the terminal, per-surface, persisted | ❌ new — GAPS |
 | Session restore | layout restore **+ agent resume tokens** | 🟡 agent resume → GAPS |
 | Vault | search old agent transcripts, drag-to-resume | ❌ Later |
