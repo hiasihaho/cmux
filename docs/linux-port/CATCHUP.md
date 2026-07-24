@@ -70,9 +70,12 @@ files — macOS-broken since landing, invisible until now. Fixed
 now: after touching `CLI/` or the four shared packages, rsync + `cd
 cmux/macos-verify && swift build` on the VM (details: PROGRESS
 2026-07-24, gotchas incl. the pipe-exit-code lie and openrsync flags).
-Open decision for the app-on-VM question: full Xcode + a null-renderer
-fork increment would give a headless-but-fully-driveable macOS cmux
-(terminal state is CPU-side; only pixels need the GPU) — parked.
+The app-on-VM question is now a written proposal — **POC-0003**
+(`poc/0003-headless-macos-reference.md`): increment 1 = full Xcode on
+the VM (cheap, no fork changes, retires the app-target UNVERIFIED);
+increment 2 = null-renderer fork increment for a headless-but-fully-
+driveable macOS reference (terminal state is CPU-side; only pixels
+need the GPU). Parked, status `idea`.
 
 ## Earlier session (2026-07-24): live agent displays + the pointing channel
 
