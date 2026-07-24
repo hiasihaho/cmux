@@ -1445,6 +1445,23 @@ struct ControlCommandHandler {
         groups.wrappedValue.first(where: { $0.id == groupId })?.name
     }
 
+    /// Palette-popover commit for a workspace row. macOS has no socket
+    /// verb for workspace colors either — this UI path is the mutation
+    /// path, mirrored 1:1 (`Workspace.customColor` semantics).
+    func uiSetWorkspaceColor(_ workspaceId: UUID, hex: String?) {
+        guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == workspaceId }) else {
+            return
+        }
+        tabs.wrappedValue[index].customColor = hex
+    }
+
+    /// Palette-popover commit for a group header — the set_color verb path.
+    func uiSetGroupColor(_ groupId: UUID, hex: String?) {
+        _ = v2GroupSetColor(id: nil, params: [
+            "group_id": groupId.uuidString, "hex": hex ?? ""
+        ])
+    }
+
     /// Group-header hover-＋ — same path as workspace.group.new_workspace.
     func uiNewWorkspaceInGroup(_ groupId: UUID) {
         _ = v2GroupNewWorkspace(id: nil, params: ["group_id": groupId.uuidString])
@@ -1473,6 +1490,7 @@ struct ControlCommandHandler {
             case .workspace:
                 entry["kind"] = "workspace"
                 entry["in_group"] = row.inGroup
+                entry["color_hex"] = row.colorHex ?? NSNull()
             case .groupHeader(let gid, let collapsed, let count, let pinned):
                 entry["kind"] = "group_header"
                 entry["group_ref"] = registry.ref(kind: "workspace_group", uuid: gid)

@@ -3807,3 +3807,24 @@ Sidebar rows now also expose `pinned`/`in_group` via debug.sidebar_rows.
 Suite → 54: three menu-projection assertions plus a real right-click →
 "Remove from Group" click-through; verified visually (member and header
 menus, destructive items in red).
+
+### Comfort mirror ④: workspace colors (2026-07-24)
+
+Workspaces carry identity colors, macOS-parity end to end: the EXACT
+16-swatch palette (`WorkspacePalette`, the macOS originalPRPalette
+hexes), reachable from the row context menu as "Workspace Color…" — a
+popover of 16 colored circles + Clear Color + strict-hex Custom… — and
+rendered as a LEFT RAIL on the row (`box-shadow: inset 4px`,
+`.cmux-wsrail-N` classes generated per color on one regenerated
+provider; `SidebarColorStyle.sync` walks the sidebar rows by projection
+index in the AttentionStyle widget-writes-only idiom, skipped while the
+notifications page holds the slot). Headers get "Group Color…" with the
+same palette — a picker macOS itself lacks (its group colors are
+socket/config-only). `TerminalTab.customColor` persists in session v3;
+debug.sidebar_rows exposes color_hex on workspace rows. Suite → 58:
+menu projections, a full right-click → palette → swatch click-through
+asserting the rendered color, and a save/restart round-trip. One
+coordinate lesson absorbed in the same commit: inserting a menu item
+shifted the existing Remove-from-Group click-through by one slot — the
+suite's measured y moved with it, a reminder that click-through
+coordinates are part of the menu's contract.

@@ -133,8 +133,16 @@ struct CmuxApp: App {
             }
             SidebarContextMenu.workspaceCountProvider = { [tabs] in tabs.count }
             SidebarContextMenu.onAction = handleSidebarMenuAction
+            SidebarContextMenu.onColorChosen = handleSidebarColorChosen
+            SidebarContextMenu.onColorCustom = handleSidebarColorCustom
             return true
         }()
+        // Workspace color rails (widget-class writes only; skipped while
+        // the notifications page occupies the sidebar slot).
+        let _ = SidebarColorStyle.sync(
+            rows: SidebarRows.project(tabs: tabs, groups: groups),
+            active: !showNotifications
+        )
         Window(id: "main") { _ in
             OverlaySplitView(visible: $sidebarVisible) {
                 EitherView(showNotifications, view1: {
@@ -383,6 +391,10 @@ struct CmuxApp: App {
             handler.uiRemoveFromGroup(row.id)
         case "copy_id":
             UIClipboard.setText(row.id.uuidString)
+        case "workspace_color":
+            SidebarContextMenu.presentColorPalette(row: row, isGroup: false)
+        case "group_color":
+            SidebarContextMenu.presentColorPalette(row: row, isGroup: true)
         case "new_in_group":
             if let groupId { handler.uiNewWorkspaceInGroup(groupId) }
         case "rename_group":
@@ -404,6 +416,38 @@ struct CmuxApp: App {
             if let groupId { handler.uiDeleteGroup(groupId) }
         default:
             break
+        }
+    }
+
+    /// Palette-popover commit (swatch or Clear).
+    private func handleSidebarColorChosen(_ row: SidebarRowModel, _ hex: String?, _ isGroup: Bool) {
+        let handler = controlHandler
+        if isGroup {
+            if case let .groupHeader(gid, _, _, _) = row.kind {
+                handler.uiSetGroupColor(gid, hex: hex)
+            }
+        } else {
+            handler.uiSetWorkspaceColor(row.id, hex: hex)
+        }
+    }
+
+    /// "Custom…" → hex prompt; only a strict hex commits (the same
+    /// grammar the renderer parses — the QA lesson).
+    private func handleSidebarColorCustom(_ row: SidebarRowModel, _ isGroup: Bool) {
+        let handler = controlHandler
+        UIDialogs.promptText(
+            title: "Custom Color", confirmLabel: "Apply", initialText: "#1565C0"
+        ) { input in
+            guard let hex = SidebarRows.validatedHex(
+                input.trimmingCharacters(in: .whitespacesAndNewlines)
+            ) else { return }
+            if isGroup {
+                if case let .groupHeader(gid, _, _, _) = row.kind {
+                    handler.uiSetGroupColor(gid, hex: hex)
+                }
+            } else {
+                handler.uiSetWorkspaceColor(row.id, hex: hex)
+            }
         }
     }
 

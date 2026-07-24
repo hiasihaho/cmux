@@ -271,13 +271,14 @@ case "$(menu_ids "$ANC")" in
     *) bad "header menu" "$(menu_ids "$ANC")" ;;
 esac
 # Click-through: right-click the member row, pick "Remove from Group"
-# (3rd item; menu measured at y≈283 when popped from the row at y≈155).
+# (4th item since "Workspace Color…" joined; menu popped from the row at
+# y≈155 puts it at y≈319).
 before=$(group_field "['member_count']" 0)
 removed=""
 for _ in 1 2 3 4 5; do
     xdotool mousemove 600 400 sleep 0.2 mousemove 120 155 sleep 0.2 click 3
     sleep 1
-    xdotool mousemove 126 283 sleep 0.2 click 1
+    xdotool mousemove 126 319 sleep 0.2 click 1
     sleep 1.5
     now=$(group_field "['member_count']" 0)
     if [ "$now" = "$((before - 1))" ]; then removed=yes; break; fi
@@ -285,5 +286,38 @@ for _ in 1 2 3 4 5; do
 done
 [ "$removed" = "yes" ] && ok "right-click → Remove from Group removes the member" \
     || bad "menu click-through" "member_count $before -> $(group_field "['member_count']" 0)"
+
+# --------------------------------------- workspace colors (MACOS-UX §1.2)
+info "workspace colors (palette click-through + rail projection + restore)"
+case "$(menu_ids workspace:1)" in
+    *workspace_color*) ok "row menu offers Workspace Color" ;;
+    *) bad "color menu item" "$(menu_ids workspace:1)" ;;
+esac
+case "$(menu_ids "$ANC")" in
+    *group_color*) ok "header menu offers Group Color" ;;
+    *) bad "group color item" "$(menu_ids "$ANC")" ;;
+esac
+row0_color() { sidebar_rows | python3 -c "
+import json,sys
+print(json.load(sys.stdin)['result']['rows'][0].get('color_hex'))"; }
+colored=""
+for _ in 1 2 3 4 5; do
+    # Right-click ws1 (row 0) → "Workspace Color…" (2nd item, y≈168) →
+    # the Red swatch (first circle, ≈43,128).
+    xdotool mousemove 600 400 sleep 0.2 mousemove 120 76 sleep 0.2 click 3
+    sleep 1
+    xdotool mousemove 103 168 sleep 0.2 click 1
+    sleep 1
+    xdotool mousemove 43 128 sleep 0.2 click 1
+    sleep 1.5
+    if [ "$(row0_color)" = "#C0392B" ]; then colored=yes; break; fi
+    xdotool key Escape; sleep 0.5
+done
+[ "$colored" = "yes" ] && ok "palette click-through sets the row color" \
+    || bad "palette click-through" "row0 color: $(row0_color)"
+force_save
+kill_instance
+start_instance || exit 2
+expect "workspace color survives restart" "#C0392B" "$(row0_color)"
 
 finish

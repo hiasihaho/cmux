@@ -335,6 +335,20 @@ struct SidebarRowModel: Identifiable, Equatable {
     var inGroup: Bool = false
 }
 
+/// The fixed 16-swatch workspace palette — the exact macOS
+/// `originalPRPalette` hexes (MACOS-UX §1.2), reused as the group-color
+/// picker too (which even macOS lacks).
+enum WorkspacePalette {
+    static let colors: [(name: String, hex: String)] = [
+        ("Red", "#C0392B"), ("Crimson", "#922B21"), ("Orange", "#A04000"),
+        ("Amber", "#7D6608"), ("Olive", "#4A5C18"), ("Green", "#196F3D"),
+        ("Teal", "#006B6B"), ("Aqua", "#0E6B8C"), ("Blue", "#1565C0"),
+        ("Navy", "#1A5276"), ("Indigo", "#283593"), ("Purple", "#6A1B9A"),
+        ("Magenta", "#AD1457"), ("Rose", "#880E4F"), ("Brown", "#7B3F00"),
+        ("Charcoal", "#3E4B5E")
+    ]
+}
+
 /// One context-menu entry — pure value, shared between the popover
 /// builder and `debug.sidebar_menu` (wiring/09 shared-projection rule).
 struct SidebarMenuItem: Equatable {
@@ -352,6 +366,7 @@ enum SidebarContextMenuModel {
             return [
                 SidebarMenuItem(id: "new_in_group", title: "New Workspace in Group"),
                 SidebarMenuItem(id: "rename_group", title: "Rename Group…"),
+                SidebarMenuItem(id: "group_color", title: "Group Color…"),
                 SidebarMenuItem(id: "pin_group", title: pinned ? "Unpin Group" : "Pin Group"),
                 SidebarMenuItem(
                     id: "collapse_group", title: collapsed ? "Expand Group" : "Collapse Group"),
@@ -361,6 +376,7 @@ enum SidebarContextMenuModel {
         }
         var items = [
             SidebarMenuItem(id: "rename_workspace", title: "Rename Workspace…"),
+            SidebarMenuItem(id: "workspace_color", title: "Workspace Color…"),
             SidebarMenuItem(
                 id: "close_others", title: "Close Other Workspaces",
                 enabled: workspaceCount > 1)
@@ -427,7 +443,8 @@ enum SidebarRows {
                 rows.append(SidebarRowModel(
                     id: tab.id,
                     title: (tab.needsAttention ? "●  " : "") + tab.title,
-                    kind: .workspace
+                    kind: .workspace,
+                    colorHex: validatedHex(tab.customColor)
                 ))
                 continue
             }
@@ -457,6 +474,7 @@ enum SidebarRows {
                     id: tab.id,
                     title: "      " + (tab.needsAttention ? "●  " : "") + tab.title,
                     kind: .workspace,
+                    colorHex: validatedHex(tab.customColor),
                     inGroup: true
                 ))
             }
@@ -535,6 +553,10 @@ struct TerminalTab: Identifiable, Equatable {
     /// `Workspace.groupId`). The group's member list is always derived
     /// from this relation, never stored on the group.
     var groupId: UUID? = nil
+    /// Identity tint (macOS `Workspace.customColor`): a `#RRGGBB` hex
+    /// set from the row's color palette; rendered as a left rail on the
+    /// sidebar row. Persisted.
+    var customColor: String? = nil
 
     init(
         id: UUID = UUID(),

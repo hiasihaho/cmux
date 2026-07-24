@@ -70,8 +70,14 @@ fallback not wired.
 - Sidebar selection color separately overridable
   (`sidebarSelectionColorHex`); sidebar can match terminal background.
 
-**Linux today:** no workspace colors at all (no rail, no fill, no
-palette). The port's rows are plain text.
+**Linux today (mirror ④, 2026-07-24):** `TerminalTab.customColor`
+persisted; the same 16 hexes (`WorkspacePalette`) in a swatch popover
+reachable from the row context menu ("Workspace Color…" — and
+"Group Color…" on headers, a picker macOS itself lacks); rendered as a
+**left rail** (`box-shadow: inset 4px`, per-color generated CSS classes,
+`SidebarColorStyle.sync` in the AttentionStyle idiom). Not mirrored:
+the `.solidFill` style, dark-mode brightening, WCAG-adaptive text,
+per-cwd config colors.
 
 ### 1.3 Attention & status colors
 
@@ -377,10 +383,11 @@ Ranked by comfort-per-effort for the port, using the surveys above:
    Group/Copy ID/Close) and group headers (New in Group/Rename/Pin/
    Collapse/Ungroup/Delete), all through shared v2 paths; menu content
    projected via `debug.sidebar_menu`.
-4. **M — workspace colors**: the 16-swatch palette + rail/fill row
-   rendering + color submenu in the new context menu; reuse the same
-   palette as a group-color picker (which even macOS lacks). Includes
-   switching the group swatch → icon tint for parity.
+4. ✅ **M — workspace colors** (landed 2026-07-24): the exact 16-swatch
+   macOS palette in a popover (context menu → Workspace Color… /
+   Group Color…), left-rail row rendering via generated per-color CSS
+   classes, Clear + strict-hex Custom…, persisted in session v3. The
+   group swatch→icon-tint switch remains open (minor).
 5. **M — tab icons + end-action buttons**: per-type themed icons,
    favicons via WebKitGTK's favicon database, configurable end-action
    buttons on the pane tab bar.

@@ -18,6 +18,14 @@ enum SidebarContextMenu {
     static var workspaceCountProvider: () -> Int = { 0 }
     /// Menu action → (item id, row). Wired by CmuxApp.
     static var onAction: ((String, SidebarRowModel) -> Void)?
+    /// Palette commit → (row, hex or nil = clear, isGroup). Wired by CmuxApp.
+    static var onColorChosen: ((SidebarRowModel, String?, Bool) -> Void)?
+    /// "Custom…" → (row, isGroup); CmuxApp opens the hex dialog.
+    static var onColorCustom: ((SidebarRowModel, Bool) -> Void)?
+
+    /// The row widget of the most recent menu, so a follow-up palette
+    /// popover can parent to the same row within the action's turn.
+    static var lastRowWidget: UnsafeMutablePointer<GtkWidget>?
 
     private static var installed = false
 
@@ -54,6 +62,71 @@ enum SidebarContextMenu {
         let index = gtk_list_box_row_get_index(
             UnsafeMutableRawPointer(rowWidget).assumingMemoryBound(to: GtkListBoxRow.self))
         return index >= 0 ? Int(index) : nil
+    }
+
+    /// The color palette popover: the 16 macOS swatches + Clear +
+    /// Custom…, parented to the row the menu was opened on.
+    static func presentColorPalette(row: SidebarRowModel, isGroup: Bool) {
+        guard let rowWidget = lastRowWidget,
+              let popover = gtk_popover_new(),
+              let column = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6) else { return }
+        let columnBox = UnsafeMutableRawPointer(column).assumingMemoryBound(to: GtkBox.self)
+        var swatchRow: UnsafeMutablePointer<GtkBox>?
+        for (offset, color) in WorkspacePalette.colors.enumerated() {
+            if offset % 8 == 0 {
+                guard let line = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6) else { continue }
+                swatchRow = UnsafeMutableRawPointer(line).assumingMemoryBound(to: GtkBox.self)
+                gtk_box_append(columnBox, line)
+            }
+            guard let swatchRow, let button = gtk_button_new() else { continue }
+            gtk_widget_add_css_class(button, "circular")
+            gtk_widget_add_css_class(button, SidebarColorStyle.swatchClass(for: color.hex))
+            gtk_widget_set_tooltip_text(button, color.name)
+            let box = SidebarColorChoice(row: row, hex: color.hex, isGroup: isGroup, popover: popover)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(button), "clicked",
+                unsafeBitCast(sidebarColorChosen, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(),
+                sidebarColorChoiceDestroy, GConnectFlags(0)
+            )
+            gtk_box_append(swatchRow, button)
+        }
+        if let actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6) {
+            let actionsBox = UnsafeMutableRawPointer(actions).assumingMemoryBound(to: GtkBox.self)
+            if let clear = gtk_button_new_with_label("Clear Color") {
+                gtk_widget_add_css_class(clear, "flat")
+                let box = SidebarColorChoice(row: row, hex: nil, isGroup: isGroup, popover: popover)
+                g_signal_connect_data(
+                    UnsafeMutableRawPointer(clear), "clicked",
+                    unsafeBitCast(sidebarColorChosen, to: GCallback.self),
+                    Unmanaged.passRetained(box).toOpaque(),
+                    sidebarColorChoiceDestroy, GConnectFlags(0)
+                )
+                gtk_box_append(actionsBox, clear)
+            }
+            if let custom = gtk_button_new_with_label("Custom…") {
+                gtk_widget_add_css_class(custom, "flat")
+                let box = SidebarColorChoice(
+                    row: row, hex: "custom", isGroup: isGroup, popover: popover)
+                g_signal_connect_data(
+                    UnsafeMutableRawPointer(custom), "clicked",
+                    unsafeBitCast(sidebarColorCustomClicked, to: GCallback.self),
+                    Unmanaged.passRetained(box).toOpaque(),
+                    sidebarColorChoiceDestroy, GConnectFlags(0)
+                )
+                gtk_box_append(actionsBox, custom)
+            }
+            gtk_box_append(columnBox, actions)
+        }
+        gtk_widget_set_parent(popover, rowWidget)
+        let popoverPtr = UnsafeMutableRawPointer(popover).assumingMemoryBound(to: GtkPopover.self)
+        gtk_popover_set_child(popoverPtr, column)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(popover), "closed",
+            unsafeBitCast(sidebarMenuPopoverClosed, to: GCallback.self),
+            nil, nil, GConnectFlags(0)
+        )
+        gtk_popover_popup(popoverPtr)
     }
 
     /// Builds and pops the menu for `row`, parented to the row's widget.
@@ -129,7 +202,47 @@ let sidebarContextMenuPressed: @convention(c) (
           let rowWidget = gtk_widget_get_ancestor(picked, gtk_list_box_row_get_type()) else {
         return
     }
+    SidebarContextMenu.lastRowWidget = rowWidget
     SidebarContextMenu.present(row: rows[index], rowWidget: rowWidget)
+}
+
+/// One palette swatch's target (`hex == nil` clears).
+final class SidebarColorChoice {
+    let row: SidebarRowModel
+    let hex: String?
+    let isGroup: Bool
+    let popover: UnsafeMutablePointer<GtkWidget>
+    init(row: SidebarRowModel, hex: String?, isGroup: Bool, popover: UnsafeMutablePointer<GtkWidget>) {
+        self.row = row
+        self.hex = hex
+        self.isGroup = isGroup
+        self.popover = popover
+    }
+}
+
+let sidebarColorChoiceDestroy: GClosureNotify = { data, _ in
+    guard let data else { return }
+    Unmanaged<SidebarColorChoice>.fromOpaque(data).release()
+}
+
+let sidebarColorChosen: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
+) -> Void = { _, userData in
+    guard let userData else { return }
+    let choice = Unmanaged<SidebarColorChoice>.fromOpaque(userData).takeUnretainedValue()
+    gtk_popover_popdown(
+        UnsafeMutableRawPointer(choice.popover).assumingMemoryBound(to: GtkPopover.self))
+    SidebarContextMenu.onColorChosen?(choice.row, choice.hex, choice.isGroup)
+}
+
+let sidebarColorCustomClicked: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
+) -> Void = { _, userData in
+    guard let userData else { return }
+    let choice = Unmanaged<SidebarColorChoice>.fromOpaque(userData).takeUnretainedValue()
+    gtk_popover_popdown(
+        UnsafeMutableRawPointer(choice.popover).assumingMemoryBound(to: GtkPopover.self))
+    SidebarContextMenu.onColorCustom?(choice.row, choice.isGroup)
 }
 
 let sidebarMenuItemClicked: @convention(c) (

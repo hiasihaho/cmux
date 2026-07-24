@@ -35,6 +35,8 @@ enum SessionStore {
         /// (like macOS's `anchorMemberIndex` trick) because workspace
         /// UUIDs are not persisted and change on restore.
         var groupIndex: Int? = nil
+        /// Workspace identity tint (`#RRGGBB`); absent = none.
+        var customColor: String? = nil
     }
 
     /// One workspace group. Membership rides on each workspace
@@ -211,6 +213,7 @@ enum SessionStore {
                 workspace.groupIndex = tab.groupId.flatMap { gid in
                     liveGroups.firstIndex { $0.id == gid }
                 }
+                workspace.customColor = tab.customColor
                 return workspace
             },
             groups: groupSnapshots.isEmpty ? nil : groupSnapshots
@@ -370,6 +373,7 @@ enum SessionStore {
             }
             var tab = TerminalTab(title: workspace.title, workingDirectory: workspace.workingDirectory)
             tab.customTitle = workspace.customTitle
+            tab.customColor = workspace.customColor
             var dividers: [String: Double] = [:]
             tab.layout = layoutNode(workspace.layout, byId: byId, dividers: &dividers)
                 ?? .leaf(PaneLeaf(workingDirectory: workspace.workingDirectory))
