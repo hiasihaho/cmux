@@ -4076,3 +4076,25 @@ source analyzer — a live-socket probe mode (classify every v2 method by
 served/unknown_method against a running instance) does not exist yet and
 is the missing piece for an empirical `mac` column on the features
 board. Tracked in GAPS.
+
+## 2026-07-24 (night) — shim increment 4 compiles: the merged tree builds BOTH artifacts
+
+`libghostty-gtk.so` builds from the manaflow-merged tree (trial branch
+`6ae46bc59`). All 19 lib-gtk errors shared one root cause in three
+shapes: upstream code treating `artifact == .lib` or a type comparison
+naming `apprt.embedded` as "the embedded runtime is active" — under our
+gtk-lib hybrid each such reference forces analysis of manaflow's grown
+embedded.zig, which (correctly, for its runtime) assumes runtime ==
+embedded. The repeating lesson of the whole day, now on the zig side
+too: **"lib" is not a runtime, and naming a container is analyzing
+it.** Fix pattern everywhere: compare `build_config.app_runtime`
+(an enum — analyzes nothing) instead of apprt types, and turn
+runtime-type switches into build-enum if-chains so untaken branches
+stay unanalyzed. Two genuine shim API-drift fixes on top:
+`Surface.new(.none)` (overrides struct) and `working-directory` as a
+union (`.{ .path = … }`). `ghostty_embed_*` exports verified intact
+(12); the libpng leak (377 `png_*`) predates and survives the merge —
+its GAPS row stands. Runtime validation (scratch instance on the new
+.so) is the remaining gate before the fork push and submodule pointer
+move; then the null renderer (POC-0003 increment 2) lands on a settled
+fork.
