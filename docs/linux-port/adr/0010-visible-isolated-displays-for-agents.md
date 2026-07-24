@@ -1,8 +1,8 @@
 # 0010 — Visible isolated displays for agents (Xvfb → a cmux pane)
 
-- **Status:** Proposed (open — decision deferred)
+- **Status:** Accepted
 - **Date:** 2026-07-24
-- **Deciders:** hias + Claude (open for discussion)
+- **Deciders:** hias + Claude
 
 ## Context
 
@@ -32,16 +32,22 @@ stay conflict-free across many agents?
 
 ## Decision
 
-**OPEN.** Current lean: **A as the immediate step** (a proactive
-screenshot stream — cheap, and it already works), **B as the
-live-visible aspiration** if the transparency payoff justifies a new pane
-type. **C is probably overkill** for the value.
+**A + B, both** (2026-07-24). They are complements, not alternatives:
+A (screenshots) stays the agent's proactive "here's what I see" channel,
+and B's live pane doubles as a **pointing channel** — because VNC is
+interactive, the human can click the element they mean *inside the
+agent's display*, and the agent reads it back (`scratch.sh point`:
+pointer coordinates + a crosshair-marked screenshot). That deixis — "this
+one, here", which neither a screenshot stream nor prose can express — was
+the deciding argument (hias).
 
-*2026-07-24 update:* B's stage-1 POC is **proven** with zero app changes —
-x11vnc + noVNC rendered in an ordinary browser surface (see
-`poc/0002-vnc-live-agent-display.md`). The remaining B question is only
-whether the live view earns a *native* pane type (gtk-vnc2 is already on
-the host), not whether it can work.
+Implemented as `scratch.sh watch` / `watch-status` / `point` / `unwatch`
+over x11vnc + noVNC in an ordinary browser surface — B's stage-1 POC
+(`poc/0002-vnc-live-agent-display.md`, now adopted as
+`features/12-live-agent-display.md`) proved this needs zero app changes.
+**C stays rejected as overkill.** A **native gtk-vnc2 pane type** remains
+open as a possible stage 2, only if the browser-pane client shows its
+limits.
 
 ## Consequences
 
@@ -56,6 +62,11 @@ the host), not whether it can work.
   claude-teams made from tmux-panes to native splits.
 - Interacts with 0009: a visible display + a name↔pane mapping = "watch
   the agent named X work in its own cmux."
+- The pointing channel inverts the direction of transparency: not only
+  can the human watch the agent — the human can *gesture into the
+  agent's world* and be understood (click → `point` → coordinates).
+- `watch-status` verifies the whole pipeline (processes, noVNC serving,
+  pane actually connected) and is the meta-feature's `check:` guard.
 
 ## Links
 

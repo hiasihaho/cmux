@@ -2,11 +2,11 @@
 title: Live agent display in a pane (VNC)
 area: browser
 kind: composition
-status: proven
+status: adopted
 linux: proven
 mac: n-a
 substrate: scratch.sh Xvfb harness + browser surface (08-browser-automation) + x11vnc/noVNC (system packages)
-adopted: none
+adopted: 12-live-agent-display
 evolves_to: >
   native VNC pane type via gtk-vnc2 (ADR-0010 option B, stage 2); per-agent
   "watch me work" workspaces wired into dogfood.sh / the agent runtime;
@@ -15,7 +15,9 @@ evolves_to: >
 
 # 0002 — Live agent display in a pane (VNC)
 
-- **Status:** proven (cmux-adw, 2026-07-24)
+- **Status:** adopted (2026-07-24, same day as proven) — wired in as
+  `scratch.sh watch`/`watch-status`/`point`/`unwatch`; feature page
+  `features/12-live-agent-display.md`
 - **Substrate:** `scratch.sh` isolated displays × browser surfaces × `x11vnc` + `noVNC`
 - **Origin:** ADR-0010 (visible isolated displays for agents), option B, stage 1
 

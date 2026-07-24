@@ -13,7 +13,7 @@ flowchart TD
     n0007["0007<br/>Where the parallel-agent harness lives: scri…<br/><i>proposed</i>"]
     n0008["0008<br/>Agent runtime lifecycle: what dismissal/deat…<br/><i>proposed</i>"]
     n0009["0009<br/>Agent work visibility: structured reporting,…<br/><i>accepted</i>"]
-    n0010["0010<br/>Visible isolated displays for agents (Xvfb →…<br/><i>proposed</i>"]
+    n0010["0010<br/>Visible isolated displays for agents (Xvfb →…<br/><i>accepted</i>"]
     n0011["0011<br/>Features board: measured status, authored de…<br/><i>accepted</i>"]
     n0012["0012<br/>Pinned dashboards in the workspace sidebar<br/><i>proposed</i>"]
     n0013["0013<br/>Pane tags, and (maybe) attention-driven work…<br/><i>proposed</i>"]
@@ -45,7 +45,7 @@ flowchart TD
     style n0007 fill:#d2992222,stroke:#d29922
     style n0008 fill:#d2992222,stroke:#d29922
     style n0009 fill:#2ea04322,stroke:#2ea043
-    style n0010 fill:#d2992222,stroke:#d29922
+    style n0010 fill:#2ea04322,stroke:#2ea043
     style n0011 fill:#2ea04322,stroke:#2ea043
     style n0012 fill:#d2992222,stroke:#d29922
     style n0013 fill:#d2992222,stroke:#d29922
@@ -63,7 +63,7 @@ flowchart TD
 | [0007](0007-harness-layer-and-extensibility.md) | Where the parallel-agent harness lives: scripts, skill, command, or plugin | proposed |
 | [0008](0008-agent-runtime-lifecycle.md) | Agent runtime lifecycle: what dismissal/death does to an agent's surfaces | proposed |
 | [0009](0009-agent-work-visibility.md) | Agent work visibility: structured reporting, pane-review, and name↔pane mapping | accepted |
-| [0010](0010-visible-isolated-displays-for-agents.md) | Visible isolated displays for agents (Xvfb → a cmux pane) | proposed |
+| [0010](0010-visible-isolated-displays-for-agents.md) | Visible isolated displays for agents (Xvfb → a cmux pane) | accepted |
 | [0011](0011-features-board-generated-not-curated.md) | Features board: measured status, authored descriptions | accepted |
 | [0012](0012-pinned-dashboards-in-sidebar.md) | Pinned dashboards in the workspace sidebar | proposed |
 | [0013](0013-pane-tags-and-attention-workflows.md) | Pane tags, and (maybe) attention-driven workflows over them | proposed |

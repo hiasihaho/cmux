@@ -3612,3 +3612,24 @@ earns it: a native pane type on `gtk-vnc2` (GTK4 VncDisplay — already
 installed on the host; `-devel` in the Fedora repos). POC page:
 `poc/0002-vnc-live-agent-display.md`; ADR-0010 stays OPEN on the
 native-pane question.
+
+### ADR-0010 accepted — screenshots + live VNC, and the pointing channel (2026-07-24)
+
+hias decided: A and B **both**, with the insight that settled it — B is
+not just watching. The VNC pane is interactive, so the human can click
+the element they *mean* inside the agent's display, then the agent reads
+it back. Deixis ("this one, here") — inexpressible in a screenshot
+stream. Wired in as `scratch.sh watch` (x11vnc+noVNC → browser pane in a
+background workspace of the caller's cmux, ports :N→rfb 5900+N / web
+6900+N, localhost-only), `watch-status` (verifies processes, noVNC
+serving, and that the pane is *actually connected*, via `browser eval` —
+the meta-feature's check), `point` (xdotool pointer read + crosshair-
+marked shot), `unwatch` (kills strictly by recorded pid after /proc
+cmdline verification; `stop` implies it). Measured end-to-end: a click
+injected at (140,75) through VNC really operated the scratch instance's
+sidebar, and `point` returned exactly x=140 y=75 with the crosshair on
+the clicked row. POC-0002 graduated to adopted (`features/12` — first POC
+to complete the authored-intent → measured-reality loop). Two traps
+re-confirmed: x11vnc dies on sight of WAYLAND_DISPLAY (launcher scrubs
+it), and `pkill -f` matched the caller's own command line again (exit
+144; third documented hit — hence pid-verified kills only).

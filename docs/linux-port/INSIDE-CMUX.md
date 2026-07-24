@@ -46,7 +46,9 @@ via lib.sh, and a hand-rolled `:93` once false-redded a running gate):
 linux/scripts/scratch.sh start <tag>          # free display, isolated ids
 eval "$(linux/scripts/scratch.sh env <tag>)"  # point the CLI at it
 linux/scripts/scratch.sh shot <tag> out.png   # screenshot
-linux/scripts/scratch.sh stop <tag>           # kills by env match only
+linux/scripts/scratch.sh watch <tag>          # ADR-0010: live view in a pane of the caller's cmux
+linux/scripts/scratch.sh point <tag> out.png  # human clicked in the watch pane? coords + marked shot
+linux/scripts/scratch.sh stop <tag>           # kills by env match only (implies unwatch)
 ```
 
 (`start.sh daily` starts the human's instance after a crash/close; it

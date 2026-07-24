@@ -2,5 +2,5 @@
   { "atlas": "POC atlas" },
   { "file": "README.md", "title": "How the POC atlas works (maturity model)" },
   { "file": "0001-browser-surface-per-agent.md", "title": "0001 · Browser surface per agent ◇" },
-  { "file": "0002-vnc-live-agent-display.md", "title": "0002 · Live agent display in a pane (VNC) ◇" }
+  { "file": "0002-vnc-live-agent-display.md", "title": "0002 · Live agent display in a pane (VNC) ◆" }
 ]
