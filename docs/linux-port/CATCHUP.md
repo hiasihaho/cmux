@@ -87,6 +87,14 @@ snapshot path.
 A `vncpoc` scratch instance (+watch) may still be running from the
 build session — `scratch.sh stop vncpoc` tears it all down.
 
+**Comfort mirror under way** (same day, after the UX survey —
+MACOS-UX.md): ① browser omnibar state parity (history-aware
+back/forward, reload⇄stop, https lock; `debug.browser_chrome`) and
+② sidebar hover affordances (row ✕, header ＋ via CSS `row:hover`)
+are landed and suite-verified. Next: ③ context menus. Trap fixed on
+the way: lib.sh now exports DISPLAY so a bare xdotool in a suite can
+never drive the developer's real desktop again (PROGRESS).
+
 **Workspace groups stages 1+2 landed** (same session, later): all 17
 `workspace.group.*` verbs + the `workspace.create` group params serve
 with macOS wire parity — model, contiguity/pin-tier ordering, anchor

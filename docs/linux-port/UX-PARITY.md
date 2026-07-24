@@ -45,7 +45,7 @@ feature hiding in an unexpected place is a real cost anywhere.
 | Aspect | macOS | Linux port | Verdict |
 |---|---|---|---|
 | Row content | rich multi-line: unread badge w/ count or agent spinner, pin, media glyphs, title 12.5pt, inline rename, notification subtitle, branch+dir row, PR rows, ports, checklist, progress, color rail | plain text + literal "●  " prefix | ❌ the rich-row system is the sidebar-metadata GAPS row (L); the *badge-with-count* is the S-sized first slice |
-| Hover close button | trailing slot cross-fades badge→xmark on hover | none | ❌ S — daily-use affordance |
+| Hover close button | trailing slot cross-fades badge→xmark on hover | hover-revealed ✕ via CSS `row:hover` (2026-07-24; headers get hover-＋); no badge cross-fade yet — there are no badges | ✅ mirror item ② |
 | Context menu | full (rename, pin, group, close, colors…) | none | ❌ S–M |
 | Drag reorder | yes, with accent drop indicators + multi-select | none (verb only) | ❌ M |
 | Attention indicator | accent-blue badge; one color, three tiers (flash ring → pane ring → badge) | text dot | ❓ adopt the blue-badge tier language when rows get built |
