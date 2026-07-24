@@ -37,6 +37,12 @@ screenshot stream — cheap, and it already works), **B as the
 live-visible aspiration** if the transparency payoff justifies a new pane
 type. **C is probably overkill** for the value.
 
+*2026-07-24 update:* B's stage-1 POC is **proven** with zero app changes —
+x11vnc + noVNC rendered in an ordinary browser surface (see
+`poc/0002-vnc-live-agent-display.md`). The remaining B question is only
+whether the live view earns a *native* pane type (gtk-vnc2 is already on
+the host), not whether it can work.
+
 ## Consequences
 
 - A is essentially free and buys most of the transparency benefit for
@@ -56,3 +62,5 @@ type. **C is probably overkill** for the value.
 - `linux/scripts/scratch.sh` (the isolated-display wrapper), `lib.sh`
   Xvfb management, ADR-0009 (visibility), cmux's transparency ethos
   (MENTAL-MODEL, CONCEPTS).
+- `poc/0002-vnc-live-agent-display.md` — stage-1 POC of option B
+  (proven 2026-07-24: live scratch display in a browser pane).

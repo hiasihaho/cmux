@@ -3593,3 +3593,22 @@ measured-over-asserted discipline is already in all three; the features
 board's verified-uniqueness (★/★ᵃ/⚠) is the cleanest expression, now
 documented as the "Comparison harness" meta page. `--check` green, 11
 pages. ADR-0014 Accepted; graph regenerated (14 ADRs).
+
+### VNC live agent display — ADR-0010 B stage-1 POC proven (2026-07-24)
+
+ADR-0010 asked whether an agent's isolated Xvfb display could be
+live-visible in a cmux pane. Proved it with zero app changes: `scratch.sh`
+instance on :140 → `x11vnc -localhost` (must launch with
+`env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE`, else x11vnc sees the Wayland
+session and exits) → `websockify --web /usr/share/novnc` → noVNC with
+`?autoconnect=true&resize=scale` in an ordinary browser surface in a
+background workspace. Verified without focus theft via
+`cmux browser eval` (noVNC_connected) — which also surfaced two facts:
+backgrounded browser surfaces keep their WebKit page running (the VNC
+session connects and holds while never visible), but `browser screenshot`
+requires visibility (`invalid_state`). Per-agent scaling is structural:
+display `:140+k` → ports `5920+k`/`6081+k`. Stage 2, if the live view
+earns it: a native pane type on `gtk-vnc2` (GTK4 VncDisplay — already
+installed on the host; `-devel` in the Fedora repos). POC page:
+`poc/0002-vnc-live-agent-display.md`; ADR-0010 stays OPEN on the
+native-pane question.
