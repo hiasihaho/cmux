@@ -439,7 +439,7 @@ struct ControlCommandHandler {
                     "pane.swap", "pane.break", "pane.join", "pane.resize",
                     "pane.zoom",
                     "surface.respawn", "debug.surfaces", "debug.sidebar_rows",
-                    "debug.browser_chrome",
+                    "debug.browser_chrome", "debug.sidebar_menu",
                     "notification.jump_to_unread", "notification.mark_read",
                     "notification.dismiss", "notification.open",
                     "window.current", "window.focus", "browser.zoom.set",
@@ -576,6 +576,8 @@ struct ControlCommandHandler {
             return v2DebugSidebarRows(id: id)
         case "debug.browser_chrome":
             return v2DebugBrowserChrome(id: id, params: params)
+        case "debug.sidebar_menu":
+            return v2DebugSidebarMenu(id: id, params: params)
         case "debug.surfaces":
             // The doctor verb: widget-lifecycle state of every surface
             // (backend, parent type, realized/mapped, refcount, readable).
@@ -1396,6 +1398,53 @@ struct ControlCommandHandler {
         _ = v2WorkspaceClose(id: nil, params: ["workspace_id": workspaceId.uuidString])
     }
 
+    /// Context menu "Close Other Workspaces" — repeated workspace.close.
+    func uiCloseOtherWorkspaces(keeping workspaceId: UUID) {
+        let others = tabs.wrappedValue.map(\.id).filter { $0 != workspaceId }
+        for other in others {
+            _ = v2WorkspaceClose(id: nil, params: ["workspace_id": other.uuidString])
+        }
+    }
+
+    /// Context menu rename — the dialog's commit path (macOS setCustomTitle).
+    func uiRenameWorkspace(_ workspaceId: UUID, title: String) {
+        _ = v2WorkspaceRename(id: nil, params: [
+            "workspace_id": workspaceId.uuidString, "title": title
+        ])
+    }
+
+    /// Context menu "New Group from Workspace…" with an explicit child.
+    func uiCreateGroup(name: String, child workspaceId: UUID) {
+        _ = v2GroupCreate(id: nil, params: [
+            "name": name, "child_workspace_ids": [workspaceId.uuidString]
+        ])
+    }
+
+    func uiRemoveFromGroup(_ workspaceId: UUID) {
+        _ = v2GroupRemove(id: nil, params: ["workspace_id": workspaceId.uuidString])
+    }
+
+    func uiRenameGroup(_ groupId: UUID, name: String) {
+        _ = v2GroupRename(id: nil, params: ["group_id": groupId.uuidString, "name": name])
+    }
+
+    func uiSetGroupPinned(_ groupId: UUID, pinned: Bool) {
+        _ = v2GroupSetPinned(id: nil, params: ["group_id": groupId.uuidString], isPinned: pinned)
+    }
+
+    func uiUngroup(_ groupId: UUID) {
+        _ = v2GroupUngroup(id: nil, params: ["group_id": groupId.uuidString])
+    }
+
+    func uiDeleteGroup(_ groupId: UUID) {
+        _ = v2GroupDelete(id: nil, params: ["group_id": groupId.uuidString])
+    }
+
+    /// The group name for a header row (dialog prefill).
+    func groupName(_ groupId: UUID) -> String? {
+        groups.wrappedValue.first(where: { $0.id == groupId })?.name
+    }
+
     /// Group-header hover-＋ — same path as workspace.group.new_workspace.
     func uiNewWorkspaceInGroup(_ groupId: UUID) {
         _ = v2GroupNewWorkspace(id: nil, params: ["group_id": groupId.uuidString])
@@ -1423,11 +1472,13 @@ struct ControlCommandHandler {
             switch row.kind {
             case .workspace:
                 entry["kind"] = "workspace"
-            case .groupHeader(let gid, let collapsed, let count):
+                entry["in_group"] = row.inGroup
+            case .groupHeader(let gid, let collapsed, let count, let pinned):
                 entry["kind"] = "group_header"
                 entry["group_ref"] = registry.ref(kind: "workspace_group", uuid: gid)
                 entry["collapsed"] = collapsed
                 entry["member_count"] = count
+                entry["pinned"] = pinned
                 entry["color_hex"] = row.colorHex ?? NSNull()
                 entry["icon_name"] = row.iconName ?? NSNull()
             }
@@ -2033,6 +2084,30 @@ struct ControlCommandHandler {
             "secure": chrome.secure,
             "url": chrome.url
         ])
+    }
+
+    /// The context-menu projection for one sidebar row — the same items
+    /// the right-click popover builds (SidebarContextMenuModel), so the
+    /// suite asserts the menu the human sees.
+    private func v2DebugSidebarMenu(id: Any?, params: [String: Any]) -> String {
+        guard let raw = params["workspace_id"] as? String,
+              let workspaceId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid workspace_id")
+        }
+        let rows = SidebarRows.project(tabs: tabs.wrappedValue, groups: groups.wrappedValue)
+        guard let row = rows.first(where: { $0.id == workspaceId }) else {
+            return v2Error(id: id, code: "not_found", message: "No sidebar row for that workspace")
+        }
+        let items = SidebarContextMenuModel.items(
+            for: row, workspaceCount: tabs.wrappedValue.count)
+        return v2Ok(id: id, result: ["items": items.map { item in
+            [
+                "id": item.id,
+                "title": item.title,
+                "destructive": item.destructive,
+                "enabled": item.enabled
+            ]
+        }])
     }
 
     private func v2SurfaceReorder(id: Any?, params: [String: Any]) -> String {

@@ -3786,3 +3786,24 @@ before the real cause surfaced. Fixes: lib.sh `start_xvfb` now
 suite again, and the suites keep their explicit prefixes. Lesson for
 LESSONS-style recall: when a synthetic-input assertion flakes, verify
 WHICH DISPLAY the input lands on before theorizing about timing.
+
+### Comfort mirror ③: sidebar context menus (2026-07-24)
+
+Workspace rows and group headers answer right-click with real menus —
+the macOS core slice: rows get Rename Workspace… / Close Other
+Workspaces / New Group from Workspace… ⇄ Remove from Group (by
+membership) / Copy Workspace ID / Close Workspace (destructive-styled);
+headers get New Workspace in Group / Rename Group… / Pin⇄Unpin /
+Collapse⇄Expand / Ungroup / Delete Group. Mechanics: one window-level
+GtkGestureClick (button 3, bubble phase — panes keep their own
+right-clicks), `gtk_widget_pick` + ancestor walk to the
+navigation-sidebar row, popover of flat buttons in the profile-popover
+idiom (SidebarContextMenu.swift); GtkGesture pointers stay opaque
+through the C importer like GtkStyleProvider. Menu CONTENT is a pure
+projection (SidebarContextMenuModel) shared verbatim with a new
+`debug.sidebar_menu` verb, and every action routes through the same v2
+implementations the socket verbs use — the menu is just another caller.
+Sidebar rows now also expose `pinned`/`in_group` via debug.sidebar_rows.
+Suite → 54: three menu-projection assertions plus a real right-click →
+"Remove from Group" click-through; verified visually (member and header
+menus, destructive items in red).

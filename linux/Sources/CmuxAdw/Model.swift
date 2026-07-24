@@ -318,7 +318,7 @@ indirect enum PaneNode: Equatable {
 struct SidebarRowModel: Identifiable, Equatable {
     enum Kind: Equatable {
         case workspace
-        case groupHeader(groupId: UUID, collapsed: Bool, memberCount: Int)
+        case groupHeader(groupId: UUID, collapsed: Bool, memberCount: Int, pinned: Bool)
     }
     /// The workspace id (for a header: the anchor's). Selecting the row
     /// selects this workspace through the ordinary selection binding —
@@ -331,6 +331,48 @@ struct SidebarRowModel: Identifiable, Equatable {
     /// GTK themed icon for header rows (mapped from the stored macOS
     /// SF Symbol name; `folder-symbolic` default); nil on plain rows.
     var iconName: String? = nil
+    /// True for group-member rows (context menu offers Remove from Group).
+    var inGroup: Bool = false
+}
+
+/// One context-menu entry — pure value, shared between the popover
+/// builder and `debug.sidebar_menu` (wiring/09 shared-projection rule).
+struct SidebarMenuItem: Equatable {
+    let id: String
+    let title: String
+    var destructive: Bool = false
+    var enabled: Bool = true
+}
+
+/// The right-click menu contents per sidebar row — the macOS menus'
+/// core slice (MACOS-UX §4), restricted to actions the port serves.
+enum SidebarContextMenuModel {
+    static func items(for row: SidebarRowModel, workspaceCount: Int) -> [SidebarMenuItem] {
+        if case let .groupHeader(_, collapsed, _, pinned) = row.kind {
+            return [
+                SidebarMenuItem(id: "new_in_group", title: "New Workspace in Group"),
+                SidebarMenuItem(id: "rename_group", title: "Rename Group…"),
+                SidebarMenuItem(id: "pin_group", title: pinned ? "Unpin Group" : "Pin Group"),
+                SidebarMenuItem(
+                    id: "collapse_group", title: collapsed ? "Expand Group" : "Collapse Group"),
+                SidebarMenuItem(id: "ungroup", title: "Ungroup Workspaces"),
+                SidebarMenuItem(id: "delete_group", title: "Delete Group", destructive: true)
+            ]
+        }
+        var items = [
+            SidebarMenuItem(id: "rename_workspace", title: "Rename Workspace…"),
+            SidebarMenuItem(
+                id: "close_others", title: "Close Other Workspaces",
+                enabled: workspaceCount > 1)
+        ]
+        items.append(row.inGroup
+            ? SidebarMenuItem(id: "remove_from_group", title: "Remove from Group")
+            : SidebarMenuItem(id: "new_group", title: "New Group from Workspace…"))
+        items.append(SidebarMenuItem(id: "copy_id", title: "Copy Workspace ID"))
+        items.append(SidebarMenuItem(
+            id: "close_workspace", title: "Close Workspace", destructive: true))
+        return items
+    }
 }
 
 /// Pure projection (tabs, groups) → displayed sidebar rows. The single
@@ -404,7 +446,8 @@ enum SidebarRows {
                     kind: .groupHeader(
                         groupId: gid,
                         collapsed: group.isCollapsed,
-                        memberCount: members.count
+                        memberCount: members.count,
+                        pinned: group.isPinned
                     ),
                     colorHex: validatedHex(group.customColor),
                     iconName: gtkIconName(forSymbol: group.iconSymbol)
@@ -413,7 +456,8 @@ enum SidebarRows {
                 rows.append(SidebarRowModel(
                     id: tab.id,
                     title: "      " + (tab.needsAttention ? "●  " : "") + tab.title,
-                    kind: .workspace
+                    kind: .workspace,
+                    inGroup: true
                 ))
             }
         }

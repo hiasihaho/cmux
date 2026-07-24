@@ -124,6 +124,17 @@ struct CmuxApp: App {
         // Widget-class writes only (no model state) — see AttentionStyle.
         let _ = AttentionStyle.install()
         let _ = AttentionStyle.sync(notifications: notifications, tabs: tabs)
+        // Right-click menus on sidebar rows: static providers only (no
+        // state writes); the popover reads the projection at open time.
+        let _ = SidebarContextMenu.install()
+        let _ = { () -> Bool in
+            SidebarContextMenu.rowsProvider = { [tabs, groups] in
+                SidebarRows.project(tabs: tabs, groups: groups)
+            }
+            SidebarContextMenu.workspaceCountProvider = { [tabs] in tabs.count }
+            SidebarContextMenu.onAction = handleSidebarMenuAction
+            return true
+        }()
         Window(id: "main") { _ in
             OverlaySplitView(visible: $sidebarVisible) {
                 EitherView(showNotifications, view1: {
@@ -343,6 +354,56 @@ struct CmuxApp: App {
             title: "New Group from Workspace", confirmLabel: "Create", initialText: ""
         ) { name in
             handler.uiCreateGroupFromSelection(name: name)
+        }
+    }
+
+    /// Context-menu dispatch (SidebarContextMenu.onAction): every branch
+    /// routes through the handler's shared v2 paths; dialogs collect text
+    /// where macOS prompts too.
+    private func handleSidebarMenuAction(_ itemId: String, _ row: SidebarRowModel) {
+        let handler = controlHandler
+        var groupId: UUID?
+        if case let .groupHeader(gid, _, _, _) = row.kind { groupId = gid }
+        switch itemId {
+        case "rename_workspace":
+            let current = tabs.first { $0.id == row.id }
+                .map { $0.customTitle ?? $0.title } ?? ""
+            UIDialogs.promptText(
+                title: "Rename Workspace", confirmLabel: "Rename", initialText: current
+            ) { handler.uiRenameWorkspace(row.id, title: $0) }
+        case "close_workspace":
+            handler.uiCloseWorkspace(row.id)
+        case "close_others":
+            handler.uiCloseOtherWorkspaces(keeping: row.id)
+        case "new_group":
+            UIDialogs.promptText(
+                title: "New Group from Workspace", confirmLabel: "Create", initialText: ""
+            ) { handler.uiCreateGroup(name: $0, child: row.id) }
+        case "remove_from_group":
+            handler.uiRemoveFromGroup(row.id)
+        case "copy_id":
+            UIClipboard.setText(row.id.uuidString)
+        case "new_in_group":
+            if let groupId { handler.uiNewWorkspaceInGroup(groupId) }
+        case "rename_group":
+            if let groupId {
+                UIDialogs.promptText(
+                    title: "Rename Group", confirmLabel: "Rename",
+                    initialText: handler.groupName(groupId) ?? ""
+                ) { handler.uiRenameGroup(groupId, name: $0) }
+            }
+        case "pin_group":
+            if let groupId, case let .groupHeader(_, _, _, pinned) = row.kind {
+                handler.uiSetGroupPinned(groupId, pinned: !pinned)
+            }
+        case "collapse_group":
+            if let groupId { handler.toggleGroupCollapsed(groupId) }
+        case "ungroup":
+            if let groupId { handler.uiUngroup(groupId) }
+        case "delete_group":
+            if let groupId { handler.uiDeleteGroup(groupId) }
+        default:
+            break
         }
     }
 

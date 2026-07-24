@@ -33,7 +33,7 @@ struct SidebarView: View {
         var isHeader = false
         var groupId = UUID()
         var collapsed = false
-        if case let .groupHeader(gid, isCollapsed, _) = row.kind {
+        if case let .groupHeader(gid, isCollapsed, _, _) = row.kind {
             isHeader = true
             groupId = gid
             collapsed = isCollapsed

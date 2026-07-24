@@ -243,4 +243,47 @@ done
 [ "$members" -ge 2 ] && ok "hover ＋ adds a workspace to the group" \
     || bad "hover ＋" "member_count stayed $members"
 
+# ------------------------------------------ context menus (MACOS-UX §4)
+# Menu CONTENT via debug.sidebar_menu (the same projection the popover
+# builds from), then one real right-click → item click-through.
+info "context menus (projection + click-through)"
+menu_ids() { v2 "{\"id\":1,\"method\":\"debug.sidebar_menu\",\"params\":{\"workspace_id\":\"$1\"}}" \
+    | python3 -c "import json,sys;print(' '.join(i['id'] for i in json.load(sys.stdin)['result']['items']))"; }
+case "$(menu_ids workspace:1)" in
+    *new_group*) ok "ungrouped row offers New Group from Workspace" ;;
+    *) bad "ungrouped menu" "$(menu_ids workspace:1)" ;;
+esac
+MEM=$(sidebar_rows | python3 -c "
+import json,sys
+rows=json.load(sys.stdin)['result']['rows']
+mem=[r for r in rows if r['kind']=='workspace' and r.get('in_group')]
+print(mem[0]['workspace_ref'] if mem else 'MISSING')")
+case "$(menu_ids "$MEM")" in
+    *remove_from_group*) ok "member row offers Remove from Group" ;;
+    *) bad "member menu" "$(menu_ids "$MEM")" ;;
+esac
+ANC=$(sidebar_rows | python3 -c "
+import json,sys
+rows=[r for r in json.load(sys.stdin)['result']['rows'] if r['kind']=='group_header']
+print(rows[0]['workspace_ref'] if rows else 'MISSING')")
+case "$(menu_ids "$ANC")" in
+    *delete_group*) ok "header row offers the group menu" ;;
+    *) bad "header menu" "$(menu_ids "$ANC")" ;;
+esac
+# Click-through: right-click the member row, pick "Remove from Group"
+# (3rd item; menu measured at y≈283 when popped from the row at y≈155).
+before=$(group_field "['member_count']" 0)
+removed=""
+for _ in 1 2 3 4 5; do
+    xdotool mousemove 600 400 sleep 0.2 mousemove 120 155 sleep 0.2 click 3
+    sleep 1
+    xdotool mousemove 126 283 sleep 0.2 click 1
+    sleep 1.5
+    now=$(group_field "['member_count']" 0)
+    if [ "$now" = "$((before - 1))" ]; then removed=yes; break; fi
+    xdotool key Escape; sleep 0.5
+done
+[ "$removed" = "yes" ] && ok "right-click → Remove from Group removes the member" \
+    || bad "menu click-through" "member_count $before -> $(group_field "['member_count']" 0)"
+
 finish

@@ -317,6 +317,14 @@ extension ControlCommandHandler {
 
 // MARK: - dialogs (raw GTK; adwaita-swift has no text-input alert)
 
+/// The GDK clipboard, for "Copy …" menu items.
+enum UIClipboard {
+    static func setText(_ text: String) {
+        guard let display = gdk_display_get_default() else { return }
+        gdk_clipboard_set_text(gdk_display_get_clipboard(display), text)
+    }
+}
+
 enum UIDialogs {
 
     /// Rename-workspace dialog (F2): an AdwAlertDialog with a text entry,

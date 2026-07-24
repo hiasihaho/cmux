@@ -18,4 +18,4 @@ settings-smoke	6	Settings precedence (env > file > default), preferences verbs
 ui-commands-smoke	39	UI/protocol verbs: tree, tab actions, notifications, move/reorder, swap/resize/break/join, debug.surfaces
 browser-ephemeral-smoke	10	Ephemeral browser panes: --profile ephemeral opens a fresh in-memory session that persists no cookies/storage/cache and dies with the pane; isolation vs a persistent profile, reserved-name guards
 teams-siblings-smoke	21	Sibling team launchers (codex-teams/omc/omx/omo) shim+env setup on Linux; real agent splits skipped (binaries absent), launcher path verified
-workspace-groups-smoke	50	workspace.group.* family: create/membership/contiguity/pin tier/anchor semantics/dissolution/persistence round-trip/error surfaces; new-workspace --group create path
+workspace-groups-smoke	54	workspace.group.* family: create/membership/contiguity/pin tier/anchor semantics/dissolution/persistence round-trip/error surfaces; new-workspace --group create path

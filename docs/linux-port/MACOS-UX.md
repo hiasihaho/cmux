@@ -304,10 +304,13 @@ its anchor — `rg` the label text there for exact lines):
   Clear, checklist Remove — all hover-revealed; **⌘-hold shows
   shortcut-hint pills** over sidebar rows.
 
-**Linux today:** zero context menus (the app-menu group section from
-features/04 is the only management affordance). GTK4 equivalent:
-`GtkGestureClick` (button 3) + `GtkPopoverMenu` — needs an
-adwaita-swift escape hatch like the dialogs use.
+**Linux today (mirror ③, 2026-07-24):** workspace rows and group
+headers have right-click menus (the core slice above — window-level
+button-3 gesture, widget-pick to the row, popover of flat buttons;
+`SidebarContextMenu.swift`). Content is the `SidebarContextMenuModel`
+projection shared with `debug.sidebar_menu`. Not yet mirrored: the
+long-tail items (descriptions, move-to-window, notifications submenu,
+color submenu — waits on mirror ④), terminal/browser-page menus.
 
 ## 5. The Dock (right sidebar)
 
@@ -369,11 +372,11 @@ Ranked by comfort-per-effort for the port, using the surveys above:
    hover-close ✕, group-header hover-＋ — pure CSS `row:hover` reveal,
    no motion controller needed; buttons always present so rows stay
    structure-stable.
-3. **S–M — context menus** (the biggest comfort jump): GtkPopoverMenu
-   on right-click for workspace rows + group headers. Nearly every menu
-   item already exists as a v2 implementation on Linux — the groups
-   menu work proved the shared-path pattern; this is mostly menu
-   scaffolding, not new behavior.
+3. ✅ **S–M — context menus** (landed 2026-07-24): right-click popovers
+   on workspace rows (Rename/Close Others/New Group⇄Remove from
+   Group/Copy ID/Close) and group headers (New in Group/Rename/Pin/
+   Collapse/Ungroup/Delete), all through shared v2 paths; menu content
+   projected via `debug.sidebar_menu`.
 4. **M — workspace colors**: the 16-swatch palette + rail/fill row
    rendering + color submenu in the new context menu; reuse the same
    palette as a group-color picker (which even macOS lacks). Includes
