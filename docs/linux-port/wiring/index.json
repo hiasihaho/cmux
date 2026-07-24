@@ -9,5 +9,6 @@
   { "file": "05-attention.md",       "title": "⑥ Attention pipeline" },
   { "file": "06-persistence.md",     "title": "⑦ Session & scrollback" },
   { "file": "07-browser.md",         "title": "⑧ Browser stack" },
-  { "file": "08-build-promote.md",   "title": "⑨ Build → scratch → promote" }
+  { "file": "08-build-promote.md",   "title": "⑨ Build → scratch → promote" },
+  { "file": "09-ui-view-patterns.md","title": "⑩ UI / view patterns (comfort playbook)" }
 ]

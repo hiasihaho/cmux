@@ -266,8 +266,8 @@ so this family means raw-GTK work on our side.
 
 ## 4. Context menus
 
-The complete macOS map (labels abridged; every item's file:line is in
-the survey transcript):
+The complete macOS map (labels abridged; each menu's source file is
+its anchor — `rg` the label text there for exact lines):
 
 - **Workspace row** (`TabItemView+WorkspaceContextMenu.swift`): ~30
   items — Pin/Unpin · group sub-section (New Empty Group, New Group
