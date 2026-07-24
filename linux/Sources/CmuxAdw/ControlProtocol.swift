@@ -440,7 +440,7 @@ struct ControlCommandHandler {
                     "pane.swap", "pane.break", "pane.join", "pane.resize",
                     "pane.zoom",
                     "surface.respawn", "debug.surfaces", "debug.sidebar_rows",
-                    "debug.browser_chrome", "debug.sidebar_menu",
+                    "debug.browser_chrome", "debug.sidebar_menu", "debug.dock",
                     "notification.jump_to_unread", "notification.mark_read",
                     "notification.dismiss", "notification.open",
                     "window.current", "window.focus", "browser.zoom.set",
@@ -581,6 +581,21 @@ struct ControlCommandHandler {
             return v2DebugBrowserChrome(id: id, params: params)
         case "debug.sidebar_menu":
             return v2DebugSidebarMenu(id: id, params: params)
+        case "debug.dock":
+            // Dock state + dev-tool toggle: {"set_visible": bool} flips
+            // the panel (the UI path toggles the same state).
+            if let requested = params["set_visible"] as? Bool {
+                DockRuntime.setVisible(requested)
+            }
+            return v2Ok(id: id, result: [
+                "visible": DockRuntime.visibleProvider(),
+                "populated": DockRuntime.populated,
+                "config_path": DockConfig.path(),
+                "skipped_browser_controls": DockRuntime.skippedBrowsers,
+                "controls": DockRuntime.loadedControls.map { control in
+                    ["id": control.id, "title": control.title, "command": control.command]
+                }
+            ])
         case "debug.surfaces":
             // The doctor verb: widget-lifecycle state of every surface
             // (backend, parent type, realized/mapped, refcount, readable).

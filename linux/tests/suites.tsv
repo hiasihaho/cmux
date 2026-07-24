@@ -19,3 +19,4 @@ ui-commands-smoke	49	UI/protocol verbs: tree, tab actions, notifications, move/r
 browser-ephemeral-smoke	10	Ephemeral browser panes: --profile ephemeral opens a fresh in-memory session that persists no cookies/storage/cache and dies with the pane; isolation vs a persistent profile, reserved-name guards
 teams-siblings-smoke	21	Sibling team launchers (codex-teams/omc/omx/omo) shim+env setup on Linux; real agent splits skipped (binaries absent), launcher path verified
 workspace-groups-smoke	61	workspace.group.* family: create/membership/contiguity/pin tier/anchor semantics/dissolution/persistence round-trip/error surfaces; new-workspace --group create path
+dock-smoke	8	Minimal Dock: global dock.json seeds terminal controls into the trailing panel; lazy populate on first show, login-shell command execution (marker), browser controls skipped+counted, debug.dock projection + toggle

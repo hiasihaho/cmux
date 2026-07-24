@@ -94,7 +94,7 @@ are hardcoded; no project configs, no trust flow, no templates.
 | Vault | search old agent transcripts, drag-to-resume | ❌ Later |
 | Task Manager | `cmux top` / palette: per-workspace resource attribution | ❌ Later (`system.top`) |
 | Custom commands | palette/plus-button actions, layout templates | ❌ Later |
-| Dock | window-global secondary split area beside the workspaces (MACOS-UX §5; minimal-viable plan recorded there) | ❌ Later |
+| Dock | window-global secondary split area beside the workspaces (MACOS-UX §5) | 🟡 minimal landed 2026-07-24 (terminal controls, global dock.json, toggle, debug.dock); tiling/browser/drag/verbs deferred |
 | Keyboard shortcuts | all rebindable, chords, `shortcuts.when` | ❌ rebinding → GAPS |
 | Browser automation | the verb surface (we mirror it) + **browser focus mode**, design mode, React Grab | ✅ verbs / ❌ modes |
 | Skills | `cmux skills install` — agent skills incl. diagnostics | 🟡 upstream skills load from the repo; install flow unverified on Linux |

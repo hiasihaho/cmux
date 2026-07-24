@@ -95,7 +95,7 @@ persisted), ⑤ tab icons + loading spinner + end-action four, ⑥ sidebar DnD (
 suite-verified (workspace-groups 58, ui-commands 51-leg, navigation
 14). Fat trap found ⑤: the ghostty shim exports bundled libpng and
 WebKit's UI-process favicon decode SEGVs into it — favicons guarded
-off in shim builds, GAPS row for the fork-side fix. Also found: the sidebar ListBox render can desync from the projection under long churn (GAPS Now, repro recipe recorded). Next: ⑦ minimal Dock; DnD remainder (tab-onto-pane, file drops). Trap fixed on
+off in shim builds, GAPS row for the fork-side fix. Also found: the sidebar ListBox render can desync from the projection under long churn (GAPS Now, repro recipe recorded). ⑦ minimal Dock landed too (global dock.json terminal controls, Ctrl+Shift+B, debug.dock, dock-smoke 8) — ALL SEVEN mirror items done in one day. Remainder: DnD long tail, Dock remainder, the two Now-bugs (renderer desync, shim libpng). Trap fixed on
 the way: lib.sh now exports DISPLAY so a bare xdotool in a suite can
 never drive the developer's real desktop again (PROGRESS).
 

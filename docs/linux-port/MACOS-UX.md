@@ -370,13 +370,18 @@ off-by-default (`rightSidebar.beta.dock.enabled`).
   unread badges of their own (`hasUnreadNotification: false`
   hardcoded).
 
-**Minimal viable Linux Dock** (survey's judgment, endorsed): a
-toggleable right panel reading the same `dock.json` `controls[]`,
-launching terminal controls as a **simple vertical stack** of panes
-(login-shell wrap + interactive-shell fallback, `cwd`/`env`), empty
-state with a create affordance, trust prompt for any project-scoped
-config. Defer: browser panes, arbitrary tiling, drag-in/out,
-multi-window routing, `--placement dock` verbs.
+**Linux today (mirror ⑦ minimal, 2026-07-24):** exactly the recorded
+plan — `DockPanel.swift`: trailing OverlaySplitView panel (Ctrl+Shift+B
++ menu "Toggle Dock"), global `$XDG_CONFIG_HOME/cmux/dock.json`
+`controls[]` (macOS schema; ids validated, browser entries
+skipped-and-counted), VTE terminals in a resizable GtkPaned stack with
+captions, the login-shell → interactive-fallback wrapper, `env` +
+`CMUX_DOCK_CONTROL_ID/TITLE` injected, lazy populate on first show,
+deliberately unpersisted (macOS reseeds too). `debug.dock` is the
+state projection + dev toggle; dock-smoke (8) asserts it. Global-only
+config means no trust gate is needed yet (macOS gates only
+project-scoped configs). Deferred: browser panes, in-dock tiling,
+drag-in/out, `--placement dock` verbs, project trust (GAPS).
 
 ---
 
@@ -412,7 +417,11 @@ Ranked by comfort-per-effort for the port, using the surveys above:
    groups and reorder — one core with the new `workspace.reorder`
    verb. Remaining stages: tab-onto-pane split/insert, file drops onto
    terminals.
-7. **L — the Dock**, minimal-viable per §5.
+7. ✅ (minimal) **L — the Dock** (2026-07-24): trailing panel, global
+   dock.json terminal controls, login-shell → interactive fallback,
+   lazy populate, Ctrl+Shift+B / menu toggle, `debug.dock` projection.
+   Deferred (GAPS): browser controls, in-dock tiling, drag in/out,
+   `--placement dock` verbs, project-config trust gate.
 
 Not recommended to mirror: ⌘-hold hint pills (GNOME answer is the
 GtkShortcutsWindow already queued in UX-PARITY), macOS dock-tile badge,

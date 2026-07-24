@@ -18,6 +18,7 @@ struct CmuxApp: App {
     @State private var notifications: [TerminalNotification] = []
     @State private var sidebarVisible = true
     @State private var showNotifications = false
+    @State private var dockVisible = false
     @State private var tabCounter = 1
 
     init() {
@@ -173,6 +174,8 @@ struct CmuxApp: App {
                 )
             }
             SidebarDnD.sync(active: !showNotifications)
+            DockRuntime.visibleProvider = { [dockVisible] in dockVisible }
+            DockRuntime.setVisible = { dockVisible = $0 }
             return true
         }()
         Window(id: "main") { _ in
@@ -222,6 +225,9 @@ struct CmuxApp: App {
                     }
                 }
             } content: {
+                OverlaySplitView(visible: $dockVisible) {
+                    DockPanelWidget(visible: dockVisible)
+                } content: {
                 EitherView(tabs.isEmpty, view1: {
                     ContentAreaView(
                         tab: nil,
@@ -255,6 +261,8 @@ struct CmuxApp: App {
                         }
                     )
                 })
+                }
+                .trailingSidebar()
                 .topToolbar {
                     // The header diet (UX-PARITY decision 2026-07-23): macOS
                     // keeps chrome near-zero; ours had 14 persistent buttons.
@@ -311,6 +319,10 @@ struct CmuxApp: App {
                                     .keyboardShortcut("o".ctrl().shift())
                                 MenuButton("Close Pane") { closeFocusedPane() }
                                     .keyboardShortcut("w".ctrl().shift())
+                            }
+                            MenuSection {
+                                MenuButton("Toggle Dock") { dockVisible.toggle() }
+                                    .keyboardShortcut("b".ctrl().shift())
                             }
                             MenuSection {
                                 MenuButton("New Group from Workspace") { createGroupFromSelection() }

@@ -3883,3 +3883,27 @@ the adwaita-swift differ interacting with row-parented popovers/
 controllers. The suite's pointer-drag assertion is deliberately parked
 as that bug's canary rather than shipping a flaky gate — the honest
 version of "the drag works but the room it dances in sometimes lies".
+
+### Comfort mirror ⑦: the minimal Dock (2026-07-24)
+
+The last mirror item, and the port's first piece of the right-sidebar
+world: a trailing OverlaySplitView panel (Ctrl+Shift+B, menu "Toggle
+Dock") seeded from the GLOBAL `$XDG_CONFIG_HOME/cmux/dock.json` with
+the macOS control schema — terminal controls become captioned VTE
+panes in a resizable vertical GtkPaned stack, each running its command
+through the macOS wrapper semantics (non-interactive login shell →
+exec interactive login shell on exit, so a dead watcher becomes a
+prompt in place), with `env` plus CMUX_DOCK_CONTROL_ID/TITLE injected.
+Browser entries are skipped-and-counted (macOS's browsers-disabled
+degradation); invalid ids dropped; empty config renders an empty-state
+hint. Lazy populate on first show (macOS materializes on first show
+too); deliberately NOT persisted (macOS reseeds each launch — the
+config IS the persistence). Global-only config sidesteps the trust
+gate by design: macOS gates only project-scoped configs, which the
+port does not read yet. `debug.dock` serves the state projection and
+the dev toggle; dock-smoke (8 assertions) covers hidden-start, lazy
+populate, control parsing, the marker-file proof that commands really
+run, and toggle-off. Verified visually: watch(1) ticking beside a live
+journalctl tail while the workspace terminal sits untouched. Deferred
+stages recorded in GAPS (browser panes, tiling, drag, --placement
+verbs, project trust).
