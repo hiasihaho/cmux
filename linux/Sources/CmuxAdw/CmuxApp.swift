@@ -135,6 +135,20 @@ struct CmuxApp: App {
             SidebarContextMenu.onAction = handleSidebarMenuAction
             SidebarContextMenu.onColorChosen = handleSidebarColorChosen
             SidebarContextMenu.onColorCustom = handleSidebarColorCustom
+            PaneTabs.onEndAction = { [self] action, tabId, paneId in
+                switch action {
+                case "new_terminal":
+                    controlHandler.uiNewTabInPane(tabId: tabId, paneId: paneId, type: "terminal")
+                case "new_browser":
+                    controlHandler.uiNewTabInPane(tabId: tabId, paneId: paneId, type: "browser")
+                case "split_right":
+                    controlHandler.uiSplitPane(tabId: tabId, paneId: paneId, direction: "right")
+                case "split_down":
+                    controlHandler.uiSplitPane(tabId: tabId, paneId: paneId, direction: "down")
+                default:
+                    break
+                }
+            }
             return true
         }()
         // Workspace color rails (widget-class writes only; skipped while

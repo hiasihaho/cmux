@@ -3828,3 +3828,31 @@ coordinate lesson absorbed in the same commit: inserting a menu item
 shifted the existing Remove-from-Group click-through by one slot — the
 suite's measured y moved with it, a reminder that click-through
 coordinates are part of the menu's contract.
+
+### Comfort mirror ⑤: tab icons + end actions — and the shim-libpng trap (2026-07-24)
+
+Pane tab strips are now typed at a glance: every AdwTabPage carries a
+themed icon (terminal / browser / DevTools), browser loads show the tab
+bar's NATIVE spinner (`adw_tab_page_set_loading`), and the bar's end
+slot has the macOS default four actions — new terminal tab, new browser
+tab, split right, split down (`adw_tab_bar_set_end_action_widget`),
+each routing through the shared handler paths (tab-append reuses the
+popup-adoption tree op, splits reuse v2SurfaceSplit). `debug.surfaces`
+reads back each page's REAL icon (`tab_icon`), and ui-commands-smoke
+asserts it (+2).
+
+**The trap, coredump-proven:** enabling WebKitGTK's favicon database
+crashed the app on the first favicon — `libghostty-gtk.so` exports its
+bundled libpng (377 `png_*` symbols), WebKit's IconDatabase decodes
+favicons in the UI PROCESS, and the dynamic linker resolved
+`png_read_destroy` into the shim's incompatible copy. Page images never
+crash because they decode in the web process, which doesn't load the
+shim — which is exactly why the port's whole browser stack worked for
+weeks with this landmine armed. Favicons are wired end-to-end
+(notify::favicon → tab decor refresh; per-session favicon DB) but
+guarded off while the shim is loaded (`ghosttyShimLoaded`, RTLD_NOLOAD
+probe); VTE-only builds get them today. GAPS row: localize the shim's
+bundled-lib symbols on the fork, then drop the guard. Also fixed en
+route: the tab icon chooser must take the surface KIND from the model,
+not guess from registry dicts — ghostty terminals aren't in the VTE
+dict and briefly wore the DevTools icon.

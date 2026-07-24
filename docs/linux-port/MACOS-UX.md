@@ -166,8 +166,17 @@ newBrowser `globe`, splitRight `square.split.2x1`, splitDown
 newAgentChat `message`, cloudVM `cloud`, mobileConnect `iphone`
 (`Sources/CmuxSurfaceTabBarBuiltInAction.swift:44-63`).
 
-**Linux today:** text-only tabs, no icons, no end-action buttons
-(UX-PARITY §3 rows).
+**Linux today (mirror ⑤, 2026-07-24):** per-type themed icons on every
+tab page (terminal `utilities-terminal-symbolic`, browser
+`web-browser-symbolic`, DevTools `applications-engineering-symbolic`),
+AdwTabBar's native loading spinner during browser loads, and the macOS
+default-four end actions (new terminal/browser tab, split right/down —
+`adw_tab_bar_set_end_action_widget`, visible whenever the bar is, i.e.
+2+ tabs). `debug.surfaces` reads back each page's actual icon
+(`tab_icon`). Favicons: plumbing complete (`notify::favicon`, session
+favicon DB) but disabled while the ghostty shim is loaded — its
+exported bundled libpng crashes WebKit's UI-process favicon decode
+(see GAPS; VTE-only builds get favicons today).
 
 ### 2.3 Sidebar rows (`Sources/ContentView.swift` `TabItemView` ~13483)
 
@@ -388,9 +397,12 @@ Ranked by comfort-per-effort for the port, using the surveys above:
    Group Color…), left-rail row rendering via generated per-color CSS
    classes, Clear + strict-hex Custom…, persisted in session v3. The
    group swatch→icon-tint switch remains open (minor).
-5. **M — tab icons + end-action buttons**: per-type themed icons,
-   favicons via WebKitGTK's favicon database, configurable end-action
-   buttons on the pane tab bar.
+5. ✅ **M — tab icons + end-action buttons** (landed 2026-07-24):
+   per-type themed icons + native loading spinner on AdwTabPage, the
+   macOS default four end actions on the tab bar. Favicons are wired
+   but OFF in shim builds — the ghostty shim exports its bundled libpng
+   and WebKit's UI-process favicon decode SEGVs into it (coredump-
+   proven; GAPS row for the shim-side symbol-visibility fix).
 6. **M–L — drag & drop family**, staged: sidebar workspace reorder →
    group membership by drag → tab-onto-pane split/insert → file drops
    onto terminals. Raw GtkDragSource/GtkDropTarget work.

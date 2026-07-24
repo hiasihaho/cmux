@@ -195,3 +195,13 @@ extension BrowserSessionState {
         setLastKnownURL(url, for: surfaceId)
     }
 }
+
+/// notify::favicon / notify::is-loading → refresh the surface's tab decor
+/// (icon + native loading spinner on the AdwTabPage).
+let browserTabDecorChanged: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
+) -> Void = { _, _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<PopupOpenerBox>.fromOpaque(userData).takeUnretainedValue()
+    PaneTabs.refreshTitle(surfaceId: box.surfaceId)
+}

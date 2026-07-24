@@ -1,6 +1,14 @@
 import Adwaita
 import CWebKit
 import Foundation
+#if canImport(Glibc)
+import Glibc
+#endif
+
+/// Whether libghostty-gtk is loaded in this process (shim builds link it
+/// unconditionally). RTLD_NOLOAD returns a handle only when it is.
+let ghosttyShimLoaded: Bool =
+    dlopen("libghostty-gtk.so", RTLD_NOLOAD | RTLD_LAZY) != nil
 
 extension SurfaceRegistry {
     /// Reloads a browser surface (tab.action reload) — here because only
@@ -19,6 +27,25 @@ extension SurfaceRegistry {
             return nil
         }
         return String(cString: uri)
+    }
+
+    /// The page favicon as a GdkTexture — which implements GIcon, so the
+    /// (WebKit-free) tab strip can hand it straight to AdwTabPage. The
+    /// reference is borrowed from WebKit; do not unref. Opaque so CVte-
+    /// bound files never see WebKit/Gdk texture types.
+    func currentFavicon(for surfaceId: UUID) -> OpaquePointer? {
+        guard let webView = browsers[surfaceId],
+              let texture = webkit_web_view_get_favicon(
+                  UnsafeMutablePointer<WebKitWebView>(webView)) else {
+            return nil
+        }
+        return texture
+    }
+
+    /// Whether the page is mid-load (the tab strip's native spinner).
+    func isBrowserLoading(for surfaceId: UUID) -> Bool {
+        guard let webView = browsers[surfaceId] else { return false }
+        return webkit_web_view_is_loading(UnsafeMutablePointer<WebKitWebView>(webView)) != 0
     }
 
     /// Live page title of a browser surface.
@@ -147,6 +174,23 @@ enum BrowserSurfaceFactory {
         if let settings = webkit_web_view_get_settings(webView) {
             webkit_settings_set_javascript_can_open_windows_automatically(settings, 1)
         }
+        // Favicons only arrive if the session's favicon database is
+        // enabled — off by default in WebKitGTK. Idempotent per session;
+        // covers the default session and every profile session, since
+        // each view enables its own (mirror ⑤: tab favicons).
+        //
+        // TRAP (2026-07-24, coredump-proven): the ghostty shim exports
+        // its bundled libpng (377 png_* symbols in libghostty-gtk.so),
+        // and WebKit's IconDatabase decodes favicons in THIS process —
+        // its png_* calls resolve into the shim's incompatible copy and
+        // SEGV. Page images are safe (they decode in the web process,
+        // which never loads the shim). Until the shim localizes its
+        // bundled symbols (GAPS), favicons stay off in shim builds.
+        if !ghosttyShimLoaded,
+           let session = webkit_web_view_get_network_session(webView),
+           let manager = webkit_network_session_get_website_data_manager(session) {
+            webkit_website_data_manager_set_favicons_enabled(manager, 1)
+        }
         // Capture browser state as soon as a navigation commits (see
         // browserLoadChangedForSession) rather than waiting for the 15s
         // session timer.
@@ -162,6 +206,16 @@ enum BrowserSurfaceFactory {
             Unmanaged.passRetained(PopupOpenerBox(surfaceId: surfaceId)).toOpaque(),
             popupOpenerBoxDestroy, GConnectFlags(0)
         )
+        // Tab-strip decor (mirror ⑤): the favicon and the load spinner
+        // live on the AdwTabPage; refresh it when either changes.
+        for signal in ["notify::favicon", "notify::is-loading"] {
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(widget), signal,
+                unsafeBitCast(browserTabDecorChanged, to: GCallback.self),
+                Unmanaged.passRetained(PopupOpenerBox(surfaceId: surfaceId)).toOpaque(),
+                popupOpenerBoxDestroy, GConnectFlags(0)
+            )
+        }
 
         // The pane's container is a box, not the bare web view, so the
         // find bar (hidden until Ctrl+Shift+F) has somewhere to live above

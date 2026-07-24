@@ -511,4 +511,32 @@ echo "$rout" | grep -q "ghostty config (live)" \
     && ok "reload-config reports live ghostty propagation" \
     || bad "live reload" "got: $(echo "$rout" | head -c 80)"
 
+# --- surface-tab icons (MACOS-UX §2.2, mirror ⑤): render-truth via the
+# tab_icon field debug.surfaces reads back from each AdwTabPage. Icons
+# exist once a pane has a tab strip, so give the workspace a second tab.
+info "surface-tab icons"
+WS_ICO=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+SURF_ICO=$(cx list-pane-surfaces --workspace "$WS_ICO" 2>/dev/null | grep -oE 'surface:[0-9]+' | head -1)
+v2 "{\"id\":1,\"method\":\"browser.tab.new\",\"params\":{\"surface_id\":\"$SURF_ICO\",\"url\":\"\"}}" >/dev/null
+sleep 2
+icons=$(v2 '{"id":1,"method":"debug.surfaces"}' | python3 -c "
+import json,sys
+data=json.load(sys.stdin)['result']
+rows=data.get('surfaces') if isinstance(data,dict) else data
+rows=[r for r in rows if r.get('workspace_ref')=='$WS_ICO' or True]
+byicon={}
+for r in rows:
+    kind=r.get('backend') or r.get('type')
+    icon=r.get('tab_icon')
+    if icon: byicon.setdefault(kind,set()).add(icon)
+print('terminal:' + ','.join(sorted(byicon.get('ghostty',byicon.get('vte',set())))))
+print('browser:' + ','.join(sorted(byicon.get('browser',set()))))")
+echo "$icons" | grep -q "terminal:.*utilities-terminal-symbolic" \
+    && ok "terminal tabs carry the terminal icon" \
+    || bad "terminal tab icon" "$icons"
+echo "$icons" | grep -q "browser:.*web-browser-symbolic" \
+    && ok "browser tabs carry the browser icon" \
+    || bad "browser tab icon" "$icons"
+cx close-workspace --workspace "$WS_ICO" >/dev/null 2>&1
+
 finish

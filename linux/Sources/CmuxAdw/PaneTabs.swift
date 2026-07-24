@@ -127,6 +127,33 @@ enum PaneTabs {
     /// workspace's customTitle. Persisted in the v3 session snapshot.
     static var customTitles: [UUID: String] = [:]
 
+    /// Themed icon per surface type (MACOS-UX §2.2: terminal.fill /
+    /// globe / devtools) — the fallback when a browser has no favicon.
+    static func tabIconName(for kind: SurfaceKind) -> String {
+        switch kind {
+        case .terminal: return "utilities-terminal-symbolic"
+        case .browser: return "web-browser-symbolic"
+        case .inspector: return "applications-engineering-symbolic"
+        }
+    }
+
+    /// End-action button pressed on a pane's tab bar: (action id, tabId,
+    /// paneId). Wired by CmuxApp to the shared handler paths. Actions:
+    /// new_terminal, new_browser, split_right, split_down (the macOS
+    /// default four).
+    static var onEndAction: ((String, UUID, UUID) -> Void)?
+
+    /// Render-truth for the suite: what icon the surface's tab page
+    /// actually carries — a themed icon name, or "favicon" for a texture.
+    static func iconDescription(surfaceId: UUID) -> String? {
+        for (_, view) in views {
+            if let description = view.iconDescription(surfaceId: surfaceId) {
+                return description
+            }
+        }
+        return nil
+    }
+
     static func tabTitle(for surface: PaneSurface) -> String {
         if let pinned = customTitles[surface.surfaceId] { return pinned }
         switch surface.kind {
@@ -175,6 +202,10 @@ final class PaneTabsView {
     let tabView: OpaquePointer
     private let state: PaneTabsState
     private var pages: [UUID: OpaquePointer] = [:]
+    /// Surface kind per page, recorded at reconcile — the icon chooser
+    /// must not guess from registry dictionaries (ghostty terminals are
+    /// not in the VTE dict; that guess cost a wrong DevTools icon).
+    private var kinds: [UUID: SurfaceKind] = [:]
 
     init?(
         tabId: UUID, paneId: UUID,
@@ -195,6 +226,32 @@ final class PaneTabsView {
         // Auto-hide: a pane down to one tab looks exactly like a pane that
         // never had any.
         adw_tab_bar_set_autohide(bar, 1)
+        // End-action buttons (mirror ⑤, the macOS default four). They
+        // appear whenever the bar does (2+ tabs, per autohide above).
+        if let actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0) {
+            let actionsBox = UnsafeMutableRawPointer(actions)
+                .assumingMemoryBound(to: GtkBox.self)
+            let buttons: [(String, String, String)] = [
+                ("new_terminal", "utilities-terminal-symbolic", "New Terminal Tab"),
+                ("new_browser", "web-browser-symbolic", "New Browser Tab"),
+                ("split_right", "view-dual-symbolic", "Split Right"),
+                ("split_down", "view-paged-symbolic", "Split Down")
+            ]
+            for (action, icon, tooltip) in buttons {
+                guard let button = gtk_button_new_from_icon_name(icon) else { continue }
+                gtk_widget_add_css_class(button, "flat")
+                gtk_widget_set_tooltip_text(button, tooltip)
+                let box = PaneEndActionBox(state: state, action: action)
+                g_signal_connect_data(
+                    UnsafeMutableRawPointer(button), "clicked",
+                    unsafeBitCast(paneTabsEndAction, to: GCallback.self),
+                    Unmanaged.passRetained(box).toOpaque(),
+                    paneEndActionBoxDestroy, GConnectFlags(0)
+                )
+                gtk_box_append(actionsBox, button)
+            }
+            adw_tab_bar_set_end_action_widget(bar, actions)
+        }
         gtk_box_append(
             UnsafeMutableRawPointer(box).assumingMemoryBound(to: GtkBox.self),
             UnsafeMutableRawPointer(bar).assumingMemoryBound(to: GtkWidget.self)
@@ -232,7 +289,30 @@ final class PaneTabsView {
         )
     }
 
-    /// Reverse page→surface lookup for the reorder handler.
+    /// One end-action button's target: which action for which pane.
+final class PaneEndActionBox {
+    let state: PaneTabsState
+    let action: String
+    init(state: PaneTabsState, action: String) {
+        self.state = state
+        self.action = action
+    }
+}
+
+let paneEndActionBoxDestroy: GClosureNotify = { data, _ in
+    guard let data else { return }
+    Unmanaged<PaneEndActionBox>.fromOpaque(data).release()
+}
+
+let paneTabsEndAction: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
+) -> Void = { _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<PaneEndActionBox>.fromOpaque(userData).takeUnretainedValue()
+    PaneTabs.onEndAction?(box.action, box.state.tabId, box.state.paneId)
+}
+
+/// Reverse page→surface lookup for the reorder handler.
     func surfaceId(forPage page: OpaquePointer) -> UUID? {
         pages.first { $0.value == page }?.key
     }
@@ -255,6 +335,7 @@ final class PaneTabsView {
             adw_tab_view_close_page(tabView, page)
             PaneTabs.isReconciling = false
             pages.removeValue(forKey: surfaceId)
+            kinds.removeValue(forKey: surfaceId)
         }
 
         for (index, surface) in pane.surfaces.enumerated() {
@@ -282,6 +363,8 @@ final class PaneTabsView {
                     gtk_widget_unparent(widget)
                 }
                 guard let page = adw_tab_view_append(tabView, widget) else { continue }
+                kinds[surface.surfaceId] = surface.kind
+                syncDecor(page: page, surfaceId: surface.surfaceId)
                 pages[surface.surfaceId] = page
             }
             if let page = pages[surface.surfaceId] {
@@ -309,13 +392,42 @@ final class PaneTabsView {
             ?? SurfaceRegistry.shared.currentURL(for: surfaceId)
             ?? "Browser"
         adw_tab_page_set_title(page, title)
+        syncDecor(page: page, surfaceId: surfaceId)
     }
 
     func refreshTitles(_ surfaces: [PaneSurface]) {
         for surface in surfaces {
             guard let page = pages[surface.surfaceId] else { continue }
             adw_tab_page_set_title(page, PaneTabs.tabTitle(for: surface))
+            syncDecor(page: page, surfaceId: surface.surfaceId)
         }
+    }
+
+    /// Tab icon + loading spinner (mirror ⑤): a browser page carries its
+    /// live favicon (a GdkTexture — it implements GIcon) or the themed
+    /// browser icon; terminals and DevTools their themed icons; browser
+    /// loads show AdwTabBar's native spinner.
+    func syncDecor(page: OpaquePointer, surfaceId: UUID) {
+        let registry = SurfaceRegistry.shared
+        if let favicon = registry.currentFavicon(for: surfaceId) {
+            adw_tab_page_set_icon(page, favicon)
+        } else if let kind = kinds[surfaceId],
+                  let themed = g_themed_icon_new(PaneTabs.tabIconName(for: kind)) {
+            adw_tab_page_set_icon(page, themed)
+            g_object_unref(UnsafeMutableRawPointer(themed))
+        }
+        adw_tab_page_set_loading(
+            page, registry.isBrowserLoading(for: surfaceId) ? 1 : 0)
+    }
+
+    /// Render-truth for debug.surfaces: the themed name the page's icon
+    /// serializes to, or "favicon" for a texture icon.
+    func iconDescription(surfaceId: UUID) -> String? {
+        guard let page = pages[surfaceId] else { return nil }
+        guard let icon = adw_tab_page_get_icon(page) else { return nil }
+        guard let serialized = g_icon_to_string(icon) else { return "favicon" }
+        defer { g_free(serialized) }
+        return String(cString: serialized)
     }
 
     func destroy() {

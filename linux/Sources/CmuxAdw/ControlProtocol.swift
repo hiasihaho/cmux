@@ -586,6 +586,8 @@ struct ControlCommandHandler {
             let reports = tabs.wrappedValue.flatMap { tab in
                 tab.allSurfaces.map { entry -> [String: Any] in
                     var report = SurfaceRegistry.shared.doctorReport(for: entry.surface.surfaceId)
+                    report["tab_icon"] = PaneTabs.iconDescription(
+                        surfaceId: entry.surface.surfaceId) ?? NSNull()
                     report["workspace_id"] = tab.id.uuidString
                     report["ref"] = RefRegistry.shared.ref(kind: "surface", uuid: entry.surface.surfaceId)
                     return report
@@ -1459,6 +1461,39 @@ struct ControlCommandHandler {
     func uiSetGroupColor(_ groupId: UUID, hex: String?) {
         _ = v2GroupSetColor(id: nil, params: [
             "group_id": groupId.uuidString, "hex": hex ?? ""
+        ])
+    }
+
+    /// Tab-bar end action: a new typed surface as a TAB in that pane
+    /// (next to its selected surface — the popup-adoption tree op).
+    func uiNewTabInPane(tabId: UUID, paneId: UUID, type: String) {
+        guard let tab = tabs.wrappedValue.first(where: { $0.id == tabId }),
+              let pane = tab.panes.first(where: { $0.paneId == paneId }) else { return }
+        let anchor = pane.selected.surfaceId
+        if type == "browser" {
+            _ = addBrowserTab(nextTo: anchor, url: "about:blank")
+        } else {
+            guard let index = tabs.wrappedValue.firstIndex(where: { $0.id == tabId }) else { return }
+            let cwd = SurfaceRegistry.shared.currentDirectory(for: anchor)
+                ?? tab.workingDirectory
+            let surface = PaneSurface(kind: .terminal, workingDirectory: cwd)
+            guard let layout = tabs.wrappedValue[index].layout
+                .addingTab(surface, nextTo: anchor) else { return }
+            tabs.wrappedValue[index].layout = layout
+            if tab.id == selection.wrappedValue {
+                tabs.wrappedValue[index].focusedSurfaceId = surface.surfaceId
+            }
+        }
+    }
+
+    /// Tab-bar end action: split the pane's selected surface — the same
+    /// path as surface.split.
+    func uiSplitPane(tabId: UUID, paneId: UUID, direction: String) {
+        guard let tab = tabs.wrappedValue.first(where: { $0.id == tabId }),
+              let pane = tab.panes.first(where: { $0.paneId == paneId }) else { return }
+        _ = v2SurfaceSplit(id: nil, params: [
+            "surface_id": pane.selected.surfaceId.uuidString,
+            "direction": direction
         ])
     }
 
