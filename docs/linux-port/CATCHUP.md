@@ -1,10 +1,11 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-22 ~12:50** (GAPS batches 1–5 shipped — the
-whole S-cluster plus surface.move/reorder and the tmux-compat pane
-verbs; capabilities sweep covers both protocol generations; harness
-roadmap documented). Update this file at the end of every significant
-session; it is the fastest path from cold start to productive work.
+Last updated: **2026-07-24 ~03:30** (ADR-0010 accepted and landed —
+`scratch.sh watch`/`point` live agent displays + the pointing channel;
+POC-0002 is the first POC to graduate to `adopted`; the dev-starter
+"only VTE" incident traced to the plain-`swift-build` shim trap).
+Update this file at the end of every significant session; it is the
+fastest path from cold start to productive work.
 Deep history lives in [PROGRESS.md](PROGRESS.md), distilled
 transferable lessons in [LESSONS.md](LESSONS.md); this is only
 "what now".
@@ -51,6 +52,40 @@ or mirror a macOS bug — see UPSTREAM.md §4; neither is xcodebuild-verified
 pick from its *Now* table, follow its rules (same-commit updates, suite
 per fix, sweep after every merge). The milestones below are the
 narrative context.
+
+## Latest session (2026-07-24): live agent displays + the pointing channel
+
+**ADR-0010 accepted (A+B both) and fully landed.** `scratch.sh` gained
+`watch` (x11vnc+noVNC → browser pane in a *background* workspace of the
+caller's cmux; ports derive `:N` → rfb `5900+N` / web `6900+N`,
+localhost-only), `watch-status` (the check guard — verifies processes,
+serving, and that the pane is *actually connected* via `browser eval`),
+`point` (the deixis verb: the human clicks the element they mean inside
+the agent's display, the agent reads back exact coords + a
+crosshair-marked shot), and `unwatch` (pid-verified kills; `stop`
+implies it). Measured: a VNC-injected click really operated the scratch
+instance's sidebar, and `point` returned the exact coordinates.
+POC-0002 → `adopted` as `features/12-live-agent-display` — the first
+completed authored-intent → measured-reality graduation. New system
+deps (optional): `x11vnc`, `novnc` (DEPENDENCIES.md).
+
+**Incident, same morning:** the dev desktop starter came up VTE-only —
+the documented plain-`swift build` trap had silently overwritten the
+shim-linked binary overnight (DEPENDENCIES.md calls `CMUX_GHOSTTY=1`
+load-bearing; the daily kept Ghostty only because it held the old
+binary in memory). Rebuilt with the flag, restarted dev, both instances
+back on `ghostty(default)`. **Candidate small task:** a `start.sh`
+warning when the on-disk binary lost the shim that the running
+instances still have.
+
+**Found gap** (GAPS row, source: watch-harness build): `browser
+screenshot` errors on background-workspace surfaces
+(`invalid_state`) even though backgrounded WebKit pages keep running
+(`eval` works, the VNC session holds). Probe WebKit's offscreen
+snapshot path.
+
+A `vncpoc` scratch instance (+watch) may still be running from the
+build session — `scratch.sh stop vncpoc` tears it all down.
 
 ## Current focus and the parity resume path (2026-07-22, ~17:00)
 

@@ -67,12 +67,14 @@ should probably pick one and state it, rather than carry both.
 | `WebKitWebDriver` (`webkitgtk6.0`) | `webdriver-smoke.sh` | that suite skips/fails |
 | **`xorg-x11-server-Xvfb`** | a private, always-mapped X display for test instances | **see below** |
 | `ImageMagick` (`import`, `magick`) | screenshots of the app under Xvfb | no visual verification |
-| `xdotool` | drives real keyboard/mouse input at the widget level (address bar typing) | those assertions skip |
+| `xdotool` | drives real keyboard/mouse input at the widget level (address bar typing); also `scratch.sh point` (pointer readback) | those assertions skip; `point` fails |
+| `x11vnc` + `novnc` (pulls `python3-websockify`) | `scratch.sh watch` — live view of an agent's Xvfb display in a cmux pane, incl. the human-clicks → `point` deixis flow (ADR-0010, `features/12`) | `watch` refuses with an install hint; everything else unaffected |
 | `gcc` + `gtk4-devel`/`webkitgtk6.0-devel` | the standalone C probes (`inspector-probe.c`, `popup-probe.c`, `find-probe.c`) | probes cannot be rebuilt |
 | `libX11-devel` (with `cc`) | `tests/helpers/wmdelete.c` — sends a real WM_DELETE_WINDOW; `xdotool windowclose` destroys the window and bypasses GTK's `close-request`, so the exit-save test needs the polite close | exit-save assertions skip |
 
 ```sh
 sudo dnf install -y python3 curl iproute xorg-x11-server-Xvfb ImageMagick
+sudo dnf install -y x11vnc novnc   # optional: scratch.sh watch (ADR-0010)
 ```
 
 ### Why Xvfb is not optional for the suites

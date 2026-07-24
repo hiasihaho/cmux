@@ -11,8 +11,11 @@ hosting you is `linux/.build/debug/cmux-adw`.
 
 - **Never** `pkill`/`kill`/restart `cmux-adw` while running inside it — you
   die with it. (Also: `pkill -f <pattern>` matches your own shell's command
-  line; this has bitten twice. If a kill is ever externally justified, use
-  `pkill -x`, and expect to not survive it.)
+  line; this has bitten three times now — latest 2026-07-24, killing a
+  compound cleanup command mid-run (exit 144). If a kill is ever externally
+  justified, use `pkill -x`, and expect to not survive it. Kill helper
+  processes strictly by recorded pid after a `/proc/<pid>/cmdline` check,
+  the way `scratch.sh unwatch` does.)
 - `swift build` is always safe: it replaces the binary **on disk**; the
   running app is unaffected.
 - **Binary promotion protocol**: new binaries are verified on an isolated

@@ -16,7 +16,7 @@ flowchart TB
         dev["cmux-adw<br/>CMUX_APP_ID = …cmux.dev<br/>socket = /tmp/cmux-dev.sock"]
     end
     subgraph scratch_p["scratch-&lt;tag&gt; — ad-hoc probes & screenshots"]
-        scratch["cmux-adw<br/>CMUX_APP_ID = …cmux.scratch-&lt;tag&gt;<br/>socket = /tmp/cmux-scratch-&lt;tag&gt;.sock<br/>own Xvfb :140-:159"]
+        scratch["cmux-adw<br/>CMUX_APP_ID = …cmux.scratch-&lt;tag&gt;<br/>socket = /tmp/cmux-scratch-&lt;tag&gt;.sock<br/>own Xvfb :140-:159<br/>watch: x11vnc+noVNC :N→6900+N → pane in the caller (ADR-0010)"]
     end
 
     swiftbuild["swift build"] -->|"replaces binary ON DISK<br/>(running procs unaffected)"| binary["linux/.build/debug/cmux-adw"]

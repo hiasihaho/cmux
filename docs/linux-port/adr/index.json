@@ -11,7 +11,7 @@
   { "file": "0007-harness-layer-and-extensibility.md",       "title": "0007 · Harness layer & extensibility ◷" },
   { "file": "0008-agent-runtime-lifecycle.md",               "title": "0008 · Agent runtime lifecycle ◷" },
   { "file": "0009-agent-work-visibility.md",                 "title": "0009 · Agent work visibility ✅" },
-  { "file": "0010-visible-isolated-displays-for-agents.md",  "title": "0010 · Visible isolated displays ◷" },
+  { "file": "0010-visible-isolated-displays-for-agents.md",  "title": "0010 · Visible isolated displays ✅" },
   { "file": "0011-features-board-generated-not-curated.md",  "title": "0011 · Features board: measured, not curated ✅" },
   { "file": "0012-pinned-dashboards-in-sidebar.md",          "title": "0012 · Pinned dashboards in sidebar ◷" },
   { "file": "0013-pane-tags-and-attention-workflows.md",     "title": "0013 · Pane tags & attention workflows ◷" },
