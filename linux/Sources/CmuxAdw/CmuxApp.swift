@@ -14,6 +14,7 @@ struct CmuxApp: App {
 
     @State private var tabs: [TerminalTab] = [CmuxApp.initialTab]
     @State private var selection: UUID = CmuxApp.initialTab.id
+    @State private var groups: [WorkspaceGroup] = []
     @State private var notifications: [TerminalNotification] = []
     @State private var sidebarVisible = true
     @State private var showNotifications = false
@@ -24,13 +25,15 @@ struct CmuxApp: App {
             _tabs.rawValue = restored.tabs
             _selection.rawValue = restored.selection
             _tabCounter.rawValue = restored.tabCounter
+            _groups.rawValue = restored.groups
         }
 
         let handler = ControlCommandHandler(
             tabs: $tabs,
             selection: $selection,
             notifications: $notifications,
-            tabCounter: $tabCounter
+            tabCounter: $tabCounter,
+            groups: $groups
         )
         ControlSocketServer.shared.dispatcher = { line, respond in
             // The guard covers the synchronous dispatch window (where tab/
@@ -83,7 +86,7 @@ struct CmuxApp: App {
         // Structural changes save immediately (scene body); this periodic
         // pass additionally picks up shell cwd drift (OSC 7) for restores.
         let saveState = { [self] in
-            SessionStore.saveIfChanged(tabs: tabs, selection: selection, tabCounter: tabCounter)
+            SessionStore.saveIfChanged(tabs: tabs, selection: selection, tabCounter: tabCounter, groups: groups)
         }
         // Lets non-model code (browser navigation) ask for a save.
         SessionStore.saveHook = saveState
@@ -117,7 +120,7 @@ struct CmuxApp: App {
     }
 
     var scene: Scene {
-        let _ = SessionStore.saveIfChanged(tabs: tabs, selection: selection, tabCounter: tabCounter)
+        let _ = SessionStore.saveIfChanged(tabs: tabs, selection: selection, tabCounter: tabCounter, groups: groups)
         // Widget-class writes only (no model state) — see AttentionStyle.
         let _ = AttentionStyle.install()
         let _ = AttentionStyle.sync(notifications: notifications, tabs: tabs)
@@ -339,7 +342,8 @@ struct CmuxApp: App {
             tabs: $tabs,
             selection: $selection,
             notifications: $notifications,
-            tabCounter: $tabCounter
+            tabCounter: $tabCounter,
+            groups: $groups
         )
     }
 

@@ -87,6 +87,15 @@ snapshot path.
 A `vncpoc` scratch instance (+watch) may still be running from the
 build session — `scratch.sh stop vncpoc` tears it all down.
 
+**Workspace groups stage 1 landed** (same session, later): all 17
+`workspace.group.*` verbs + the `workspace.create` group params serve
+with macOS wire parity — model, contiguity/pin-tier ordering, anchor
+semantics, session persistence. `workspace-groups-smoke` (34
+assertions) green; PARITY 🟡; the sidebar still renders flat.
+**Stage 2 next:** collapsible group sections in the sidebar (GAPS
+"Next" row — snapshot-boundary rules apply). The daily instance won't
+serve the new verbs until its next approved restart/promote.
+
 ## Current focus and the parity resume path (2026-07-22, ~17:00)
 
 **Done today:** the harness batch (run.sh front door, freshness

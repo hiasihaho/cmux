@@ -311,6 +311,47 @@ indirect enum PaneNode: Equatable {
     }
 }
 
+/// A named, collapsible sidebar group of workspaces — mirroring the macOS
+/// `WorkspaceGroup` value exactly: the group stores NO member list.
+/// Membership is a relation on each workspace (`TerminalTab.groupId`);
+/// members are always derived by filtering tabs. The anchor is a real
+/// member workspace rendered as the group header; closing it dissolves
+/// the group. Sidebar invariant (normalizeGroupContiguity): contiguous
+/// group runs, anchor-first member order, pinned groups above unpinned
+/// top-level rows.
+struct WorkspaceGroup: Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var isCollapsed: Bool
+    var isPinned: Bool
+    var anchorWorkspaceId: UUID
+    /// Hex tint; nil → no tint. (macOS falls back to the cwd-config color
+    /// from cmux.json — not wired on Linux yet.)
+    var customColor: String?
+    /// Free-form icon name, stored verbatim like macOS's SF Symbol string.
+    /// No renderability check here — there are no SF Symbols on Linux; the
+    /// stage-2 sidebar UI maps known names onto themed icons.
+    var iconSymbol: String?
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        anchorWorkspaceId: UUID,
+        isCollapsed: Bool = false,
+        isPinned: Bool = false,
+        customColor: String? = nil,
+        iconSymbol: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.anchorWorkspaceId = anchorWorkspaceId
+        self.isCollapsed = isCollapsed
+        self.isPinned = isPinned
+        self.customColor = customColor
+        self.iconSymbol = iconSymbol
+    }
+}
+
 /// A workspace tab: title, attention state and a pane tree of surfaces —
 /// mirroring the macOS `Workspace`/`TabManager` entries.
 struct TerminalTab: Identifiable, Equatable {
@@ -336,6 +377,10 @@ struct TerminalTab: Identifiable, Equatable {
     /// the old widget and mounts the replacement. Transient, not
     /// persisted.
     var respawnNonce: Int = 0
+    /// The workspace group this tab belongs to, if any (macOS
+    /// `Workspace.groupId`). The group's member list is always derived
+    /// from this relation, never stored on the group.
+    var groupId: UUID? = nil
 
     init(
         id: UUID = UUID(),

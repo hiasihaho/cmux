@@ -18,6 +18,9 @@ enum SessionStore {
         var selectedIndex: Int
         var tabCounter: Int
         var workspaces: [WorkspaceSnapshot]
+        /// Workspace groups; optional so files written before groups
+        /// existed decode unchanged (the BrowserSnapshot.profile pattern).
+        var groups: [GroupSnapshot]? = nil
     }
 
     struct WorkspaceSnapshot: Codable, Equatable {
@@ -28,6 +31,23 @@ enum SessionStore {
         var surfaces: [SurfaceSnapshot]
         var layout: LayoutSnapshot
         var focusedSurfaceId: String?
+        /// Index into `Snapshot.groups`; absent = ungrouped. Index-based
+        /// (like macOS's `anchorMemberIndex` trick) because workspace
+        /// UUIDs are not persisted and change on restore.
+        var groupIndex: Int? = nil
+    }
+
+    /// One workspace group. Membership rides on each workspace
+    /// (`groupIndex`); the anchor is identified by its 0-based position
+    /// among the group's members in workspace order — restore-stable
+    /// without persisted UUIDs, mirroring the macOS snapshot.
+    struct GroupSnapshot: Codable, Equatable {
+        var name: String
+        var isCollapsed: Bool
+        var isPinned: Bool
+        var anchorMemberIndex: Int
+        var customColor: String?
+        var iconSymbol: String?
     }
 
     struct SurfaceSnapshot: Codable, Equatable {
@@ -137,9 +157,13 @@ enum SessionStore {
     /// read unthrottled, because there is no later save to catch up.
     static var isFinalSave = false
 
-    static func saveIfChanged(tabs: [TerminalTab], selection: UUID, tabCounter: Int) {
+    static func saveIfChanged(
+        tabs: [TerminalTab], selection: UUID, tabCounter: Int,
+        groups: [WorkspaceGroup] = []
+    ) {
         guard !tabs.isEmpty else { return }
-        let snapshot = snapshot(tabs: tabs, selection: selection, tabCounter: tabCounter)
+        let snapshot = snapshot(
+            tabs: tabs, selection: selection, tabCounter: tabCounter, groups: groups)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         guard let data = try? encoder.encode(snapshot), data != lastSaved else { return }
@@ -156,15 +180,40 @@ enum SessionStore {
         }
     }
 
-    private static func snapshot(tabs: [TerminalTab], selection: UUID, tabCounter: Int) -> Snapshot {
+    private static func snapshot(
+        tabs: [TerminalTab], selection: UUID, tabCounter: Int,
+        groups: [WorkspaceGroup]
+    ) -> Snapshot {
         // Drop scrollback files for surfaces that no longer exist, or a
         // closed pane's text would outlive it indefinitely.
         ScrollbackStore.prune(keeping: Set(tabs.flatMap { $0.allSurfaces.map(\.surface.surfaceId) }))
+        // Only groups that still have members are worth persisting.
+        let liveGroups = groups.filter { group in
+            tabs.contains { $0.groupId == group.id }
+        }
+        let groupSnapshots: [GroupSnapshot] = liveGroups.map { group in
+            let members = tabs.filter { $0.groupId == group.id }
+            return GroupSnapshot(
+                name: group.name,
+                isCollapsed: group.isCollapsed,
+                isPinned: group.isPinned,
+                anchorMemberIndex: members.firstIndex { $0.id == group.anchorWorkspaceId } ?? 0,
+                customColor: group.customColor,
+                iconSymbol: group.iconSymbol
+            )
+        }
         return Snapshot(
             version: schemaVersion,
             selectedIndex: tabs.firstIndex { $0.id == selection } ?? 0,
             tabCounter: tabCounter,
-            workspaces: tabs.map(workspaceSnapshot)
+            workspaces: tabs.map { tab in
+                var workspace = workspaceSnapshot(tab)
+                workspace.groupIndex = tab.groupId.flatMap { gid in
+                    liveGroups.firstIndex { $0.id == gid }
+                }
+                return workspace
+            },
+            groups: groupSnapshots.isEmpty ? nil : groupSnapshots
         )
     }
 
@@ -261,7 +310,7 @@ enum SessionStore {
 
     // MARK: restore
 
-    static func restore() -> (tabs: [TerminalTab], selection: UUID, tabCounter: Int)? {
+    static func restore() -> (tabs: [TerminalTab], selection: UUID, tabCounter: Int, groups: [WorkspaceGroup])? {
         guard let data = try? Data(contentsOf: fileURL),
               let probe = try? JSONDecoder().decode(VersionProbe.self, from: data) else { return nil }
         switch probe.version {
@@ -273,15 +322,16 @@ enum SessionStore {
             // save writes v3. Refusing it would silently discard a real
             // session — the whole reason v2 stays decodable.
             guard let snapshot = try? JSONDecoder().decode(SnapshotV2.self, from: data) else { return nil }
-            return restoreV2(snapshot)
+            guard let restored = restoreV2(snapshot) else { return nil }
+            return (restored.tabs, restored.selection, restored.tabCounter, [])
         default:
             return nil
         }
     }
 
-    private static func restoreV3(_ snapshot: Snapshot) -> (tabs: [TerminalTab], selection: UUID, tabCounter: Int)? {
+    private static func restoreV3(_ snapshot: Snapshot) -> (tabs: [TerminalTab], selection: UUID, tabCounter: Int, groups: [WorkspaceGroup])? {
         guard !snapshot.workspaces.isEmpty else { return nil }
-        let tabs: [TerminalTab] = snapshot.workspaces.map { workspace in
+        var tabs: [TerminalTab] = snapshot.workspaces.map { workspace in
             var byId: [String: PaneSurface] = [:]
             for entry in workspace.surfaces {
                 let id = UUID(uuidString: entry.id) ?? UUID()
@@ -331,8 +381,32 @@ enum SessionStore {
                 ?? live.first ?? tab.focusedSurfaceId
             return tab
         }
+        // Rebuild groups: fresh UUIDs (workspace ids are new too), members
+        // linked by index, anchor by position among members. A group whose
+        // members all vanished is dropped.
+        var groups: [WorkspaceGroup] = []
+        for (index, entry) in (snapshot.groups ?? []).enumerated() {
+            let memberPositions = snapshot.workspaces.indices.filter {
+                snapshot.workspaces[$0].groupIndex == index
+            }
+            guard !memberPositions.isEmpty else { continue }
+            let anchorPosition = memberPositions[safe: entry.anchorMemberIndex]
+                ?? memberPositions[0]
+            let group = WorkspaceGroup(
+                name: entry.name,
+                anchorWorkspaceId: tabs[anchorPosition].id,
+                isCollapsed: entry.isCollapsed,
+                isPinned: entry.isPinned,
+                customColor: entry.customColor,
+                iconSymbol: entry.iconSymbol
+            )
+            for position in memberPositions {
+                tabs[position].groupId = group.id
+            }
+            groups.append(group)
+        }
         let selected = tabs[safe: snapshot.selectedIndex] ?? tabs[0]
-        return (tabs, selected.id, max(snapshot.tabCounter, tabs.count))
+        return (tabs, selected.id, max(snapshot.tabCounter, tabs.count), groups)
     }
 
     private static func layoutNode(

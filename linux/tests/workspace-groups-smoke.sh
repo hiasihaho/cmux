@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# workspace.group.* end-to-end: create/list/rename/collapse/pin/add/remove/
+# set_anchor/new_workspace/set_color/set_icon/move/focus/ungroup/delete,
+# the `new-workspace --group` create path, the contiguity + pin-tier
+# ordering invariant, anchor-close dissolution, error surfaces, and the
+# session save/restore round-trip (features/04, macOS parity).
+#
+#   workspace-groups-smoke.sh [--keep]
+#
+# Exit: 0 all passed, 1 an assertion failed, 2 setup problem.
+SUITE_NAME="workspace-groups-smoke"
+APP_ID_SUFFIX="wsgroups"
+PAGE_PORT=8434   # only picks a unique X display; no fixture server needed
+source "$(dirname "$0")/lib.sh"
+
+start_xvfb
+start_instance || exit 2
+
+# Order of workspace refs as the sidebar shows them.
+ws_order() { cx list-workspaces 2>/dev/null | grep -oE 'workspace:[0-9]+' | tr '\n' ' '; }
+# Field from the first group in workspace.group.list via python.
+group_field() {
+    v2 "{\"id\":1,\"method\":\"workspace.group.list\"}" | python3 -c "
+import json,sys
+r=json.load(sys.stdin)['result']['groups']
+print(r[$2]$1 if len(r)>$2 else 'MISSING')" 2>/dev/null
+}
+
+# ------------------------------------------------------------------ create
+info "group.create adopts children around a fresh anchor"
+WS_A=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+WS_B=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+resp=$(v2 "{\"id\":1,\"method\":\"workspace.group.create\",\"params\":{\"name\":\"Proj\",\"child_workspace_ids\":[\"$WS_A\",\"$WS_B\"]}}")
+echo "$resp" | grep -q '"member_count":3' && ok "create: anchor + 2 children" \
+    || bad "create member_count" "$resp"
+G=$(echo "$resp" | grep -oE 'workspace_group:[0-9]+' | head -1)
+[ -n "$G" ] && ok "create: group ref minted ($G)" || bad "group ref" "$resp"
+ANCHOR=$(group_field "['anchor_workspace_ref']" 0)
+expect "list: one group with name" "Proj" "$(group_field "['name']" 0)"
+
+# Contiguity: the run is anchor-first, A and B directly after it.
+order=$(ws_order)
+case "$order" in
+    *"$ANCHOR $WS_A $WS_B"*) ok "contiguity: run is anchor-first" ;;
+    *) bad "contiguity" "order: $order (anchor $ANCHOR)" ;;
+esac
+
+# ------------------------------------------------------- rename / collapse
+expect "rename" "Crew" "$(v2 "{\"id\":1,\"method\":\"workspace.group.rename\",\"params\":{\"group_id\":\"$G\",\"name\":\"Crew\"}}" | python3 -c "import json,sys;print(json.load(sys.stdin)['result']['name'])")"
+v2 "{\"id\":1,\"method\":\"workspace.group.collapse\",\"params\":{\"group_id\":\"$G\"}}" | grep -q '"is_collapsed":true' \
+    && ok "collapse" || bad "collapse" "no is_collapsed:true"
+expect "expand" "False" "$(v2 "{\"id\":1,\"method\":\"workspace.group.expand\",\"params\":{\"group_id\":\"$G\"}}" >/dev/null; group_field "['is_collapsed']" 0)"
+
+# ------------------------------------------------------------ pin tier
+info "pinned group floats above ungrouped rows"
+v2 "{\"id\":1,\"method\":\"workspace.group.pin\",\"params\":{\"group_id\":\"$G\"}}" >/dev/null
+first=$(ws_order | awk '{print $1}')
+expect "pin: run moves to the top" "$ANCHOR" "$first"
+v2 "{\"id\":1,\"method\":\"workspace.group.unpin\",\"params\":{\"group_id\":\"$G\"}}" >/dev/null
+
+# ------------------------------------------- membership: CLI create path
+info "new-workspace --group joins at creation"
+cx new-workspace --cwd /tmp --background --group "$G" --group-placement end >/dev/null 2>&1 \
+    && ok "new-workspace --group accepted" || bad "new-workspace --group" "CLI error"
+expect "member_count grows to 4" "4" "$(group_field "['member_count']" 0)"
+resp=$(v2 "{\"id\":1,\"method\":\"workspace.create\",\"params\":{\"cwd\":\"/tmp\",\"focus\":false,\"group_id\":\"$G\"}}")
+echo "$resp" | grep -q '"group_ref"' && ok "workspace.create returns group_ref" \
+    || bad "workspace.create group_ref" "$resp"
+v2 "{\"id\":1,\"method\":\"workspace.group.remove\",\"params\":{\"workspace_id\":\"$(echo "$resp" | grep -oE 'workspace:[0-9]+' | head -1)\"}}" >/dev/null
+
+# ------------------------------------------------- group.new_workspace
+WS_N=$(v2 "{\"id\":1,\"method\":\"workspace.group.new_workspace\",\"params\":{\"group_id\":\"$G\"}}" | grep -oE 'workspace:[0-9]+' | head -1)
+[ -n "$WS_N" ] && ok "group.new_workspace creates a member" || bad "group.new_workspace" "no ref"
+expect "member_count grows to 5" "5" "$(group_field "['member_count']" 0)"
+
+# --------------------------------------------------------- add / remove
+WS_C=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+v2 "{\"id\":1,\"method\":\"workspace.group.add\",\"params\":{\"group_id\":\"$G\",\"workspace_id\":\"$WS_C\",\"placement\":\"end\"}}" | grep -q '"ok":true' \
+    && ok "add with placement end" || bad "add" "not ok"
+v2 "{\"id\":1,\"method\":\"workspace.group.remove\",\"params\":{\"workspace_id\":\"$WS_C\"}}" | grep -q '"ok":true' \
+    && ok "remove member" || bad "remove" "not ok"
+v2 "{\"id\":1,\"method\":\"workspace.group.remove\",\"params\":{\"workspace_id\":\"$WS_C\"}}" | grep -q 'not_found' \
+    && ok "remove non-member -> not_found" || bad "remove error" "no not_found"
+
+# ---------------------------------------------------------- set_anchor
+v2 "{\"id\":1,\"method\":\"workspace.group.set_anchor\",\"params\":{\"group_id\":\"$G\",\"workspace_id\":\"$WS_A\"}}" >/dev/null
+expect "set_anchor reassigns the anchor" \
+    "$WS_A" "$(group_field "['anchor_workspace_ref']" 0)"
+
+# ------------------------------------------------------- color / icon
+expect "set_color stores hex" "#aa5500" "$(v2 "{\"id\":1,\"method\":\"workspace.group.set_color\",\"params\":{\"group_id\":\"$G\",\"hex\":\"#aa5500\"}}" >/dev/null; group_field "['custom_color']" 0)"
+expect "set_icon stores symbol" "folder.fill" "$(v2 "{\"id\":1,\"method\":\"workspace.group.set_icon\",\"params\":{\"group_id\":\"$G\",\"symbol\":\"folder.fill\"}}" >/dev/null; group_field "['icon_symbol']" 0)"
+expect "set_color empty clears" "None" "$(v2 "{\"id\":1,\"method\":\"workspace.group.set_color\",\"params\":{\"group_id\":\"$G\",\"hex\":\"\"}}" >/dev/null; group_field "['custom_color']" 0)"
+
+# ------------------------------------------------------------- focus
+v2 "{\"id\":1,\"method\":\"workspace.group.focus\",\"params\":{\"group_id\":\"$G\"}}" >/dev/null
+sel=$(v2 '{"id":1,"method":"workspace.current"}' | grep -oE 'workspace:[0-9]+' | head -1)
+expect "focus selects the anchor" "$WS_A" "$sel"
+
+# -------------------------------------------------- persistence round-trip
+info "groups survive save + restart"
+force_save
+kill_instance
+start_instance || exit 2
+expect "restored group name" "Crew" "$(group_field "['name']" 0)"
+expect "restored member_count" "5" "$(group_field "['member_count']" 0)"
+# Refs are re-minted after restore; recapture handles.
+G=$(v2 '{"id":1,"method":"workspace.group.list"}' | grep -oE 'workspace_group:[0-9]+' | head -1)
+ANCHOR=$(group_field "['anchor_workspace_ref']" 0)
+order=$(ws_order)
+case "$order" in
+    *"$ANCHOR"*) ok "restored run present in sidebar order" ;;
+    *) bad "restored order" "$order" ;;
+esac
+
+# --------------------------------------------- anchor close dissolves
+info "closing the anchor dissolves the group, members survive"
+before=$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')
+cx close-workspace --workspace "$ANCHOR" >/dev/null 2>&1
+expect "group is gone" "MISSING" "$(group_field "['name']" 0)"
+after=$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')
+expect "only the anchor closed" "$((before - 1))" "$after"
+
+# ------------------------------------------------------ ungroup / delete
+info "ungroup preserves members; delete closes them"
+WS_D=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+G2=$(v2 "{\"id\":1,\"method\":\"workspace.group.create\",\"params\":{\"name\":\"Temp\",\"child_workspace_ids\":[\"$WS_D\"]}}" | grep -oE 'workspace_group:[0-9]+' | head -1)
+before=$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')
+v2 "{\"id\":1,\"method\":\"workspace.group.ungroup\",\"params\":{\"group_id\":\"$G2\"}}" | grep -q '"ok":true' \
+    && ok "ungroup" || bad "ungroup" "not ok"
+after=$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')
+expect "ungroup closes nothing" "$before" "$after"
+
+WS_E=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+G3=$(v2 "{\"id\":1,\"method\":\"workspace.group.create\",\"params\":{\"name\":\"Doomed\",\"child_workspace_ids\":[\"$WS_E\"]}}" | grep -oE 'workspace_group:[0-9]+' | head -1)
+before=$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')
+resp=$(v2 "{\"id\":1,\"method\":\"workspace.group.delete\",\"params\":{\"group_id\":\"$G3\"}}")
+echo "$resp" | grep -q '"closed_workspace_count":2' && ok "delete reports closures" \
+    || bad "delete count" "$resp"
+after=$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')
+expect "delete closes anchor + member" "$((before - 2))" "$after"
+
+# ------------------------------------------------------------ error surfaces
+info "error surfaces"
+v2 "{\"id\":1,\"method\":\"workspace.group.rename\",\"params\":{\"group_id\":\"$(python3 -c 'import uuid;print(uuid.uuid4())')\",\"name\":\"x\"}}" | grep -q 'not_found' \
+    && ok "unknown group -> not_found" || bad "unknown group" "no not_found"
+v2 '{"id":1,"method":"workspace.group.rename","params":{"group_id":"","name":"x"}}' | grep -q 'invalid_params' \
+    && ok "empty group_id -> invalid_params" || bad "empty group_id" "no invalid_params"
+WS_F=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+GE=$(v2 "{\"id\":1,\"method\":\"workspace.group.create\",\"params\":{\"name\":\"Err\",\"child_workspace_ids\":[\"$WS_F\"]}}" | grep -oE 'workspace_group:[0-9]+' | head -1)
+v2 "{\"id\":1,\"method\":\"workspace.group.new_workspace\",\"params\":{\"group_id\":\"$GE\",\"placement\":\"sideways\"}}" | grep -q 'invalid_params' \
+    && ok "bad placement -> invalid_params" || bad "bad placement" "no invalid_params"
+resp=$(cx --json new-workspace --cwd /tmp --background --group-placement end 2>&1)
+echo "$resp" | grep -q 'group_id is required' && ok "placement without group -> invalid_params" \
+    || bad "flag validation" "$resp"
+
+finish

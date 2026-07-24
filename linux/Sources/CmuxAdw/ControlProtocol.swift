@@ -61,6 +61,7 @@ struct ControlCommandHandler {
     var selection: Binding<UUID>
     var notifications: Binding<[TerminalNotification]>
     var tabCounter: Binding<Int>
+    var groups: Binding<[WorkspaceGroup]>
 
     // MARK: dispatch
 
@@ -209,6 +210,15 @@ struct ControlCommandHandler {
         notifications.wrappedValue.removeAll { $0.tabId == tabId }
         DesktopNotifier.withdraw(id: "cmux-\(tabId.uuidString)")
         tabs.wrappedValue.remove(at: index)
+        // Group bookkeeping (macOS parity): closing a group's anchor
+        // dissolves the group; the other members survive ungrouped.
+        if let gIndex = groups.wrappedValue.firstIndex(where: { $0.anchorWorkspaceId == tabId }) {
+            let gid = groups.wrappedValue[gIndex].id
+            groups.wrappedValue.remove(at: gIndex)
+            for i in tabs.wrappedValue.indices where tabs.wrappedValue[i].groupId == gid {
+                tabs.wrappedValue[i].groupId = nil
+            }
+        }
         if selection.wrappedValue == tabId,
            let next = SelectionHistory.shared.lastAlive(in: tabs.wrappedValue, excluding: tabId)
                ?? (tabs.wrappedValue[safe: min(index, tabs.wrappedValue.count - 1)]
@@ -410,6 +420,15 @@ struct ControlCommandHandler {
                     "workspace.list", "workspace.create", "workspace.select",
                     "workspace.current", "workspace.close", "workspace.rename",
                     "workspace.next", "workspace.previous", "workspace.last",
+                    "workspace.group.list", "workspace.group.create",
+                    "workspace.group.ungroup", "workspace.group.delete",
+                    "workspace.group.rename", "workspace.group.collapse",
+                    "workspace.group.expand", "workspace.group.pin",
+                    "workspace.group.unpin", "workspace.group.add",
+                    "workspace.group.remove", "workspace.group.set_anchor",
+                    "workspace.group.new_workspace", "workspace.group.set_color",
+                    "workspace.group.set_icon", "workspace.group.move",
+                    "workspace.group.focus",
                     "surface.list", "surface.create", "surface.send_text",
                     "surface.send_key", "surface.read_text", "surface.split",
                     "surface.close", "surface.current", "surface.focus", "surface.trigger_flash",
@@ -492,6 +511,40 @@ struct ControlCommandHandler {
             return v2WorkspaceStep(id: id, forward: false)
         case "workspace.last":
             return v2WorkspaceLast(id: id)
+        case "workspace.group.list":
+            return v2GroupList(id: id)
+        case "workspace.group.create":
+            return v2GroupCreate(id: id, params: params)
+        case "workspace.group.ungroup":
+            return v2GroupUngroup(id: id, params: params)
+        case "workspace.group.delete":
+            return v2GroupDelete(id: id, params: params)
+        case "workspace.group.rename":
+            return v2GroupRename(id: id, params: params)
+        case "workspace.group.collapse":
+            return v2GroupSetCollapsed(id: id, params: params, isCollapsed: true)
+        case "workspace.group.expand":
+            return v2GroupSetCollapsed(id: id, params: params, isCollapsed: false)
+        case "workspace.group.pin":
+            return v2GroupSetPinned(id: id, params: params, isPinned: true)
+        case "workspace.group.unpin":
+            return v2GroupSetPinned(id: id, params: params, isPinned: false)
+        case "workspace.group.add":
+            return v2GroupAdd(id: id, params: params)
+        case "workspace.group.remove":
+            return v2GroupRemove(id: id, params: params)
+        case "workspace.group.set_anchor":
+            return v2GroupSetAnchor(id: id, params: params)
+        case "workspace.group.new_workspace":
+            return v2GroupNewWorkspace(id: id, params: params)
+        case "workspace.group.set_color":
+            return v2GroupSetColor(id: id, params: params)
+        case "workspace.group.set_icon":
+            return v2GroupSetIcon(id: id, params: params)
+        case "workspace.group.move":
+            return v2GroupMove(id: id, params: params)
+        case "workspace.group.focus":
+            return v2GroupFocus(id: id, params: params)
         case "surface.list":
             return v2SurfaceList(id: id, params: params)
         case "surface.send_text":
@@ -707,6 +760,9 @@ struct ControlCommandHandler {
                 _ = registry.ref(kind: "surface", uuid: leaf.surfaceId)
             }
         }
+        for group in groups.wrappedValue {
+            _ = registry.ref(kind: "workspace_group", uuid: group.id)
+        }
     }
 
     // MARK: v2 method implementations
@@ -743,9 +799,601 @@ struct ControlCommandHandler {
         ]
     }
 
+    // MARK: workspace groups
+    //
+    // Mirrors the macOS `workspace.group.*` family (WorkspaceGroupCoordinator
+    // + ControlCommandCoordinator+WorkspaceGroup): membership is a relation
+    // on each tab, the anchor is a real member rendered as the header, and
+    // every mutation re-establishes the sidebar invariant — contiguous group
+    // runs, anchor-first, pinned groups above unpinned top-level rows.
+
+    /// A top-level sidebar row: an ungrouped workspace, or a whole group
+    /// (whose run expands anchor-first at that slot).
+    private enum SidebarSlot {
+        case tab(UUID)
+        case group(UUID)
+    }
+
+    private func topLevelSlots() -> [SidebarSlot] {
+        let groupList = groups.wrappedValue
+        var slots: [SidebarSlot] = []
+        var seenGroups = Set<UUID>()
+        for tab in tabs.wrappedValue {
+            if let gid = tab.groupId, groupList.contains(where: { $0.id == gid }) {
+                if seenGroups.insert(gid).inserted { slots.append(.group(gid)) }
+            } else {
+                slots.append(.tab(tab.id))
+            }
+        }
+        for group in groupList where !seenGroups.contains(group.id) {
+            slots.append(.group(group.id))
+        }
+        return slots
+    }
+
+    /// Projects a slot order back onto `tabs`, applying the pin tier
+    /// (pinned groups first, stable within each tier) and expanding each
+    /// group anchor-first with members in their current relative order.
+    private func recomposeTabs(slots: [SidebarSlot]) {
+        let all = tabs.wrappedValue
+        let groupList = groups.wrappedValue
+        func slotPinned(_ slot: SidebarSlot) -> Bool {
+            if case .group(let gid) = slot {
+                return groupList.first(where: { $0.id == gid })?.isPinned ?? false
+            }
+            return false
+        }
+        let ordered = slots.filter(slotPinned) + slots.filter { !slotPinned($0) }
+        var result: [TerminalTab] = []
+        for slot in ordered {
+            switch slot {
+            case .tab(let tabId):
+                if let tab = all.first(where: { $0.id == tabId }) { result.append(tab) }
+            case .group(let gid):
+                let members = all.filter { $0.groupId == gid }
+                guard !members.isEmpty else { continue }
+                let anchorId = groupList.first(where: { $0.id == gid })?.anchorWorkspaceId
+                result.append(contentsOf: members.filter { $0.id == anchorId }
+                    + members.filter { $0.id != anchorId })
+            }
+        }
+        // A recompose must be a permutation; bail rather than lose a tab.
+        if result.count == all.count { tabs.wrappedValue = result }
+    }
+
+    private func normalizeGroupContiguity() {
+        guard !groups.wrappedValue.isEmpty else { return }
+        recomposeTabs(slots: topLevelSlots())
+    }
+
+    /// `afterCurrent | top | end`, with the macOS tolerant spellings.
+    private enum GroupPlacement {
+        case afterCurrent, top, end
+        init?(tolerant raw: String) {
+            switch raw {
+            case "afterCurrent", "after-current", "after_current": self = .afterCurrent
+            case "top": self = .top
+            case "end": self = .end
+            default: return nil
+            }
+        }
+    }
+
+    /// Repositions a member inside its group's run. `afterCurrent` follows
+    /// the reference member (falling back to the selected member, then the
+    /// anchor); `top` sits right after the anchor; `end` after the last
+    /// member — matching the macOS `placeWithinGroup`.
+    private func placeWithinGroup(
+        _ movingId: UUID, groupId: UUID,
+        placement: GroupPlacement, referenceId: UUID?
+    ) {
+        var all = tabs.wrappedValue
+        guard let moveIndex = all.firstIndex(where: { $0.id == movingId }) else { return }
+        let moving = all.remove(at: moveIndex)
+        let members = all.filter { $0.groupId == groupId }
+        let anchorId = groups.wrappedValue.first(where: { $0.id == groupId })?.anchorWorkspaceId
+        var afterId: UUID?
+        switch placement {
+        case .top:
+            afterId = anchorId
+        case .end:
+            afterId = members.last?.id
+        case .afterCurrent:
+            if let ref = referenceId, members.contains(where: { $0.id == ref }) {
+                afterId = ref
+            } else if members.contains(where: { $0.id == selection.wrappedValue }) {
+                afterId = selection.wrappedValue
+            } else {
+                afterId = anchorId
+            }
+        }
+        if let after = afterId, let index = all.firstIndex(where: { $0.id == after }) {
+            all.insert(moving, at: index + 1)
+        } else {
+            all.append(moving)
+        }
+        tabs.wrappedValue = all
+        normalizeGroupContiguity()
+    }
+
+    /// Accepts a UUID string or a `workspace_group:<n>` / `workspace:<n>` ref.
+    private func resolveHandle(_ raw: String) -> UUID? {
+        if let uuid = UUID(uuidString: raw) { return uuid }
+        return RefRegistry.shared.resolve(raw)
+    }
+
+    private func v2GroupUUID(_ params: [String: Any]) -> UUID? {
+        guard let raw = params["group_id"] as? String, !raw.isEmpty else { return nil }
+        return resolveHandle(raw)
+    }
+
+    private func groupIndex(_ gid: UUID) -> Int? {
+        groups.wrappedValue.firstIndex(where: { $0.id == gid })
+    }
+
+    /// The wire payload for one group — field-for-field the macOS shape.
+    /// Member arrays include the anchor (it is a real member).
+    private func groupPayload(_ group: WorkspaceGroup) -> [String: Any] {
+        let registry = RefRegistry.shared
+        let members = tabs.wrappedValue.filter { $0.groupId == group.id }
+        return [
+            "id": group.id.uuidString,
+            "ref": registry.ref(kind: "workspace_group", uuid: group.id),
+            "name": group.name,
+            "is_collapsed": group.isCollapsed,
+            "is_pinned": group.isPinned,
+            "anchor_workspace_id": group.anchorWorkspaceId.uuidString,
+            "anchor_workspace_ref": registry.ref(kind: "workspace", uuid: group.anchorWorkspaceId),
+            "custom_color": group.customColor ?? NSNull(),
+            "icon_symbol": group.iconSymbol ?? NSNull(),
+            "member_workspace_ids": members.map { $0.id.uuidString },
+            "member_workspace_refs": members.map { registry.ref(kind: "workspace", uuid: $0.id) },
+            "member_count": members.count
+        ]
+    }
+
+    private func v2GroupList(id: Any?) -> String {
+        let registry = RefRegistry.shared
+        return v2Ok(id: id, result: [
+            "window_id": Self.windowId.uuidString,
+            "window_ref": registry.ref(kind: "window", uuid: Self.windowId),
+            "groups": groups.wrappedValue.map { groupPayload($0) }
+        ])
+    }
+
+    /// Creates a group around a fresh anchor workspace. Children come from
+    /// `child_workspace_ids`, defaulting to the selected workspace (the
+    /// macOS sidebar-selection fallback). Not a focus-intent verb.
+    private func v2GroupCreate(id: Any?, params: [String: Any]) -> String {
+        let name = (params["name"] as? String) ?? ""
+        if let raw = params["cwd"], !(raw is String), !(raw is NSNull) {
+            return v2Error(id: id, code: "invalid_params", message: "cwd must be a string")
+        }
+        var childIds: [UUID] = []
+        if let rawChildren = params["child_workspace_ids"], !(rawChildren is NSNull) {
+            guard let handles = rawChildren as? [String] else {
+                return v2Error(
+                    id: id, code: "invalid_params",
+                    message: "child_workspace_ids must be an array of workspace handles")
+            }
+            for handle in handles {
+                guard let uuid = resolveHandle(handle) else {
+                    return v2Error(
+                        id: id, code: "invalid_params",
+                        message: "Unresolved child workspace handles")
+                }
+                childIds.append(uuid)
+            }
+            let known = Set(tabs.wrappedValue.map { $0.id })
+            guard childIds.allSatisfy({ known.contains($0) }) else {
+                return v2Error(id: id, code: "not_found", message: "Unknown workspace ids")
+            }
+            let anchors = Set(groups.wrappedValue.map { $0.anchorWorkspaceId })
+            let eligible = childIds.filter { !anchors.contains($0) }
+            if eligible.isEmpty {
+                return v2Error(
+                    id: id, code: "invalid_state",
+                    message: "All requested workspaces are group anchors")
+            }
+            childIds = eligible
+        } else {
+            // Sidebar-selection fallback: adopt the selected workspace if
+            // it is not itself a group anchor.
+            let selected = selection.wrappedValue
+            let anchors = Set(groups.wrappedValue.map { $0.anchorWorkspaceId })
+            if tabs.wrappedValue.contains(where: { $0.id == selected }),
+               !anchors.contains(selected) {
+                childIds = [selected]
+            }
+        }
+        tabCounter.wrappedValue += 1
+        let anchor = TerminalTab(
+            title: "Terminal \(tabCounter.wrappedValue)",
+            workingDirectory: (params["cwd"] as? String)
+                ?? FileManager.default.homeDirectoryForCurrentUser.path
+        )
+        // The run materializes at the first child's position (creation
+        // position), or at the end for a childless group.
+        if let firstChild = childIds.first,
+           let index = tabs.wrappedValue.firstIndex(where: { $0.id == firstChild }) {
+            tabs.wrappedValue.insert(anchor, at: index)
+        } else {
+            tabs.wrappedValue.append(anchor)
+        }
+        let group = WorkspaceGroup(name: name, anchorWorkspaceId: anchor.id)
+        groups.wrappedValue.append(group)
+        for i in tabs.wrappedValue.indices
+        where tabs.wrappedValue[i].id == anchor.id || childIds.contains(tabs.wrappedValue[i].id) {
+            tabs.wrappedValue[i].groupId = group.id
+        }
+        normalizeGroupContiguity()
+        return v2Ok(id: id, result: ["group": groupPayload(group)])
+    }
+
+    /// Dissolves the group; every member (anchor included) survives as a
+    /// regular workspace, keeping its current position — deliberately no
+    /// re-normalize, matching macOS.
+    private func v2GroupUngroup(id: Any?, params: [String: Any]) -> String {
+        guard let gid = v2GroupUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+        }
+        guard let index = groupIndex(gid) else {
+            return v2Error(id: id, code: "not_found", message: "Group not found")
+        }
+        groups.wrappedValue.remove(at: index)
+        for i in tabs.wrappedValue.indices where tabs.wrappedValue[i].groupId == gid {
+            tabs.wrappedValue[i].groupId = nil
+        }
+        return v2Ok(id: id, result: ["group_id": gid.uuidString])
+    }
+
+    /// Destructive: closes the anchor and every member workspace.
+    private func v2GroupDelete(id: Any?, params: [String: Any]) -> String {
+        guard let gid = v2GroupUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+        }
+        guard let index = groupIndex(gid) else {
+            return v2Error(id: id, code: "not_found", message: "Group not found")
+        }
+        let memberIds = tabs.wrappedValue.filter { $0.groupId == gid }.map { $0.id }
+        // Drop the group first so per-close anchor bookkeeping cannot
+        // dissolve it mid-loop and orphan the remaining members.
+        groups.wrappedValue.remove(at: index)
+        for memberId in memberIds {
+            if let tabIndex = tabs.wrappedValue.firstIndex(where: { $0.id == memberId }) {
+                removeWorkspace(at: tabIndex)
+            }
+        }
+        return v2Ok(id: id, result: [
+            "group_id": gid.uuidString,
+            "closed_workspace_count": memberIds.count
+        ])
+    }
+
+    private func v2GroupRename(id: Any?, params: [String: Any]) -> String {
+        guard let gid = v2GroupUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+        }
+        guard let nameRaw = params["name"] as? String,
+              !nameRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid name")
+        }
+        guard let index = groupIndex(gid) else {
+            return v2Error(id: id, code: "not_found", message: "Group not found")
+        }
+        let name = nameRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+        groups.wrappedValue[index].name = name
+        return v2Ok(id: id, result: ["group_id": gid.uuidString, "name": name])
+    }
+
+    private func v2GroupSetCollapsed(id: Any?, params: [String: Any], isCollapsed: Bool) -> String {
+        guard let gid = v2GroupUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+        }
+        guard let index = groupIndex(gid) else {
+            return v2Error(id: id, code: "not_found", message: "Group not found")
+        }
+        groups.wrappedValue[index].isCollapsed = isCollapsed
+        return v2Ok(id: id, result: ["group_id": gid.uuidString, "is_collapsed": isCollapsed])
+    }
+
+    private func v2GroupSetPinned(id: Any?, params: [String: Any], isPinned: Bool) -> String {
+        guard let gid = v2GroupUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+        }
+        guard let index = groupIndex(gid) else {
+            return v2Error(id: id, code: "not_found", message: "Group not found")
+        }
+        groups.wrappedValue[index].isPinned = isPinned
+        normalizeGroupContiguity()
+        return v2Ok(id: id, result: ["group_id": gid.uuidString, "is_pinned": isPinned])
+    }
+
+    private func v2GroupAdd(id: Any?, params: [String: Any]) -> String {
+        guard let gid = v2GroupUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+        }
+        guard let wsRaw = params["workspace_id"] as? String, let wsId = resolveHandle(wsRaw) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid workspace_id")
+        }
+        guard let gIndex = groupIndex(gid) else {
+            return v2Error(id: id, code: "not_found", message: "Group not found")
+        }
+        guard let tabIndex = tabs.wrappedValue.firstIndex(where: { $0.id == wsId }) else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not found")
+        }
+        if groups.wrappedValue.contains(where: { $0.id != gid && $0.anchorWorkspaceId == wsId }) {
+            return v2Error(
+                id: id, code: "invalid_state",
+                message: "Workspace is another group's anchor")
+        }
+        var placement: GroupPlacement?
+        if let raw = params["placement"] as? String {
+            guard let parsed = GroupPlacement(tolerant: raw) else {
+                return v2Error(
+                    id: id, code: "invalid_params",
+                    message: "placement must be one of: afterCurrent, top, end")
+            }
+            placement = parsed
+        }
+        var referenceId: UUID?
+        if let raw = params["reference_workspace_id"] as? String {
+            guard let ref = resolveHandle(raw) else {
+                return v2Error(
+                    id: id, code: "invalid_params",
+                    message: "Missing or invalid reference_workspace_id")
+            }
+            guard tabs.wrappedValue.first(where: { $0.id == ref })?.groupId == gid else {
+                return v2Error(
+                    id: id, code: "invalid_params",
+                    message: "Reference workspace is not a member of the group")
+            }
+            referenceId = ref
+        }
+        let alreadyMember = tabs.wrappedValue[tabIndex].groupId == gid
+        let isAnchor = groups.wrappedValue[gIndex].anchorWorkspaceId == wsId
+        if !alreadyMember || !isAnchor {
+            tabs.wrappedValue[tabIndex].groupId = gid
+            if let placement, !isAnchor {
+                placeWithinGroup(wsId, groupId: gid, placement: placement, referenceId: referenceId)
+            } else {
+                normalizeGroupContiguity()
+            }
+        }
+        return v2Ok(id: id, result: ["group_id": gid.uuidString, "workspace_id": wsId.uuidString])
+    }
+
+    /// Removing the anchor dissolves the whole group (macOS
+    /// `removeWorkspaceFromGroup`); a plain member just leaves.
+    private func v2GroupRemove(id: Any?, params: [String: Any]) -> String {
+        guard let wsRaw = params["workspace_id"] as? String, let wsId = resolveHandle(wsRaw) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid workspace_id")
+        }
+        guard let tabIndex = tabs.wrappedValue.firstIndex(where: { $0.id == wsId }),
+              let gid = tabs.wrappedValue[tabIndex].groupId else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not in a group")
+        }
+        if let gIndex = groupIndex(gid), groups.wrappedValue[gIndex].anchorWorkspaceId == wsId {
+            groups.wrappedValue.remove(at: gIndex)
+            for i in tabs.wrappedValue.indices where tabs.wrappedValue[i].groupId == gid {
+                tabs.wrappedValue[i].groupId = nil
+            }
+        } else {
+            tabs.wrappedValue[tabIndex].groupId = nil
+            normalizeGroupContiguity()
+        }
+        return v2Ok(id: id, result: ["workspace_id": wsId.uuidString])
+    }
+
+    private func v2GroupSetAnchor(id: Any?, params: [String: Any]) -> String {
+        guard let gid = v2GroupUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+        }
+        guard let wsRaw = params["workspace_id"] as? String, let wsId = resolveHandle(wsRaw) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid workspace_id")
+        }
+        guard let gIndex = groupIndex(gid),
+              tabs.wrappedValue.first(where: { $0.id == wsId })?.groupId == gid else {
+            return v2Error(
+                id: id, code: "not_found",
+                message: "Group not found or workspace not a member")
+        }
+        groups.wrappedValue[gIndex].anchorWorkspaceId = wsId
+        // The new anchor hoists to the front of its run and becomes the
+        // header row.
+        normalizeGroupContiguity()
+        return v2Ok(id: id, result: [
+            "group_id": gid.uuidString,
+            "anchor_workspace_id": wsId.uuidString
+        ])
+    }
+
+    /// Creates a fresh workspace inside the group, in the background
+    /// (socket focus policy). Placement defaults to `afterCurrent` — the
+    /// macOS global default; the per-cwd cmux.json tier is not wired here.
+    /// The new workspace inherits the anchor's working directory.
+    private func v2GroupNewWorkspace(id: Any?, params: [String: Any]) -> String {
+        guard let gid = v2GroupUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+        }
+        guard let gIndex = groupIndex(gid) else {
+            return v2Error(id: id, code: "not_found", message: "Group not found")
+        }
+        var placement = GroupPlacement.afterCurrent
+        if let raw = params["placement"] as? String {
+            guard let parsed = GroupPlacement(tolerant: raw) else {
+                return v2Error(
+                    id: id, code: "invalid_params",
+                    message: "placement must be one of: afterCurrent, top, end")
+            }
+            placement = parsed
+        }
+        let anchorId = groups.wrappedValue[gIndex].anchorWorkspaceId
+        let anchorCwd = tabs.wrappedValue.first(where: { $0.id == anchorId })?.workingDirectory
+        tabCounter.wrappedValue += 1
+        var tab = TerminalTab(
+            title: "Terminal \(tabCounter.wrappedValue)",
+            workingDirectory: anchorCwd
+                ?? FileManager.default.homeDirectoryForCurrentUser.path
+        )
+        tab.groupId = gid
+        tabs.wrappedValue.append(tab)
+        placeWithinGroup(tab.id, groupId: gid, placement: placement, referenceId: nil)
+        var result = workspaceRefResult(tab.id)
+        result["group_id"] = gid.uuidString
+        return v2Ok(id: id, result: result)
+    }
+
+    private func v2GroupSetColor(id: Any?, params: [String: Any]) -> String {
+        guard let gid = v2GroupUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+        }
+        guard let index = groupIndex(gid) else {
+            return v2Error(id: id, code: "not_found", message: "Group not found")
+        }
+        let raw = (params["hex"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let color = (raw?.isEmpty ?? true) ? nil : raw
+        groups.wrappedValue[index].customColor = color
+        return v2Ok(id: id, result: [
+            "group_id": gid.uuidString,
+            "custom_color": color ?? NSNull()
+        ])
+    }
+
+    private func v2GroupSetIcon(id: Any?, params: [String: Any]) -> String {
+        guard let gid = v2GroupUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+        }
+        guard let index = groupIndex(gid) else {
+            return v2Error(id: id, code: "not_found", message: "Group not found")
+        }
+        let raw = (params["symbol"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let symbol = (raw?.isEmpty ?? true) ? nil : raw
+        groups.wrappedValue[index].iconSymbol = symbol
+        return v2Ok(id: id, result: [
+            "group_id": gid.uuidString,
+            "icon_symbol": symbol ?? NSNull()
+        ])
+    }
+
+    /// Moves the group's slot among the top-level rows. `to_index` counts
+    /// group slots (final position); `before_group_id` / `after_group_id`
+    /// name a sibling. The pin tier is enforced by the recompose.
+    private func v2GroupMove(id: Any?, params: [String: Any]) -> String {
+        guard let gid = v2GroupUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+        }
+        guard groupIndex(gid) != nil else {
+            return v2Error(id: id, code: "not_found", message: "Group not found")
+        }
+        var slots = topLevelSlots()
+        guard let sourceSlot = slots.firstIndex(where: {
+            if case .group(gid) = $0 { return true } else { return false }
+        }) else {
+            return v2Error(id: id, code: "unavailable", message: "Group has no sidebar slot")
+        }
+        let moving = slots.remove(at: sourceSlot)
+        func slotIndex(ofGroup raw: String) -> Int? {
+            guard let target = resolveHandle(raw) else { return nil }
+            return slots.firstIndex(where: {
+                if case .group(target) = $0 { return true } else { return false }
+            })
+        }
+        var insertAt: Int?
+        if let toIndex = params["to_index"] as? Int {
+            // to_index counts group slots; clamp into range.
+            let groupPositions = slots.indices.filter {
+                if case .group = slots[$0] { return true } else { return false }
+            }
+            if groupPositions.isEmpty || toIndex <= 0 {
+                insertAt = groupPositions.first ?? 0
+            } else if toIndex >= groupPositions.count {
+                insertAt = (groupPositions.last ?? slots.count - 1) + 1
+            } else {
+                insertAt = groupPositions[toIndex]
+            }
+        } else if let raw = params["before_group_id"] as? String, let index = slotIndex(ofGroup: raw) {
+            insertAt = index
+        } else if let raw = params["after_group_id"] as? String, let index = slotIndex(ofGroup: raw) {
+            insertAt = index + 1
+        }
+        guard let insertAt else {
+            return v2Error(
+                id: id, code: "invalid_params",
+                message: "Missing or unresolvable target position")
+        }
+        slots.insert(moving, at: insertAt)
+        recomposeTabs(slots: slots)
+        return v2Ok(id: id, result: ["group_id": gid.uuidString])
+    }
+
+    /// Focus-intent verb: selects the group's anchor, like a header click.
+    private func v2GroupFocus(id: Any?, params: [String: Any]) -> String {
+        guard let gid = v2GroupUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+        }
+        guard let index = groupIndex(gid),
+              tabs.wrappedValue.contains(where: {
+                  $0.id == groups.wrappedValue[index].anchorWorkspaceId
+              }) else {
+            return v2Error(id: id, code: "not_found", message: "Group or anchor not found")
+        }
+        let anchorId = groups.wrappedValue[index].anchorWorkspaceId
+        select(anchorId)
+        return v2Ok(id: id, result: [
+            "group_id": gid.uuidString,
+            "anchor_workspace_id": anchorId.uuidString,
+            "anchor_workspace_ref": RefRegistry.shared.ref(kind: "workspace", uuid: anchorId)
+        ])
+    }
+
     private func v2WorkspaceCreate(id: Any?, params: [String: Any]) -> String {
         if let raw = params["cwd"], !(raw is String) {
             return v2Error(id: id, code: "invalid_params", message: "cwd must be a string")
+        }
+        // Group placement (`new-workspace --group/--group-placement/
+        // --group-reference`) — validated up front, exactly like the macOS
+        // handler: either placement field without group_id is an error.
+        let groupIdRaw = params["group_id"] as? String
+        let placementRaw = (params["group_placement"] as? String)
+            ?? (params["placement"] as? String)
+        let referenceRaw = (params["group_reference_workspace_id"] as? String)
+            ?? (params["reference_workspace_id"] as? String)
+        if groupIdRaw == nil, placementRaw != nil || referenceRaw != nil {
+            return v2Error(
+                id: id, code: "invalid_params",
+                message: "group_id is required for group placement")
+        }
+        var targetGroupId: UUID?
+        var groupPlacement = GroupPlacement.top
+        var groupReferenceId: UUID?
+        if let raw = groupIdRaw {
+            guard let gid = resolveHandle(raw) else {
+                return v2Error(id: id, code: "invalid_params", message: "Missing or invalid group_id")
+            }
+            guard groupIndex(gid) != nil else {
+                return v2Error(id: id, code: "not_found", message: "Group not found")
+            }
+            if let praw = placementRaw {
+                guard let parsed = GroupPlacement(tolerant: praw) else {
+                    return v2Error(id: id, code: "invalid_params", message: "Invalid group_placement")
+                }
+                groupPlacement = parsed
+            }
+            if let rraw = referenceRaw {
+                guard let ref = resolveHandle(rraw) else {
+                    return v2Error(
+                        id: id, code: "invalid_params",
+                        message: "Missing or invalid group_reference_workspace_id")
+                }
+                guard tabs.wrappedValue.first(where: { $0.id == ref })?.groupId == gid else {
+                    return v2Error(
+                        id: id, code: "invalid_params",
+                        message: "Reference workspace is not a member of the group")
+                }
+                groupReferenceId = ref
+            }
+            targetGroupId = gid
         }
         tabCounter.wrappedValue += 1
         let tab = TerminalTab(
@@ -754,12 +1402,22 @@ struct ControlCommandHandler {
                 ?? FileManager.default.homeDirectoryForCurrentUser.path
         )
         tabs.wrappedValue.append(tab)
+        var result = workspaceRefResult(tab.id)
+        if let gid = targetGroupId,
+           let index = tabs.wrappedValue.firstIndex(where: { $0.id == tab.id }) {
+            tabs.wrappedValue[index].groupId = gid
+            placeWithinGroup(
+                tab.id, groupId: gid,
+                placement: groupPlacement, referenceId: groupReferenceId)
+            result["group_id"] = gid.uuidString
+            result["group_ref"] = RefRegistry.shared.ref(kind: "workspace_group", uuid: gid)
+        }
         // `focus: false` creates in the background (agents/automation must
         // not steal the human's view — macOS gates this on socket policy).
         if (params["focus"] as? Bool) ?? true {
             select(tab.id)
         }
-        return v2Ok(id: id, result: workspaceRefResult(tab.id))
+        return v2Ok(id: id, result: result)
     }
 
     private func v2WorkspaceSelect(id: Any?, params: [String: Any]) -> String {
@@ -2181,7 +2839,8 @@ struct ControlCommandHandler {
         SessionStore.saveIfChanged(
             tabs: tabs.wrappedValue,
             selection: selection.wrappedValue,
-            tabCounter: tabCounter.wrappedValue
+            tabCounter: tabCounter.wrappedValue,
+            groups: groups.wrappedValue
         )
         SessionStore.isFinalSave = false
         return v2Ok(id: id, result: ["saved": true])

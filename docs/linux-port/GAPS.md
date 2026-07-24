@@ -47,6 +47,7 @@ anything, then promote to Now.
 
 | Gap | Notes | Effort |
 |---|---|---|
+| Workspace groups stage 2: sidebar UI | The verb family + model + persistence landed 2026-07-24 (`workspace-groups-smoke`, 34 assertions; PARITY 🟡). Missing: collapsible group sections in the sidebar with header rows (anchor), colors/icons, collapse/expand affordance, attention aggregation onto collapsed headers. Touches the snapshot-boundary-sensitive flat `List` in `Views.swift` — follow the immutable-snapshot row rules; flat rendering is correct-but-ungrouped until then | M |
 | Test-harness roadmap (remainder) | the four S-items landed 2026-07-22 (`run.sh` front door, freshness preflight, flake-hunter, assertion ledger); remaining: timing trend, interactive picker (deferred), `cmux doctor`, dual-backend ghostty gate, CI — inventory + invest-when rules in `linux/tests/README.md` §Harness roadmap | S–M each |
 | UX-parity ❌ cluster | from [UX-PARITY.md](UX-PARITY.md) 2026-07-22, no decision needed (missing, not deviations): ~~unfocused-split dimming~~ (done 2026-07-23), GtkShortcutsWindow (Ctrl+?), notification card rows, surface-tab type icons, tab-bar end-action buttons, sidebar hover-close + context menu. The ❓ rows wait on the human's decision queue in that file | S each, batchable |
 | OSC 777 / OSC 99 notification ingestion | docs promise both terminal notify protocols (docs/notifications); verify what the ghostty shim / VTE already surface, then wire to the notification store. Verify-first | docs crawl 2026-07-22 → CONCEPTS.md | S |
@@ -78,7 +79,7 @@ vault = transcript search; dock = right-sidebar terminal controls;
 feed = agent approval stream; groups = anchor-owned sidebar sections):
 
 `vm.*` (13) · `workspace.remote.*` + `remotes.*` (14) · SSH/PTY attach
-family · `workspace.group.*` (13) · `canvas.*` (12) · `feed.*` (5) ·
+family · `canvas.*` (12) · `feed.*` (5) ·
 `auth.*` (4) · `layout.*` (5) · `events.stream` · `browser.trace/
 screencast/network-route` · `browser.import.*` · `browser.react_grab` ·
 `browser.focus_mode` · `file.open` / `project.open` / `markdown.open` ·

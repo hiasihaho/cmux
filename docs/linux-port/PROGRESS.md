@@ -3633,3 +3633,30 @@ to complete the authored-intent → measured-reality loop). Two traps
 re-confirmed: x11vnc dies on sight of WAYLAND_DISPLAY (launcher scrubs
 it), and `pkill -f` matched the caller's own command line again (exit
 144; third documented hit — hence pid-verified kills only).
+
+### Workspace groups stage 1 — the verb family, model-true (2026-07-24)
+
+The first "grouping features" family from the deferred list, chosen by
+hias over ADR-0012/0013 alternatives. All 17 `workspace.group.*` verbs
+now serve on Linux with macOS wire parity, mapped verb-for-verb from the
+macOS source (CmuxWorkspaces WorkspaceGroupCoordinator + the socket
+coordinator): membership is a per-workspace `groupId` relation — the
+group stores NO member list; the anchor is a real member that renders as
+the header; the sidebar invariant is contiguous runs, anchor-first,
+pinned tier above unpinned (`normalizeGroupContiguity`); anchor close —
+and anchor `remove` — dissolve the group; `create` adopts explicit
+`child_workspace_ids` or falls back to the sidebar selection; placements
+are `afterCurrent|top|end` with tolerant spellings (`group.new_workspace`
+defaults to afterCurrent like the macOS setting default, the
+`workspace.create` group path to top like its macOS handler).
+`new-workspace --group/--group-placement/--group-reference` — which the
+shared CLI has been sending all along and Linux silently dropped — now
+validates and joins at creation. Persistence: optional `groups` array in
+session v3 + per-workspace `groupIndex`, anchor by member index (UUIDs
+change on restore). `workspace-groups-smoke` (34 assertions) covers the
+family end-to-end including the save/restart round-trip;
+session-persistence-smoke still 25/25; capabilities self-check green.
+PARITY 🟡 (verbs full, sidebar still renders flat); stage 2 (sidebar
+sections UI) is a GAPS "Next" row. The features board's contradiction
+guard did its job mid-commit: `linux: none` with measured-served verbs
+would have flagged ⚠ — the page moved to `partial` in the same change.
