@@ -87,11 +87,16 @@ snapshot path.
 A `vncpoc` scratch instance (+watch) may still be running from the
 build session — `scratch.sh stop vncpoc` tears it all down.
 
-**Comfort mirror under way** (same day, after the UX survey —
-MACOS-UX.md): ① browser omnibar state parity (history-aware
-back/forward, reload⇄stop, https lock; `debug.browser_chrome`) and
-② sidebar hover affordances (row ✕, header ＋ via CSS `row:hover`)
-are landed and suite-verified. Next: ③ context menus. Trap fixed on
+**Comfort mirror ①–⑤ landed** (same day, after the UX survey —
+MACOS-UX.md): ① omnibar states (back/forward/reload⇄stop/https lock),
+② hover affordances (row ✕, header ＋), ③ right-click context menus on
+rows+headers, ④ workspace colors (16-swatch palette, left rail,
+persisted), ⑤ tab icons + loading spinner + end-action four. All
+suite-verified (workspace-groups 58, ui-commands 51-leg, navigation
+14). Fat trap found ⑤: the ghostty shim exports bundled libpng and
+WebKit's UI-process favicon decode SEGVs into it — favicons guarded
+off in shim builds, GAPS row for the fork-side fix. Next: ⑥ DnD,
+⑦ minimal Dock. Trap fixed on
 the way: lib.sh now exports DISPLAY so a bare xdotool in a suite can
 never drive the developer's real desktop again (PROGRESS).
 
