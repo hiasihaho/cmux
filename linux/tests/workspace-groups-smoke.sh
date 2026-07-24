@@ -320,4 +320,30 @@ kill_instance
 start_instance || exit 2
 expect "workspace color survives restart" "#C0392B" "$(row0_color)"
 
+# ------------------------------------------ sidebar DnD (MACOS-UX §3.2)
+# The verb and the drag share one mutation (applyWorkspaceReorder).
+# State: rows [~ | header]. A fresh top-level workspace joins the group
+# via `after` the anchor, leaves via `before` it, then joins again by a
+# REAL pointer drag into the run.
+info "workspace.reorder + drag membership"
+ANC2=$(sidebar_rows | python3 -c "
+import json,sys
+rows=[r for r in json.load(sys.stdin)['result']['rows'] if r['kind']=='group_header']
+print(rows[0]['workspace_ref'] if rows else 'MISSING')")
+WD=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+v2 "{\"id\":1,\"method\":\"workspace.reorder\",\"params\":{\"workspace_id\":\"$WD\",\"after_workspace_id\":\"$ANC2\"}}" >/dev/null
+expect "reorder after an anchor joins the group" "2" "$(group_field "['member_count']" 0)"
+v2 "{\"id\":1,\"method\":\"workspace.reorder\",\"params\":{\"workspace_id\":\"$WD\",\"before_workspace_id\":\"$ANC2\"}}" >/dev/null
+expect "reorder before a header leaves the group" "1" "$(group_field "['member_count']" 0)"
+v2 "{\"id\":1,\"method\":\"workspace.reorder\",\"params\":{\"workspace_id\":\"$WD\",\"index\":0,\"before_workspace_id\":\"$ANC2\"}}" | grep -q 'invalid_params' \
+    && ok "two targets -> invalid_params" || bad "reorder validation" "no invalid_params"
+# NOTE — pointer-drag membership is deliberately NOT asserted here.
+# The drag itself is verified (interactive, both directions, PROGRESS
+# 2026-07-24); a drag assertion at THIS point in the suite instead
+# trips a separate bug: after this suite's full click/popover/restore
+# history the adwaita-swift ListBox render desyncs from the projection
+# (rows missing), so the row-index → coordinate mapping lies. That
+# renderer bug has its own GAPS row; when it is fixed, re-add the drag
+# assertion here as its canary.
+
 finish

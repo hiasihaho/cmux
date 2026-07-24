@@ -420,6 +420,7 @@ struct ControlCommandHandler {
                     "workspace.list", "workspace.create", "workspace.select",
                     "workspace.current", "workspace.close", "workspace.rename",
                     "workspace.next", "workspace.previous", "workspace.last",
+                    "workspace.reorder",
                     "workspace.group.list", "workspace.group.create",
                     "workspace.group.ungroup", "workspace.group.delete",
                     "workspace.group.rename", "workspace.group.collapse",
@@ -512,6 +513,8 @@ struct ControlCommandHandler {
             return v2WorkspaceStep(id: id, forward: false)
         case "workspace.last":
             return v2WorkspaceLast(id: id)
+        case "workspace.reorder":
+            return v2WorkspaceReorder(id: id, params: params)
         case "workspace.group.list":
             return v2GroupList(id: id)
         case "workspace.group.create":
@@ -1557,6 +1560,123 @@ struct ControlCommandHandler {
             "anchor_workspace_id": anchorId.uuidString,
             "anchor_workspace_ref": RefRegistry.shared.ref(kind: "workspace", uuid: anchorId)
         ])
+    }
+
+    /// The one reorder mutation (macOS `reorderSidebarWorkspace` slice):
+    /// shared by the `workspace.reorder` verb AND sidebar drag-and-drop.
+    /// `before`/`after` place the workspace adjacent to a neighbor,
+    /// ADOPTING the neighbor's group membership (drop into a run = join);
+    /// two special cases mirror macOS: dropping BEFORE a group header
+    /// means "top-level, before the group's slot" (not join), and moving
+    /// an ANCHOR moves its whole group's slot. `index` is a top-level
+    /// slot position (membership cleared). Returns (from, to) flat
+    /// indices, nil when the workspace is unknown or the move is a no-op
+    /// refusal.
+    @discardableResult
+    func applyWorkspaceReorder(
+        workspaceId: UUID, before: UUID?, after: UUID?, index: Int?
+    ) -> (from: Int, to: Int)? {
+        guard let from = tabs.wrappedValue.firstIndex(where: { $0.id == workspaceId }) else {
+            return nil
+        }
+        let isAnchor = groups.wrappedValue.contains { $0.anchorWorkspaceId == workspaceId }
+        if isAnchor {
+            // Anchor drag = move the whole group's slot.
+            guard let gid = groups.wrappedValue.first(where: {
+                $0.anchorWorkspaceId == workspaceId
+            })?.id else { return nil }
+            var slots = topLevelSlots()
+            guard let source = slots.firstIndex(where: {
+                if case .group(gid) = $0 { return true } else { return false }
+            }) else { return nil }
+            let moving = slots.remove(at: source)
+            func slotIndex(of target: UUID) -> Int? {
+                let targetSlot: SidebarSlot
+                if let group = groups.wrappedValue.first(where: { $0.id ==
+                    tabs.wrappedValue.first(where: { $0.id == target })?.groupId
+                }) {
+                    targetSlot = .group(group.id)
+                } else {
+                    targetSlot = .tab(target)
+                }
+                return slots.firstIndex(where: { slot in
+                    switch (slot, targetSlot) {
+                    case (.tab(let a), .tab(let b)): return a == b
+                    case (.group(let a), .group(let b)): return a == b
+                    default: return false
+                    }
+                })
+            }
+            var insertAt: Int?
+            if let before, let position = slotIndex(of: before) { insertAt = position }
+            if let after, let position = slotIndex(of: after) { insertAt = position + 1 }
+            if let index { insertAt = min(max(index, 0), slots.count) }
+            guard let insertAt else { return nil }
+            slots.insert(moving, at: insertAt)
+            recomposeTabs(slots: slots)
+            let to = tabs.wrappedValue.firstIndex(where: { $0.id == workspaceId }) ?? from
+            return (from, to)
+        }
+        var all = tabs.wrappedValue
+        let moving = all.remove(at: from)
+        var updated = moving
+        var insertAt: Int?
+        if let target = before, let position = all.firstIndex(where: { $0.id == target }) {
+            let targetTab = all[position]
+            let targetIsAnchor = groups.wrappedValue.contains {
+                $0.anchorWorkspaceId == target
+            }
+            // Before a header = top-level before the group; otherwise
+            // adopt the neighbor's membership.
+            updated.groupId = targetIsAnchor ? nil : targetTab.groupId
+            insertAt = position
+        } else if let target = after, let position = all.firstIndex(where: { $0.id == target }) {
+            updated.groupId = all[position].groupId
+            insertAt = position + 1
+        } else if let index {
+            updated.groupId = nil
+            insertAt = min(max(index, 0), all.count)
+        }
+        guard let insertAt else { return nil }
+        all.insert(updated, at: insertAt)
+        tabs.wrappedValue = all
+        normalizeGroupContiguity()
+        let to = tabs.wrappedValue.firstIndex(where: { $0.id == workspaceId }) ?? from
+        return (from, to)
+    }
+
+    /// Wire parity with macOS: workspace_id + exactly one of index /
+    /// before_workspace_id / after_workspace_id; optional dry_run.
+    private func v2WorkspaceReorder(id: Any?, params: [String: Any]) -> String {
+        guard let wsId = v2WorkspaceUUID(params) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid workspace_id")
+        }
+        let index = params["index"] as? Int
+        let before = (params["before_workspace_id"] as? String).flatMap(resolveHandle)
+        let after = (params["after_workspace_id"] as? String).flatMap(resolveHandle)
+        let targets = [index != nil, before != nil, after != nil].filter { $0 }.count
+        guard targets == 1 else {
+            return v2Error(
+                id: id, code: "invalid_params",
+                message: "Specify exactly one target: index, before_workspace_id, or after_workspace_id")
+        }
+        let dryRun = (params["dry_run"] as? Bool) ?? false
+        let savedTabs = tabs.wrappedValue
+        let savedGroups = groups.wrappedValue
+        guard let plan = applyWorkspaceReorder(
+            workspaceId: wsId, before: before, after: after, index: index
+        ) else {
+            return v2Error(id: id, code: "not_found", message: "Workspace not found")
+        }
+        if dryRun {
+            tabs.wrappedValue = savedTabs
+            groups.wrappedValue = savedGroups
+        }
+        var result = workspaceRefResult(wsId)
+        result["from_index"] = plan.from
+        result["to_index"] = plan.to
+        result["dry_run"] = dryRun
+        return v2Ok(id: id, result: result)
     }
 
     private func v2WorkspaceCreate(id: Any?, params: [String: Any]) -> String {

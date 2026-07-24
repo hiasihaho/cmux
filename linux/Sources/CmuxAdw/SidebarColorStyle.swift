@@ -77,7 +77,12 @@ enum SidebarColorStyle {
 
     /// The workspace list: the first navigation-sidebar ListBox in the
     /// widget tree. (The notifications list shares the style class but
-    /// is only mounted when `active` is false above.)
+    /// is only mounted when `active` is false above.) Shared with
+    /// SidebarDnD.
+    static func listBox() -> UnsafeMutablePointer<GtkWidget>? {
+        sidebarListBox()
+    }
+
     private static func sidebarListBox() -> UnsafeMutablePointer<GtkWidget>? {
         guard let window = UIDialogs.mainWindowWidget() else { return nil }
         return findNavigationSidebar(in: window)

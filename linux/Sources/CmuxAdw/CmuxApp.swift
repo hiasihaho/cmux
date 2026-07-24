@@ -157,6 +157,24 @@ struct CmuxApp: App {
             rows: SidebarRows.project(tabs: tabs, groups: groups),
             active: !showNotifications
         )
+        // Sidebar drag-and-drop (mirror ⑥): drag sources per row + one
+        // drop target on the list; drops route through the same core as
+        // workspace.reorder.
+        let _ = { () -> Bool in
+            SidebarDnD.rowsProvider = { [tabs, groups] in
+                SidebarRows.project(tabs: tabs, groups: groups)
+            }
+            SidebarDnD.onReorder = { dragged, neighbor, before in
+                controlHandler.applyWorkspaceReorder(
+                    workspaceId: dragged,
+                    before: before ? neighbor : nil,
+                    after: before ? nil : neighbor,
+                    index: nil
+                )
+            }
+            SidebarDnD.sync(active: !showNotifications)
+            return true
+        }()
         Window(id: "main") { _ in
             OverlaySplitView(visible: $sidebarVisible) {
                 EitherView(showNotifications, view1: {

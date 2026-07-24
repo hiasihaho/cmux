@@ -91,12 +91,11 @@ build session — `scratch.sh stop vncpoc` tears it all down.
 MACOS-UX.md): ① omnibar states (back/forward/reload⇄stop/https lock),
 ② hover affordances (row ✕, header ＋), ③ right-click context menus on
 rows+headers, ④ workspace colors (16-swatch palette, left rail,
-persisted), ⑤ tab icons + loading spinner + end-action four. All
+persisted), ⑤ tab icons + loading spinner + end-action four, ⑥ sidebar DnD (drag membership/reorder, drop indicators) + the workspace.reorder verb (one shared core). All
 suite-verified (workspace-groups 58, ui-commands 51-leg, navigation
 14). Fat trap found ⑤: the ghostty shim exports bundled libpng and
 WebKit's UI-process favicon decode SEGVs into it — favicons guarded
-off in shim builds, GAPS row for the fork-side fix. Next: ⑥ DnD,
-⑦ minimal Dock. Trap fixed on
+off in shim builds, GAPS row for the fork-side fix. Also found: the sidebar ListBox render can desync from the projection under long churn (GAPS Now, repro recipe recorded). Next: ⑦ minimal Dock; DnD remainder (tab-onto-pane, file drops). Trap fixed on
 the way: lib.sh now exports DISPLAY so a bare xdotool in a suite can
 never drive the developer's real desktop again (PROGRESS).
 

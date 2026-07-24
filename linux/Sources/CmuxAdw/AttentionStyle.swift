@@ -27,6 +27,9 @@ enum AttentionStyle {
         .cmux-unfocused { opacity: 0.78; }
         .cmux-hover-reveal { opacity: 0; transition: opacity 120ms ease; }
         row:hover .cmux-hover-reveal { opacity: 1; }
+        .cmux-dragging { opacity: 0.5; }
+        .cmux-drop-before { box-shadow: inset 0 2px 0 @accent_bg_color; }
+        .cmux-drop-after { box-shadow: inset 0 -2px 0 @accent_bg_color; }
         """
         guard let provider = gtk_css_provider_new() else { return }
         gtk_css_provider_load_from_string(provider, css)

@@ -26,8 +26,9 @@ measured by diffing the two capability lists, not estimated.
 | window.create / close / current / focus | ❌ | multi-window is a later phase |
 | workspace.list / create / select / current / close | ✅ | create honors `focus:false` (background) |
 | workspace.rename / next / previous / last | ✅ | rename pins a custom title (OSC updates stop overwriting; persisted in session); next/previous wrap; last uses the selection-history stack |
-| workspace.group.* (17 verbs) | 🟡 | full macOS wire parity: anchor-owned groups, membership as a relation, contiguity + pin-tier ordering, anchor-close dissolution, session persistence; `workspace.create` honors `group_id`/`group_placement`/`group_reference_workspace_id`. Sidebar renders sections (chevron headers, indented members, collapsed counts, attention aggregation; `debug.sidebar_rows` mirrors the render). 🟡 for the last mile: colors/icons stored but not rendered, no UI affordance for create/rename/move (features/04) |
-| workspace.reorder / move_to_window / action | ❌ | |
+| workspace.group.* (17 verbs) | ✅ | full macOS wire parity: anchor-owned groups, membership as a relation, contiguity + pin-tier ordering, anchor-close dissolution, session persistence; `workspace.create` honors `group_id`/`group_placement`/`group_reference_workspace_id`. Sidebar renders sections (chevron headers, indented members, collapsed counts, attention aggregation; `debug.sidebar_rows` mirrors the render). ✅ comfort slice complete 2026-07-24 (mirrors ③④⑥): colors/icons rendered, context menus, palette pickers, drag membership (features/04) |
+| workspace.reorder | ✅ | macOS wire (workspace_id + exactly one of index/before/after + dry_run); before/after adopt the neighbor's group membership, before-a-header stays top-level, anchors move their whole group slot; shared core with sidebar drag-and-drop |
+| workspace.move_to_window / action | ❌ | |
 
 ### surface / pane
 

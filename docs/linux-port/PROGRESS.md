@@ -3856,3 +3856,30 @@ bundled-lib symbols on the fork, then drop the guard. Also fixed en
 route: the tab icon chooser must take the surface KIND from the model,
 not guess from registry dicts — ghostty terminals aren't in the VTE
 dict and briefly wore the DevTools icon.
+
+### Comfort mirror ⑥: sidebar drag-and-drop + workspace.reorder (2026-07-24)
+
+One mutation, two entrypoints: `applyWorkspaceReorder` serves the new
+`workspace.reorder` verb (macOS wire — workspace_id + exactly one of
+index/before_workspace_id/after_workspace_id, dry_run supported, exact
+macOS error string) AND real sidebar drag-and-drop (SidebarDnD.swift:
+GtkDragSource per row attached by a sync pass with g_object markers,
+one GtkDropTarget on the list, accent before/after indicator lines,
+dragged row dims). Semantics: before/after adopt the neighbor's group
+membership — dropping inside a run JOINS the group, dropping above a
+header stays top-level — and dragging an anchor moves its whole
+group's slot. Verified: verb assertions in the suite (join by after-
+anchor, leave by before-header, two-targets error) plus interactive
+pointer drags both directions on scratch instances (join 2→3, leave
+3→2, order projections correct).
+
+**Found on the way (GAPS Now):** after the suite's FULL history
+(restore + dozens of pointer interactions + reorders) the rendered
+ListBox desynced from the projection — 2 of 4 rows on screen, model and
+debug.sidebar_rows correct. Four minimal repros (reorder alone,
+join/leave, menu-then-reorder, restore-then-reorder) each render
+correctly, so the corruption needs accumulated churn; suspicion sits on
+the adwaita-swift differ interacting with row-parented popovers/
+controllers. The suite's pointer-drag assertion is deliberately parked
+as that bug's canary rather than shipping a flaky gate — the honest
+version of "the drag works but the room it dances in sometimes lies".

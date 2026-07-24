@@ -48,10 +48,10 @@ feature hiding in an unexpected place is a real cost anywhere.
 | Hover close button | trailing slot cross-fades badge→xmark on hover | hover-revealed ✕ via CSS `row:hover` (2026-07-24; headers get hover-＋); no badge cross-fade yet — there are no badges | ✅ mirror item ② |
 | Context menu | full (rename, pin, group, close, colors…) | core slice on rows + headers (2026-07-24, mirror ③) incl. Workspace/Group Color palettes (mirror ④) | 🟡 long tail per MACOS-UX §4 (descriptions, move-to-window, notifications submenu) |
 | Workspace colors | 16-swatch palette, rail/fill styles, dark-mode brightening, WCAG text | same 16 swatches, left rail, Clear/Custom, persisted (2026-07-24, mirror ④) | 🟡 fill style + brightening + adaptive text open |
-| Drag reorder | yes, with accent drop indicators + multi-select | none (verb only) | ❌ M |
+| Drag reorder | yes, with accent drop indicators + multi-select | rows + group headers draggable; accent before/after indicator lines; drop joins/leaves groups; same core as workspace.reorder (2026-07-24, mirror ⑥) | 🟡 multi-select + cross-window open |
 | Attention indicator | accent-blue badge; one color, three tiers (flash ring → pane ring → badge) | text dot | ❓ adopt the blue-badge tier language when rows get built |
 | New workspace | titlebar + button, double-click empty area, group header + | header-bar button, Ctrl+Shift+O | ✅ reachable; double-click-empty-area is a nice S |
-| Groups | full (anchor model, colors/icons, DnD, context menu, palette) | sections + chevron + colors/icons + menu management (2026-07-24, features/04) | ❓ remaining: DnD, context menu, palette picker — comfort-survey scope |
+| Groups | full (anchor model, colors/icons, DnD, context menu, palette) | sections, chevron, colors/icons, menus, palette, drag membership — full comfort slice (2026-07-24, mirrors ③④⑥) | ✅ |
 | Pins (workspace-level), status lanes | full (⌘;, lanes) | none | ❌ Later (CONCEPTS) |
 | Footer (help popover, update pill) | yes | none | ❌ Later; GNOME would put help in the primary menu |
 
