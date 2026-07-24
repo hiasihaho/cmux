@@ -42,7 +42,10 @@ struct SidebarView: View {
                     toggleCollapse(groupId)
                 }
                 .style("flat")
-                Text(row.title)
+                Image()
+                    .iconName(row.iconName ?? "folder-symbolic")
+                Text(headerMarkup(row))
+                    .useMarkup()
                     .halign(.start)
                     .padding(6)
             }
@@ -52,6 +55,14 @@ struct SidebarView: View {
                 .halign(.start)
                 .padding(10)
         })
+    }
+
+    /// The header label renders with Pango markup so the group's color
+    /// tints a leading swatch; the title itself is always escaped.
+    private func headerMarkup(_ row: SidebarRowModel) -> String {
+        let escaped = SidebarRows.markupEscaped(row.title)
+        guard let hex = row.colorHex else { return escaped }
+        return "<span foreground=\"\(hex)\">■</span>  " + escaped
     }
 }
 

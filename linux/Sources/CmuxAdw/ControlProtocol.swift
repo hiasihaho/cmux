@@ -972,7 +972,10 @@ struct ControlCommandHandler {
             return v2Error(id: id, code: "invalid_params", message: "cwd must be a string")
         }
         var childIds: [UUID] = []
-        if let rawChildren = params["child_workspace_ids"], !(rawChildren is NSNull) {
+        // An explicit empty array means "no children requested" — same as
+        // absent (the fallback below), not an eligibility error.
+        if let rawChildren = params["child_workspace_ids"], !(rawChildren is NSNull),
+           (rawChildren as? [Any])?.isEmpty != true {
             guard let handles = rawChildren as? [String] else {
                 return v2Error(
                     id: id, code: "invalid_params",
@@ -1253,6 +1256,9 @@ struct ControlCommandHandler {
         guard let index = groupIndex(gid) else {
             return v2Error(id: id, code: "not_found", message: "Group not found")
         }
+        if let rawAny = params["hex"], !(rawAny is String), !(rawAny is NSNull) {
+            return v2Error(id: id, code: "invalid_params", message: "hex must be a string")
+        }
         let raw = (params["hex"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let color = (raw?.isEmpty ?? true) ? nil : raw
         groups.wrappedValue[index].customColor = color
@@ -1268,6 +1274,9 @@ struct ControlCommandHandler {
         }
         guard let index = groupIndex(gid) else {
             return v2Error(id: id, code: "not_found", message: "Group not found")
+        }
+        if let rawAny = params["symbol"], !(rawAny is String), !(rawAny is NSNull) {
+            return v2Error(id: id, code: "invalid_params", message: "symbol must be a string")
         }
         let raw = (params["symbol"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let symbol = (raw?.isEmpty ?? true) ? nil : raw
@@ -1337,6 +1346,54 @@ struct ControlCommandHandler {
         groups.wrappedValue[index].isCollapsed.toggle()
     }
 
+    // Menu-path group management. Each method routes through the SAME v2
+    // implementation the socket verbs use (shared-behavior rule) — the
+    // menu is just another caller; the ignored return is the JSON reply.
+
+    /// The group of the currently selected workspace, if any.
+    func selectedGroupId() -> UUID? {
+        tabs.wrappedValue.first(where: { $0.id == selection.wrappedValue })?.groupId
+    }
+
+    /// "New Group from Workspace": groups the selected workspace under a
+    /// fresh anchor (v2GroupCreate's sidebar-selection fallback).
+    func uiCreateGroupFromSelection(name: String) {
+        _ = v2GroupCreate(id: nil, params: ["name": name])
+    }
+
+    func uiRenameSelectedGroup(name: String) {
+        guard let gid = selectedGroupId() else { return }
+        _ = v2GroupRename(id: nil, params: ["group_id": gid.uuidString, "name": name])
+    }
+
+    func uiUngroupSelected() {
+        guard let gid = selectedGroupId() else { return }
+        _ = v2GroupUngroup(id: nil, params: ["group_id": gid.uuidString])
+    }
+
+    /// Moves the selected workspace's group one slot up/down among the
+    /// group slots, expressed through the move verb's before/after form.
+    func uiMoveSelectedGroup(up: Bool) {
+        guard let gid = selectedGroupId() else { return }
+        let groupSlots: [UUID] = topLevelSlots().compactMap { slot in
+            if case .group(let id) = slot { return id }
+            return nil
+        }
+        guard let index = groupSlots.firstIndex(of: gid) else { return }
+        let target = up ? index - 1 : index + 1
+        guard groupSlots.indices.contains(target) else { return }
+        let key = up ? "before_group_id" : "after_group_id"
+        _ = v2GroupMove(id: nil, params: [
+            "group_id": gid.uuidString, key: groupSlots[target].uuidString
+        ])
+    }
+
+    /// The current name of the selected workspace's group (dialog prefill).
+    func selectedGroupName() -> String? {
+        guard let gid = selectedGroupId() else { return nil }
+        return groups.wrappedValue.first(where: { $0.id == gid })?.name
+    }
+
     /// What the sidebar actually displays, row for row — the projection is
     /// shared with SidebarView, so asserting on this verb asserts on what
     /// the human sees (the "Executed 0 tests"-class lesson: verb-level
@@ -1358,6 +1415,8 @@ struct ControlCommandHandler {
                 entry["group_ref"] = registry.ref(kind: "workspace_group", uuid: gid)
                 entry["collapsed"] = collapsed
                 entry["member_count"] = count
+                entry["color_hex"] = row.colorHex ?? NSNull()
+                entry["icon_name"] = row.iconName ?? NSNull()
             }
             return entry
         }])

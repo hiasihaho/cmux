@@ -3690,3 +3690,30 @@ collapsed with count) plus an xdotool click on the chevron confirming
 collapse-without-selection-theft; a first confusing shot turned out to
 be session restore faithfully resurrecting the previous demo's
 collapsed group — persistence proving itself by surprise.
+
+### Workspace groups last mile + adversarial QA (2026-07-24)
+
+Colors and icons render on group headers (hex-validated tinted swatch;
+SF Symbol names mapped onto GTK themed icons, folder default), and the
+app menu gained group management — New Group from Workspace / Rename
+Group / Move Group Up/Down / Ungroup — each routing through the SAME v2
+implementations the socket verbs use, with a generalized
+`UIDialogs.promptText` (the rename dialog, parameterized). Menu flow
+verified end-to-end with synthetic input: xdotool drove menu → dialog →
+type → Enter and the group appeared via the verbs.
+
+Then the correctness pass the feature deserved: the FULL suite gate (15
+suites, 195 assertions, 0 failed) plus an adversarial QA agent hammering
+a scratch instance — fuzzing params, torturing persistence with
+unicode/markup/garbage, interleaving pin/move/set_anchor, injecting
+markup through group names. Verdict: invariants held everywhere, one
+real defect found: `validatedHex` used `{3,8}` while Pango parses only
+3/4/6/8 hex digits, so a 5/7-digit color passed the guard, broke the
+header markup into raw `<span…>` source, persisted through session
+restore, and stayed broken until replaced. Fixed red-first: three suite
+assertions failed on the buggy build, then the grammar fix + non-string
+param rejection (set_color/set_icon) + the misleading
+empty-child_workspace_ids error turned the suite green at 47.
+Lesson re-learned: a "renderer guard" must encode the RENDERER'S
+grammar, not a plausible superset — and adversarial QA on supposedly
+done code keeps paying (cf. the dogfood cycles).

@@ -260,6 +260,13 @@ struct CmuxApp: App {
                                     .keyboardShortcut("w".ctrl().shift())
                             }
                             MenuSection {
+                                MenuButton("New Group from Workspace") { createGroupFromSelection() }
+                                MenuButton("Rename Group") { renameSelectedGroup() }
+                                MenuButton("Move Group Up") { controlHandler.uiMoveSelectedGroup(up: true) }
+                                MenuButton("Move Group Down") { controlHandler.uiMoveSelectedGroup(up: false) }
+                                MenuButton("Ungroup") { controlHandler.uiUngroupSelected() }
+                            }
+                            MenuSection {
                                 MenuButton("Preferences") { PreferencesWindow.present() }
                                     .keyboardShortcut("comma".ctrl())
                             }
@@ -324,6 +331,28 @@ struct CmuxApp: App {
         let handler = controlHandler
         UIDialogs.openFolder { path in
             handler.newWorkspace(cwd: path)
+        }
+    }
+
+    /// Menu → name prompt → group the selected workspace (features/04).
+    private func createGroupFromSelection() {
+        let handler = controlHandler
+        UIDialogs.promptText(
+            title: "New Group from Workspace", confirmLabel: "Create", initialText: ""
+        ) { name in
+            handler.uiCreateGroupFromSelection(name: name)
+        }
+    }
+
+    /// Menu → rename the selected workspace's group; no-op when the
+    /// selection is ungrouped (the prompt only appears for members).
+    private func renameSelectedGroup() {
+        let handler = controlHandler
+        guard let current = handler.selectedGroupName() else { return }
+        UIDialogs.promptText(
+            title: "Rename Group", confirmLabel: "Rename", initialText: current
+        ) { name in
+            handler.uiRenameSelectedGroup(name: name)
         }
     }
 

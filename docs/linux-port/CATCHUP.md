@@ -93,7 +93,7 @@ with macOS wire parity — model, contiguity/pin-tier ordering, anchor
 semantics, session persistence — AND the sidebar renders sections:
 chevron header rows (click toggles collapse, no selection theft),
 indented members, collapsed counts, attention aggregation.
-`workspace-groups-smoke` 39 green incl. rendered-row assertions via the
+`workspace-groups-smoke` 47 green incl. rendered-row and color/icon assertions via the
 new `debug.sidebar_rows` (projection shared with the view). New trap in
 PROGRESS: ListBox rows must be structure-stable across renders — wrap
 kind-switching rows in EitherView. Last mile (GAPS "Next", S):

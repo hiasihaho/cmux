@@ -30,10 +30,16 @@ sections**: group header rows with a disclosure chevron (click toggles
 collapse without stealing selection; clicking the header itself selects
 the anchor, like macOS), indented member rows, a member count on
 collapsed headers, and attention aggregation (a hidden member's unread
-dot surfaces on its collapsed header). Groups persist across restarts.
-Still `partial`: colors/icons are stored but not yet rendered, and
-group management (create/rename/move) has no UI affordance — CLI/socket
-only.
+dot surfaces on its collapsed header). Groups persist across restarts. Headers render the group **color** (a
+tinted swatch; hex validated against Pango's actual 3/4/6/8-digit
+grammar — QA regression 2026-07-24) and **icon** (SF Symbol names mapped
+onto GTK themed icons, `folder-symbolic` default), and the app menu
+carries group management: New Group from Workspace, Rename Group, Move
+Group Up/Down, Ungroup — all routing through the same v2 verb
+implementations the socket uses.
+Still `partial` vs macOS: no drag-and-drop membership/reorder, no
+right-click context menus, no color-palette picker UI, no per-cwd color
+fallback (scoped by the UX-comfort survey, UX-PARITY).
 
 ## Implementation
 

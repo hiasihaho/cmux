@@ -326,23 +326,37 @@ enum UIDialogs {
         currentTitle: String,
         onRename: @escaping (String) -> Void
     ) {
-        guard let dialog = adw_alert_dialog_new("Rename Workspace", nil) else { return }
+        promptText(
+            title: "Rename Workspace", confirmLabel: "Rename",
+            initialText: currentTitle, onConfirm: onRename
+        )
+    }
+
+    /// Generic one-line text prompt (rename workspace, name a group, …):
+    /// entry pre-filled and selected, Enter activates the confirm action.
+    static func promptText(
+        title: String,
+        confirmLabel: String,
+        initialText: String,
+        onConfirm: @escaping (String) -> Void
+    ) {
+        guard let dialog = adw_alert_dialog_new(title, nil) else { return }
         let alert = UnsafeMutableRawPointer(dialog).assumingMemoryBound(to: AdwAlertDialog.self)
         adw_alert_dialog_add_response(alert, "cancel", "Cancel")
-        adw_alert_dialog_add_response(alert, "rename", "Rename")
+        adw_alert_dialog_add_response(alert, "rename", confirmLabel)
         adw_alert_dialog_set_response_appearance(alert, "rename", ADW_RESPONSE_SUGGESTED)
         adw_alert_dialog_set_default_response(alert, "rename")
         adw_alert_dialog_set_close_response(alert, "cancel")
 
         guard let entry = gtk_entry_new() else { return }
-        gtk_editable_set_text(OpaquePointer(entry), currentTitle)
+        gtk_editable_set_text(OpaquePointer(entry), initialText)
         gtk_editable_select_region(OpaquePointer(entry), 0, -1)
-        // Enter in the entry activates the default (Rename) response.
+        // Enter in the entry activates the default (confirm) response.
         gtk_entry_set_activates_default(
             UnsafeMutableRawPointer(entry).assumingMemoryBound(to: GtkEntry.self), 1)
         adw_alert_dialog_set_extra_child(alert, entry)
 
-        let box = RenameDialogBox(entry: entry, onRename: onRename)
+        let box = RenameDialogBox(entry: entry, onRename: onConfirm)
         g_signal_connect_data(
             UnsafeMutableRawPointer(dialog), "response",
             unsafeBitCast(renameDialogResponse, to: GCallback.self),

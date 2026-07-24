@@ -117,6 +117,31 @@ expect "set_color stores hex" "#aa5500" "$(v2 "{\"id\":1,\"method\":\"workspace.
 expect "set_icon stores symbol" "folder.fill" "$(v2 "{\"id\":1,\"method\":\"workspace.group.set_icon\",\"params\":{\"group_id\":\"$G\",\"symbol\":\"folder.fill\"}}" >/dev/null; group_field "['icon_symbol']" 0)"
 expect "set_color empty clears" "None" "$(v2 "{\"id\":1,\"method\":\"workspace.group.set_color\",\"params\":{\"group_id\":\"$G\",\"hex\":\"\"}}" >/dev/null; group_field "['custom_color']" 0)"
 
+# Rendered color/icon on the header row (debug.sidebar_rows fields).
+header_field() { sidebar_rows | python3 -c "
+import json,sys
+rows=[r for r in json.load(sys.stdin)['result']['rows'] if r['kind']=='group_header']
+print(rows[0].get('$1') if rows else 'MISSING')"; }
+v2 "{\"id\":1,\"method\":\"workspace.group.set_color\",\"params\":{\"group_id\":\"$G\",\"hex\":\"#aa5500\"}}" >/dev/null
+expect "header renders a valid hex color" "#aa5500" "$(header_field color_hex)"
+v2 "{\"id\":1,\"method\":\"workspace.group.set_color\",\"params\":{\"group_id\":\"$G\",\"hex\":\"red\"}}" >/dev/null
+expect "non-hex color stored but not rendered" "None" "$(header_field color_hex)"
+v2 "{\"id\":1,\"method\":\"workspace.group.set_icon\",\"params\":{\"group_id\":\"$G\",\"symbol\":\"star.fill\"}}" >/dev/null
+expect "icon maps SF symbol to themed icon" "starred-symbolic" "$(header_field icon_name)"
+v2 "{\"id\":1,\"method\":\"workspace.group.set_icon\",\"params\":{\"group_id\":\"$G\",\"symbol\":\"\"}}" >/dev/null
+expect "cleared icon falls back to folder" "folder-symbolic" "$(header_field icon_name)"
+# QA regression (2026-07-24): Pango parses only 3/4/6/8-digit hex; 5/7-digit
+# values passing the render guard broke the header markup persistently.
+v2 "{\"id\":1,\"method\":\"workspace.group.set_color\",\"params\":{\"group_id\":\"$G\",\"hex\":\"#12345\"}}" >/dev/null
+expect "5-digit hex never reaches the renderer" "None" "$(header_field color_hex)"
+v2 "{\"id\":1,\"method\":\"workspace.group.set_color\",\"params\":{\"group_id\":\"$G\",\"hex\":\"#1234567\"}}" >/dev/null
+expect "7-digit hex never reaches the renderer" "None" "$(header_field color_hex)"
+v2 "{\"id\":1,\"method\":\"workspace.group.set_color\",\"params\":{\"group_id\":\"$G\",\"hex\":\"#ff000080\"}}" >/dev/null
+expect "8-digit RGBA hex renders" "#ff000080" "$(header_field color_hex)"
+v2 "{\"id\":1,\"method\":\"workspace.group.set_color\",\"params\":{\"group_id\":\"$G\",\"hex\":123}}" | grep -q 'invalid_params' \
+    && ok "non-string hex -> invalid_params" || bad "non-string hex" "not invalid_params"
+v2 "{\"id\":1,\"method\":\"workspace.group.set_color\",\"params\":{\"group_id\":\"$G\",\"hex\":\"\"}}" >/dev/null
+
 # ------------------------------------------------------------- focus
 v2 "{\"id\":1,\"method\":\"workspace.group.focus\",\"params\":{\"group_id\":\"$G\"}}" >/dev/null
 sel=$(v2 '{"id":1,"method":"workspace.current"}' | grep -oE 'workspace:[0-9]+' | head -1)

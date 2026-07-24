@@ -326,6 +326,11 @@ struct SidebarRowModel: Identifiable, Equatable {
     let id: UUID
     var title: String
     var kind: Kind
+    /// Header tint, validated to a hex color (Pango-safe); nil elsewhere.
+    var colorHex: String? = nil
+    /// GTK themed icon for header rows (mapped from the stored macOS
+    /// SF Symbol name; `folder-symbolic` default); nil on plain rows.
+    var iconName: String? = nil
 }
 
 /// Pure projection (tabs, groups) → displayed sidebar rows. The single
@@ -333,6 +338,45 @@ struct SidebarRowModel: Identifiable, Equatable {
 /// (shared-behavior rule) — a suite assertion on the verb is an assertion
 /// on what the human sees.
 enum SidebarRows {
+    /// Only a strict hex color reaches Pango markup — the verb stores
+    /// arbitrary strings (macOS parity), the renderer guards. The grammar
+    /// must match what Pango actually parses: 3/4/6/8 hex digits — a
+    /// permissive `{3,8}` let 5/7-digit values through and broke the
+    /// header markup persistently (QA find, 2026-07-24).
+    static func validatedHex(_ raw: String?) -> String? {
+        guard let raw,
+              raw.range(
+                  of: "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                  options: .regularExpression) != nil
+        else { return nil }
+        return raw
+    }
+
+    /// The stored icon is a free-form SF Symbol name (macOS vocabulary);
+    /// map the common ones onto GTK themed icons, defaulting to the
+    /// folder — the same default macOS renders (`folder.fill`).
+    static func gtkIconName(forSymbol symbol: String?) -> String {
+        switch symbol?.split(separator: ".").first.map(String.init) {
+        case "star": return "starred-symbolic"
+        case "hammer", "wrench": return "applications-engineering-symbolic"
+        case "terminal", "apple": return "utilities-terminal-symbolic"
+        case "globe", "network", "safari": return "web-browser-symbolic"
+        case "book", "text": return "accessories-dictionary-symbolic"
+        case "flask", "testtube": return "applications-science-symbolic"
+        case "person", "figure": return "system-users-symbolic"
+        case "heart": return "emblem-favorite-symbolic"
+        default: return "folder-symbolic"
+        }
+    }
+
+    /// GLib markup escaping for the header label (its Text renders with
+    /// `useMarkup` so the color span works; the NAME must never parse).
+    static func markupEscaped(_ text: String) -> String {
+        text.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
     static func project(tabs: [TerminalTab], groups: [WorkspaceGroup]) -> [SidebarRowModel] {
         var rows: [SidebarRowModel] = []
         for tab in tabs {
@@ -361,7 +405,9 @@ enum SidebarRows {
                         groupId: gid,
                         collapsed: group.isCollapsed,
                         memberCount: members.count
-                    )
+                    ),
+                    colorHex: validatedHex(group.customColor),
+                    iconName: gtkIconName(forSymbol: group.iconSymbol)
                 ))
             } else if !group.isCollapsed {
                 rows.append(SidebarRowModel(
