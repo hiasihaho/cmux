@@ -3717,3 +3717,28 @@ empty-child_workspace_ids error turned the suite green at 47.
 Lesson re-learned: a "renderer guard" must encode the RENDERER'S
 grammar, not a plausible superset — and adversarial QA on supposedly
 done code keeps paying (cf. the dogfood cycles).
+
+### The comfort survey: four agents map macOS UX depth (2026-07-24)
+
+hias asked what drag-and-drop, right-click, iconography, and color
+comfort cmux-mac has that the port lacks — and what the unported right
+sidebar actually is. Four exploration agents read the macOS sources;
+their reports are consolidated in MACOS-UX.md (new doc-map entry; UX-
+PARITY now links to it as its evidence base). Highlights: DnD is a
+four-type system (surface tabs with edge-split/center-insert drops,
+sidebar reorder incl. drag-into/out-of-groups and cross-window moves,
+Vault sessions dragged onto panes to RESUME them, Finder file drops
+with a Shift-toggled text-vs-preview policy); the workspace-row context
+menu alone has ~30 items and every management surface has one; the
+icon inventory runs from reload⇄stop swaps to hover-only close
+buttons; color is a system (16-swatch palette, rail/fill styles,
+dark-mode brightening, WCAG-adaptive foregrounds, semantic status-lane
+colors). Biggest correction: CONCEPTS.md's "dock = terminal controls"
+was legacy framing — the Dock is a window-global secondary SPLIT AREA
+(full terminal/browser panes that survive workspace switches), seeded
+optionally from dock.json, trust-gated only for project configs, with
+NO dock.* verb family (generic verbs + --placement dock). CONCEPTS
+corrected in place. MACOS-UX ends with a proposed mirror order
+(browser-chrome state polish → hover affordances → context menus →
+workspace colors → tab icons → DnD → minimal Dock) — awaiting the
+human's pick.

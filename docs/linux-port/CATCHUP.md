@@ -324,6 +324,12 @@ linux/scripts/dogfood.sh "focus…" [min]      # QA agent cycle (CMUX_SOCKET_PAT
 
 ## Doc map
 
+- **MACOS-UX.md** — the measured macOS comfort-surface reference
+  (2026-07-24 four-agent survey): color language incl. the 16-swatch
+  palette, full icon inventory with state handling, the complete
+  drag-and-drop and context-menu maps, and the corrected Dock model —
+  plus the proposed mirror order awaiting decision. UX-PARITY stays the
+  decision ledger; this is its evidence base.
 - **adr/** — Architecture Decision Records: numbered, status-tracked
   decisions with rationale + alternatives (interaction-parity-sacred,
   out-of-band scrollback, DevTools-as-pane, focused-ledgers, ghostty

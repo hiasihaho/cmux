@@ -46,9 +46,13 @@ unbuilt floor is multi-window (GAPS).
 - **Right = the instruments**: **Vault** (index of *local agent session
   transcripts* — Claude Code, Codex, OpenCode, Pi — searchable by
   content, drag a hit into the workspace to resume it), **Dock**
-  (JSON-configured always-visible terminal controls: lazygit, log
-  tails, `cmux feed tui`; project `.cmux/dock.json` wins over global,
-  with a trust prompt), and a **file explorer**.
+  (a window-global secondary SPLIT AREA of full terminal/browser panes
+  that stays present across workspace switches — lazygit, log tails,
+  `cmux feed tui`; optionally seeded from `dock.json` "controls",
+  command → login shell → interactive-shell fallback on exit; the
+  shipped per-window Dock reads the GLOBAL config, and only
+  project-scoped configs get the trust prompt — corrected 2026-07-24,
+  full map in [MACOS-UX.md](MACOS-UX.md) §5), and a **file explorer**.
 
 **Port status:** left sidebar is a flat list with a text attention dot;
 no groups, pins, lanes, context menus, or drag order. The right sidebar
@@ -90,7 +94,7 @@ are hardcoded; no project configs, no trust flow, no templates.
 | Vault | search old agent transcripts, drag-to-resume | ❌ Later |
 | Task Manager | `cmux top` / palette: per-workspace resource attribution | ❌ Later (`system.top`) |
 | Custom commands | palette/plus-button actions, layout templates | ❌ Later |
-| Dock | right-sidebar terminal controls from JSON | ❌ Later |
+| Dock | window-global secondary split area beside the workspaces (MACOS-UX §5; minimal-viable plan recorded there) | ❌ Later |
 | Keyboard shortcuts | all rebindable, chords, `shortcuts.when` | ❌ rebinding → GAPS |
 | Browser automation | the verb surface (we mirror it) + **browser focus mode**, design mode, React Grab | ✅ verbs / ❌ modes |
 | Skills | `cmux skills install` — agent skills incl. diagnostics | 🟡 upstream skills load from the repo; install flow unverified on Linux |

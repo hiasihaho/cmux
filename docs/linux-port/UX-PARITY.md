@@ -14,6 +14,10 @@ recorded decision, never an accident.
 - ❓ **drift** — different, nobody decided → each row needs a decision
 - ❌ **missing** — macOS has UI we lack; build it or 🎨-justify not to
 
+Deep evidence for the comfort families (colors, icons, DnD, context
+menus, Dock) lives in [MACOS-UX.md](MACOS-UX.md) (2026-07-24 survey)
+— rows here decide, that file describes.
+
 **Rules:** any commit that changes visible UI updates its row here in
 the same commit. ❓ rows graduate to 🎨 (decision recorded) or to a
 GAPS row. Sources: code surveys of `Sources/` (macOS) and
