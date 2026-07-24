@@ -277,10 +277,14 @@ decides which overlapping target captures a drag.
 - Reverse direction: the workspace's detached folder icon can be
   dragged OUT to Finder (`DetachedFolderDragIcon.swift:178-187`).
 
-**Linux today:** no drag-and-drop of any kind (pane tab reorder exists
-via `onTabReordered` only). GTK4 has full DnD APIs (GtkDragSource/
-GtkDropTarget, GdkContentProvider); adwaita-swift exposes little of it,
-so this family means raw-GTK work on our side.
+**Linux today (mirror ⑥ sidebar stage, 2026-07-24):** sidebar rows and
+group headers are drag sources (GtkDragSource via sync pass), the list
+is a drop target with accent before/after indicator lines; drops route
+through `applyWorkspaceReorder` — the same core as the new
+`workspace.reorder` verb (macOS wire). Membership semantics: drop into
+a run = join, above a header = top-level, anchor drag = group-slot
+move. Remaining: tab-onto-pane drags (Bonsplit-grade), file/URL drops
+onto terminals, multi-select, cross-window.
 
 ## 4. Context menus
 
@@ -403,9 +407,11 @@ Ranked by comfort-per-effort for the port, using the surveys above:
    but OFF in shim builds — the ghostty shim exports its bundled libpng
    and WebKit's UI-process favicon decode SEGVs into it (coredump-
    proven; GAPS row for the shim-side symbol-visibility fix).
-6. **M–L — drag & drop family**, staged: sidebar workspace reorder →
-   group membership by drag → tab-onto-pane split/insert → file drops
-   onto terminals. Raw GtkDragSource/GtkDropTarget work.
+6. ✅ (sidebar stage) **M–L — drag & drop family** (2026-07-24): rows
+   and headers drag with accent drop indicators; drops join/leave
+   groups and reorder — one core with the new `workspace.reorder`
+   verb. Remaining stages: tab-onto-pane split/insert, file drops onto
+   terminals.
 7. **L — the Dock**, minimal-viable per §5.
 
 Not recommended to mirror: ⌘-hold hint pills (GNOME answer is the
