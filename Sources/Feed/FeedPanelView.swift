@@ -90,7 +90,7 @@ struct FeedPanelView: View {
 
     private var controlBar: some View {
         Group {
-            #if compiler(>=6.2)
+            #if compiler(>=6.2) && canImport(FoundationModels)
             if #available(macOS 26.0, *) {
                 GlassEffectContainer(spacing: 6) {
                     controlBarContent
@@ -1645,7 +1645,7 @@ struct FeedButton: View {
 
     var body: some View {
 #if DEBUG
-        #if compiler(>=6.2)
+        #if compiler(>=6.2) && canImport(FoundationModels)
         if #available(macOS 26.0, *), usesSystemGlassButtonStyle {
             systemGlassButton
         } else {
@@ -1746,7 +1746,7 @@ struct FeedButton: View {
         }
     }
 
-    #if compiler(>=6.2)
+    #if compiler(>=6.2) && canImport(FoundationModels)
         @available(macOS 26.0, *)
         @ViewBuilder
         private var systemGlassButton: some View {
@@ -1989,7 +1989,7 @@ struct FeedButton: View {
                     )
                 )
         case .nativeGlass:
-            #if compiler(>=6.2)
+            #if compiler(>=6.2) && canImport(FoundationModels)
             if #available(macOS 26.0, *) {
                 shape
                     .fill(Color.clear)
@@ -2010,7 +2010,7 @@ struct FeedButton: View {
                 .overlay(shape.fill(backgroundFill.opacity(0.20)))
             #endif
         case .nativeProminentGlass:
-            #if compiler(>=6.2)
+            #if compiler(>=6.2) && canImport(FoundationModels)
             if #available(macOS 26.0, *) {
                 shape
                     .fill(Color.clear)

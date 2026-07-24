@@ -1,11 +1,14 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-24 ~16:00** (macOS compile checker: the
-`hias@ultmos` VM + `macos-verify/` package; first run caught two
-`__suseconds_t` glibc-isms from the CLI-port commit — the macOS build
-of shared sources had been silently broken since 2026-07-22, now fixed
-and green on both platforms. Earlier same day: ADR-0010 watch/point,
-comfort mirror ①–⑦).
+Last updated: **2026-07-24 ~19:30** (POC-0003 increment 1 EXECUTED:
+the full macOS app builds on the GPU-less Intel VM — Xcode 16.4 +
+swift.org 6.2.3 hybrid, `macos-verify/build-app.sh` — and RUNS
+headless: socket up, auth enforced, surfaces degrade exactly as
+predicted. En route: ghostty fork catch-up merge done on a trial
+branch, shim increment 4 now in GAPS; the drafted stale-frame upstream
+PR is OBSOLETE (upstream deleted the block). Earlier same day: the
+`macos-verify/` compile checker + two `__suseconds_t` fixes; ADR-0010
+watch/point; comfort mirror ①–⑦).
 Update this file at the end of every significant session; it is the
 fastest path from cold start to productive work.
 Deep history lives in [PROGRESS.md](PROGRESS.md), distilled

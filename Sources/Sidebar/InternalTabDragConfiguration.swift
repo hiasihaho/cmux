@@ -1,6 +1,6 @@
 import SwiftUI
 
-#if compiler(>=6.2)
+#if compiler(>=6.2) && canImport(FoundationModels)
 @available(macOS 26.0, *)
 enum InternalTabDragConfigurationProvider {
     // These drags only make sense inside cmux. Outside the app, Finder should
@@ -15,7 +15,7 @@ enum InternalTabDragConfigurationProvider {
 private struct InternalTabDragConfigurationModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
-        #if compiler(>=6.2)
+        #if compiler(>=6.2) && canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             content.dragConfiguration(InternalTabDragConfigurationProvider.value)
         } else {

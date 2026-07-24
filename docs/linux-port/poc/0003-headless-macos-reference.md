@@ -2,7 +2,7 @@
 title: Headless macOS reference instance (null renderer on the VM)
 area: dev-tooling
 kind: experiment
-status: idea
+status: wip
 linux: n-a
 mac: untested
 substrate: >
@@ -18,8 +18,15 @@ evolves_to: >
 
 # 0003 — Headless macOS reference instance (null renderer on the VM)
 
-- **Status:** idea (proposed 2026-07-24, origin: the GPU question — PROGRESS
-  2026-07-24)
+- **Status:** wip — increment 1 EXECUTED 2026-07-24 (same day as proposed):
+  the app builds on the VM (`macos-verify/build-app.sh` is the recipe) and,
+  launched with `CMUX_TAG=vmprobe`, **survives without Metal** — control
+  plane up, socket created, auth enforced, surfaces loop "not ready" as
+  predicted. Full story + measurements: PROGRESS 2026-07-24 (evening).
+  Next: external-probe socket auth (keychain-only today; no password file
+  by default), then increment 2's null renderer for real terminal content.
+  Side-product: the ghostty fork catch-up merge (see GAPS "shim
+  increment 4" for the one piece still open).
 - **Substrate:** the `hias@ultmos` VM + `macos-verify/` + the ghostty fork
 - **Adopted as a feature:** none
 

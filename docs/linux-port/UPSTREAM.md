@@ -3,7 +3,15 @@
 Material ready to send to the manaflow folks — the human decides when
 and what. Prepared 2026-07-17 after the resize-freeze fix.
 
-## 1. Renderer fix PR (ready to open)
+## 1. Renderer fix PR — **OBSOLETE, do not open** (2026-07-24)
+
+The 2026-07-24 fork catch-up merge (16,853 manaflow commits, see PROGRESS)
+showed manaflow **deleted the stale-frame-replay early-returns entirely**
+from `src/renderer/generic.zig` — the code our Darwin-gate patched no
+longer exists upstream, so the bug it fixed cannot occur there. The PR
+branch and draft body are kept only as history. Do not open the PR.
+
+*(historical, pre-2026-07-24:)*
 
 Branch **`fix-stale-frame-replay-gtk`** on hiasihaho/ghostty: exactly
 one commit (`91024ab`, cherry-picked from our `ae8ba5f0a`) on top of the

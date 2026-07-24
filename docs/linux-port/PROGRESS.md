@@ -3961,3 +3961,88 @@ macOS app can never render terminals there, and that macOS Ghostty has
 no software/GPU-off path at all. The app-on-VM question is therefore:
 full Xcode + a null-renderer fork increment, or nothing. Parked;
 the compile checker needed neither.
+
+## 2026-07-24 (evening) — POC-0003 increment 1: the full macOS app builds AND RUNS on the GPU-less VM
+
+**Headline: `xcodebuild` of the complete cmux app succeeds on the Intel
+macOS 15.7.7 VM, and the launched app survives without any Metal device —
+control plane up, socket created, auth enforced.** The "app-on-VM"
+question is answered with measurements, one increment early.
+
+**The build recipe** (canonical form: `macos-verify/build-app.sh`): the
+codebase requires Swift 6.2 (`isolated deinit` in 5 files) but the last
+Intel-capable Xcode is 16.4 (Swift 6.1.2, and production Xcode refuses
+`-enable-experimental-feature`). The working hybrid: Xcode 16.4 for
+xcodebuild/SDK/SwiftPM-manifests + swift.org 6.2.3 as the *source*
+compiler via a `SWIFT_EXEC` build SETTING (as an env var it leaks into
+SwiftPM's manifest loader, which invokes the OSS toolchain with Xcode's
+legacy-driver flags and dies: "unable to execute command" +
+`-disallow-use-new-driver` spam) + `-Xfrontend
+-enable-cross-import-overlays` (Apple's driver enables overlay resolution
+by default, the OSS driver does not — symptom: `translationPresentation`
+"no member" even though `_Translation_SwiftUI` IS in SDK 15.5).
+
+**Code fixes required** (all committed, all no-ops for upstream
+toolchains):
+- 8 sites in 5 files where `#if compiler(>=6.2)` guarded *SDK-26* API
+  (NWError.wifiAware, GlassEffectContainer/.glassEffect,
+  DragConfiguration): compiler version is NOT an SDK proxy once a 6.2
+  toolchain meets a 15.5 SDK — extended to `#if compiler(>=6.2) &&
+  canImport(FoundationModels)` (FoundationModels ships in iOS 26 + macOS
+  26 SDKs, absent in 15.5 → a reliable SDK-generation marker).
+- `SleepyFaceView.drawGlyphPair`: local function capturing the `inout
+  GraphicsContext` crashes swift.org 6.2.3 IRGen on x86_64
+  (swift-frontend SIGSEGV); restructured to a data-driven loop,
+  behavior identical.
+
+**VM bootstrap gaps found** (now in build-app.sh's prerequisites):
+`vendor/bonsplit` submodule was never initialized on the Linux host so
+the rsync'd tree lacked it; the SPM binaryTarget wants the xcframework
+at REPO ROOT (`GhosttyKit.xcframework -> ghostty/macos/...` symlink —
+reload.sh normally arranges this); rustup (diff-sidecar phase); zig at
+`/usr/local/bin/zig` (Ghostty CLI helper phase); `-Di18n=false` for the
+xcframework (no gettext/msgfmt on stock macOS).
+
+**The ghostty fork catch-up happened en route** (trial branch
+`trial-merge-probe`, worktree under the session scratchpad — NOT pushed,
+local submodule checkout untouched): the app code from the 2026-07-22
+merge calls ~15 embedded-API functions manaflow added to their ghostty
+fork after our fork point (ghostty_config_load_string,
+ghostty_surface_read_screen_tail_vt, render_grid_json_with_theme,
+set_pty_tee_cb, ...). Merging manaflow main (16,853 commits!) into our
+shim branch cost: 2 conflicts (both resolved to upstream — they deleted
+the stale-frame-replay block our Darwin-gate patched, obsoleting our
+drafted upstream PR `fix-stale-frame-replay-gtk`; their
+renderer==opengl glad gate subsumes our SharedDeps case) + 3 semantic
+fixes (GhosttyLib struct gained implib/pkg_config fields; SharedDeps
+exe-extras gate re-relaxed for gtk libs; upstream's new exhaustive
+`queueMessageManual` needed an `.inject_output` case mirroring
+drainMailbox). `minimum_zig_version` still 0.15.2. **Remaining:** the
+GTK shim itself no longer compiles against manaflow's expanded
+embedded.zig (20+ errors: `apprt.gtk.App` vs `apprt.embedded.App`,
+`.userdata` missing on gtk Surface) — that is shim increment 4, tracked
+in GAPS; until it lands the fork stays unpushed and the parent
+submodule pointer stays put. The macOS xcframework is unaffected
+(app_runtime=none) — the VM builds from the merged tree.
+
+**Runtime measurements** (the increment-1 experiment):
+- Untagged launch refused — our own multi-agent guard works on a
+  GPU-less VM exactly as on a dev Mac.
+- `CMUX_TAG=vmprobe` launch: **app survives**, pid stable, log loops
+  "Command send: surface not ready after 3.0s" — terminal surfaces
+  never come up (no Metal device), everything else initializes.
+- `/tmp/cmux-debug-vmprobe.sock` exists; CLI connect yields "Access
+  denied - only processes started inside cmux can connect" — the socket
+  password auth (keychain-backed; no `socket-control-password` file
+  in the state dir by default) denies outside probes. Auth path
+  verified as product behavior; harvesting the password normally
+  happens via env injection into spawned terminals, which need
+  surfaces. External-probe auth (password file / settings opt-in) is
+  the small missing piece between "app runs" and "app driveable" —
+  ahead of the null renderer, which is only needed for real terminal
+  content.
+
+Toolchain inventory now on the VM: Xcode 16.4 (16F6), swift.org
+6.2.3, zig 0.15.2 (linked at /usr/local/bin), rustup 1.97.1,
+GhosttyKit.xcframework (merged tree, x86_64, i18n off), app at
+`~/cmux-derived/Build/Products/Debug/cmux DEV.app`.

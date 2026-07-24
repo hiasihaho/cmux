@@ -528,15 +528,19 @@ struct SleepyFaceView: View {
         let sepW = separator.first?.count ?? 1
         let totalCols = digitW * 4 + sepW + 4   // four digits + separator + four gaps
         var x = (centerX - CGFloat(totalCols) / 2 * pixel).rounded()
-        func glyph(_ rows: [String], _ width: Int) {
-            drawSprite(in: &ctx, rows: rows, palette: ["#": color], origin: CGPoint(x: x, y: top), pixel: pixel)
-            x += CGFloat(width + 1) * pixel
+        // A plain loop, not a local helper fn: a local function capturing the
+        // inout GraphicsContext crashes swift.org 6.2.3 IRGen on x86_64.
+        let glyphs: [(rows: [String], width: Int)] = [
+            (SleepyArt.digitGlyphs[(a / 10) % 10], digitW),
+            (SleepyArt.digitGlyphs[a % 10], digitW),
+            (separator, sepW),
+            (SleepyArt.digitGlyphs[(b / 10) % 10], digitW),
+            (SleepyArt.digitGlyphs[b % 10], digitW),
+        ]
+        for glyph in glyphs {
+            drawSprite(in: &ctx, rows: glyph.rows, palette: ["#": color], origin: CGPoint(x: x, y: top), pixel: pixel)
+            x += CGFloat(glyph.width + 1) * pixel
         }
-        glyph(SleepyArt.digitGlyphs[(a / 10) % 10], digitW)
-        glyph(SleepyArt.digitGlyphs[a % 10], digitW)
-        glyph(separator, sepW)
-        glyph(SleepyArt.digitGlyphs[(b / 10) % 10], digitW)
-        glyph(SleepyArt.digitGlyphs[b % 10], digitW)
     }
 
     private func drawStatus(in ctx: inout GraphicsContext, size: CGSize, pixel: CGFloat, status: SleepyStatusSample, color: Color) {

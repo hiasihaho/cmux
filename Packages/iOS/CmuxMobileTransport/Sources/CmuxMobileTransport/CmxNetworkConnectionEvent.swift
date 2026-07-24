@@ -44,7 +44,12 @@ extension NWError {
             return "Network connection failed."
         case .tls:
             return "Secure connection failed."
-        #if compiler(>=6.2)
+        // NWError.wifiAware needs BOTH a 6.2 compiler and a 26-era SDK.
+        // canImport(FoundationModels) proxies the SDK half: a Swift 6.2
+        // toolchain paired with an older SDK (e.g. the Intel verify VM,
+        // swift.org 6.2.3 over Xcode 16.4's macOS 15.5 SDK) has the
+        // compiler but not the enum case.
+        #if compiler(>=6.2) && canImport(FoundationModels)
         case .wifiAware:
             return "Network connection failed."
         #endif

@@ -139,7 +139,7 @@ private struct TextBoxInputGlassPillBackground: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: TextBoxLayout.pillCornerRadius, style: .continuous)
 
-#if compiler(>=6.2)
+#if compiler(>=6.2) && canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             shape
                 .fill(Color.clear)

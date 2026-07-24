@@ -1066,7 +1066,7 @@ private struct FeedButtonStyleDebugView: View {
 
     private var previewRail: some View {
         Group {
-            #if compiler(>=6.2)
+            #if compiler(>=6.2) && canImport(FoundationModels)
             if #available(macOS 26.0, *) {
                 GlassEffectContainer(spacing: 8) {
                     previewRailContent
