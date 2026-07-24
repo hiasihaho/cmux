@@ -25,6 +25,8 @@ enum AttentionStyle {
         .cmux-flash { outline: 3px solid @accent_bg_color; outline-offset: -3px; }
         .cmux-unread { outline: 2px solid alpha(@accent_bg_color, 0.85); outline-offset: -2px; }
         .cmux-unfocused { opacity: 0.78; }
+        .cmux-hover-reveal { opacity: 0; transition: opacity 120ms ease; }
+        row:hover .cmux-hover-reveal { opacity: 1; }
         """
         guard let provider = gtk_css_provider_new() else { return }
         gtk_css_provider_load_from_string(provider, css)

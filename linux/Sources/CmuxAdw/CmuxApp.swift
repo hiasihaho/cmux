@@ -136,7 +136,9 @@ struct CmuxApp: App {
                     SidebarView(
                         rows: SidebarRows.project(tabs: tabs, groups: groups),
                         selection: selectionBinding,
-                        toggleCollapse: { controlHandler.toggleGroupCollapsed($0) }
+                        toggleCollapse: { controlHandler.toggleGroupCollapsed($0) },
+                        closeWorkspace: { controlHandler.uiCloseWorkspace($0) },
+                        newWorkspaceInGroup: { controlHandler.uiNewWorkspaceInGroup($0) }
                     )
                 })
                 .topToolbar {

@@ -181,8 +181,9 @@ Group headers (`SidebarWorkspaceGroupHeaderView.swift`):
 
 **Linux today (2026-07-24):** groups render sections with chevron
 (▸/▾ Button), mapped themed icon, color swatch, count, attention dot;
-workspaces are plain text + "●" dot. No hover-close, no badges, no
-spinner, no media glyphs, no detail lines, no hover-plus on headers.
+rows carry a **hover-revealed ✕ close** and headers a **hover-revealed
+＋** (CSS `row:hover`, same shared v2 paths as the verbs). Still
+missing: badges, spinner, media glyphs, detail lines.
 
 ### 2.4 Titlebar / window
 
@@ -364,8 +365,10 @@ Ranked by comfort-per-effort for the port, using the surveys above:
 1. ✅ **S — browser chrome state polish** (landed 2026-07-24):
    back/forward disabled+dimmed without history, reload⇄stop swap
    while loading, https `lock`.
-2. **S — hover affordances**: sidebar row hover-close ✕, group-header
-   hover-＋ (GtkEventControllerMotion; the row snapshot pattern holds).
+2. ✅ **S — hover affordances** (landed 2026-07-24): sidebar row
+   hover-close ✕, group-header hover-＋ — pure CSS `row:hover` reveal,
+   no motion controller needed; buttons always present so rows stay
+   structure-stable.
 3. **S–M — context menus** (the biggest comfort jump): GtkPopoverMenu
    on right-click for workspace rows + group headers. Nearly every menu
    item already exists as a v2 implementation on Linux — the groups

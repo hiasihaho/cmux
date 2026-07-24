@@ -11,6 +11,8 @@ struct SidebarView: View {
     var rows: [SidebarRowModel]
     @Binding var selection: UUID
     var toggleCollapse: (UUID) -> Void
+    var closeWorkspace: (UUID) -> Void
+    var newWorkspaceInGroup: (UUID) -> Void
 
     var view: Body {
         ScrollView {
@@ -36,10 +38,11 @@ struct SidebarView: View {
             groupId = gid
             collapsed = isCollapsed
         }
+        let headerGroupId = groupId
         return EitherView(isHeader, view1: {
             HStack {
                 Button(collapsed ? "▸" : "▾") {
-                    toggleCollapse(groupId)
+                    toggleCollapse(headerGroupId)
                 }
                 .style("flat")
                 Image()
@@ -48,12 +51,31 @@ struct SidebarView: View {
                     .useMarkup()
                     .halign(.start)
                     .padding(6)
+                    .hexpand()
+                // Hover-revealed "new workspace in group" — the macOS
+                // header's hover-＋ (MACOS-UX §2.3), shown via CSS
+                // row:hover, so the row structure stays fixed.
+                Button(icon: .custom(name: "list-add-symbolic")) {
+                    newWorkspaceInGroup(headerGroupId)
+                }
+                .style("flat")
+                .style("cmux-hover-reveal")
+                .tooltip("New Workspace in Group")
             }
-            .halign(.start)
         }, else: {
-            Text(row.title)
-                .halign(.start)
-                .padding(10)
+            HStack {
+                Text(row.title)
+                    .halign(.start)
+                    .padding(10)
+                    .hexpand()
+                // Hover-revealed close, the macOS row affordance.
+                Button(icon: .custom(name: "window-close-symbolic")) {
+                    closeWorkspace(row.id)
+                }
+                .style("flat")
+                .style("cmux-hover-reveal")
+                .tooltip("Close Workspace")
+            }
         })
     }
 

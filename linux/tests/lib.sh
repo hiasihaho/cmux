@@ -151,6 +151,12 @@ start_xvfb() {
     command -v Xvfb >/dev/null 2>&1 || { USE_XVFB=0; return 0; }
     Xvfb "$XDISPLAY" -screen 0 1400x900x24 >/dev/null 2>&1 &
     XVFB_PID=$!
+    # Point the SUITE SHELL at the private display too: a bare `xdotool`
+    # in a suite otherwise inherits the ambient DISPLAY — on a dev
+    # desktop that is :0, and the suite drives the HUMAN'S session
+    # (2026-07-24: a hover-click block moved the developer's real
+    # pointer for several runs before this line existed).
+    export DISPLAY="$XDISPLAY"
     sleep 2
 }
 

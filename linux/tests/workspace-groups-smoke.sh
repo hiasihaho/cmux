@@ -76,6 +76,7 @@ v2 "{\"id\":1,\"method\":\"workspace.group.expand\",\"params\":{\"group_id\":\"$
 expect "expand restores member rows" "$rows_open" "$(row_count)"
 cx select-workspace --workspace "$WS_A" >/dev/null 2>&1   # clear the attention dot
 
+
 # ------------------------------------------------------------ pin tier
 info "pinned group floats above ungrouped rows"
 v2 "{\"id\":1,\"method\":\"workspace.group.pin\",\"params\":{\"group_id\":\"$G\"}}" >/dev/null
@@ -203,5 +204,43 @@ v2 "{\"id\":1,\"method\":\"workspace.group.new_workspace\",\"params\":{\"group_i
 resp=$(cx --json new-workspace --cwd /tmp --background --group-placement end 2>&1)
 echo "$resp" | grep -q 'group_id is required' && ok "placement without group -> invalid_params" \
     || bad "flag validation" "$resp"
+
+# ------------------------------------------ hover affordances (MACOS-UX §2.3)
+# Fresh instance so the sidebar is EXACTLY [~ | header | member] — three
+# rows at y≈76/115/155 (the geometry verified by screenshot). The ✕/＋
+# are CSS row:hover-revealed buttons at the row's trailing edge; a real
+# pointer hover + click drives them. On regression the click merely
+# selects the row and the counts stay unchanged.
+info "hover affordances (row ✕ close, header ＋ new-in-group; fresh instance)"
+kill_instance
+rm -f "$SESSION"
+start_instance || exit 2
+WH=$(cx new-workspace --cwd /tmp --background | grep -oE 'workspace:[0-9]+')
+v2 "{\"id\":1,\"method\":\"workspace.group.create\",\"params\":{\"name\":\"H\",\"child_workspace_ids\":[\"$WH\"]}}" >/dev/null
+sleep 2
+expect "fresh group has anchor + member" "2" "$(group_field "['member_count']" 0)"
+# Retry-until-effect with a pointer jiggle per attempt (enter+motion
+# before the press) — belt-and-braces against first-frame latency.
+# Historical note: the original "flaky clicks" here were bare xdotool
+# calls driving the AMBIENT display — the developer's real desktop —
+# because lib.sh didn't export DISPLAY; it does now (2026-07-24).
+before=$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')
+after=$before
+for _ in 1 2 3 4 5; do
+    xdotool mousemove 600 400 sleep 0.2 mousemove 246 155 sleep 0.2 click 1
+    sleep 1.5
+    after=$(cx list-workspaces 2>/dev/null | grep -c 'workspace:')
+    [ "$after" = "$((before - 1))" ] && break
+done
+expect "hover ✕ closes the member row" "$((before - 1))" "$after"
+members=1
+for _ in 1 2 3 4 5; do
+    xdotool mousemove 600 400 sleep 0.2 mousemove 246 115 sleep 0.2 click 1
+    sleep 1.5
+    members=$(group_field "['member_count']" 0)
+    [ "$members" -ge 2 ] && break
+done
+[ "$members" -ge 2 ] && ok "hover ＋ adds a workspace to the group" \
+    || bad "hover ＋" "member_count stayed $members"
 
 finish

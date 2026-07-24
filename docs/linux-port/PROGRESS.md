@@ -3758,3 +3758,31 @@ browser-navigation-smoke asserts the rendered truth (8 → 14
 assertions: history-edge sensitivity both ways, rest-state icon, http
 = no lock, fresh-surface both-disabled). Verified visually on a live
 https page: dimmed chevrons + lock in one shot.
+
+### Comfort mirror ②: hover affordances — and the runaway-pointer trap (2026-07-24)
+
+Sidebar rows gained the macOS hover comfort: a hover-revealed ✕ on
+workspace/member rows (closes via the same path as workspace.close) and
+a hover-revealed ＋ on group headers (workspace.group.new_workspace
+path). Implementation is pure CSS — `.cmux-hover-reveal { opacity: 0 }`
++ `row:hover` — so no motion-controller escape hatch, and the buttons
+are always present, keeping rows structure-stable (wiring/09 rule 2).
+Verified by screenshot (only the hovered row shows its ✕) and by
+xdotool click-through; workspace-groups-smoke → 50.
+
+**The trap this hunt paid for — bare xdotool drove the HUMAN'S
+desktop.** The new suite block called `xdotool` without a DISPLAY
+prefix; lib.sh never exported DISPLAY, so every synthetic click went to
+the ambient display — on this dev box, `:0`, the developer's live GNOME
+session (pointer jumps + stray clicks at fixed coordinates across
+several suite runs) — while the suite's own window, on its private
+Xvfb, received nothing. Every observed "flake" (clicks that worked on
+scratch but not in the suite, a chevron that worked only when manually
+prefixed, counts that moved between runs) was this one bug wearing
+different costumes; three plausible theories (first-frame latency,
+display reuse, screen size) were each disproven by isolated replication
+before the real cause surfaced. Fixes: lib.sh `start_xvfb` now
+`export DISPLAY="$XDISPLAY"` so a bare xdotool can never escape the
+suite again, and the suites keep their explicit prefixes. Lesson for
+LESSONS-style recall: when a synthetic-input assertion flakes, verify
+WHICH DISPLAY the input lands on before theorizing about timing.

@@ -1391,6 +1391,16 @@ struct ControlCommandHandler {
         ])
     }
 
+    /// Sidebar hover-close (row ✕) — same path as workspace.close.
+    func uiCloseWorkspace(_ workspaceId: UUID) {
+        _ = v2WorkspaceClose(id: nil, params: ["workspace_id": workspaceId.uuidString])
+    }
+
+    /// Group-header hover-＋ — same path as workspace.group.new_workspace.
+    func uiNewWorkspaceInGroup(_ groupId: UUID) {
+        _ = v2GroupNewWorkspace(id: nil, params: ["group_id": groupId.uuidString])
+    }
+
     /// The current name of the selected workspace's group (dialog prefill).
     func selectedGroupName() -> String? {
         guard let gid = selectedGroupId() else { return nil }
