@@ -192,7 +192,10 @@ agent explicit permission) — it consumes Claude usage.
   This is checkable: `macos-verify/` compiles the exact Linux CLI file set
   (`linux/Sources/CmuxCLI`) plus its four packages on any Mac with plain
   Command Line Tools — `cd macos-verify && swift build` (currently run on
-  the `hias@ultmos` VM; see PROGRESS 2026-07-24).
+  the `hias@ultmos` VM; see PROGRESS 2026-07-24). On the Mac,
+  `macos-verify/install-starter.sh` links the built binary as `cmux` into
+  `~/bin` (plus a `cmux-build` rebuild helper), so VM terminals can call
+  it directly.
 - The `ghostty/` submodule points at the **hiasihaho/ghostty** fork on this
   branch (`.gitmodules` switched; no push access to manaflow-ai/ghostty).
   Shim work lives on its `linux-gtk-embed` branch — always push the
