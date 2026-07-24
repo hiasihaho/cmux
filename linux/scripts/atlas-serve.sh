@@ -21,6 +21,7 @@ atlas_dir() {
     wiring)   echo "docs/linux-port/wiring" ;;
     adr)      echo "docs/linux-port/adr" ;;
     features) echo "docs/linux-port/features" ;;
+    poc)      echo "docs/linux-port/poc" ;;
     *)        echo "$1" ;;
   esac
 }
@@ -31,6 +32,7 @@ if [ -z "$name" ]; then
   echo "  wiring    → docs/linux-port/wiring   (component wiring diagrams)"
   echo "  adr       → docs/linux-port/adr      (decision records + decision graph)"
   echo "  features  → docs/linux-port/features (feature board, regenerated on serve)"
+  echo "  poc       → docs/linux-port/poc      (proof-of-concept maturity board)"
   echo "usage: atlas-serve.sh <name> [port]"
   exit 0
 fi

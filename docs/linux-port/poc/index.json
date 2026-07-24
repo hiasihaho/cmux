@@ -1,0 +1,5 @@
+[
+  { "atlas": "POC atlas" },
+  { "file": "README.md", "title": "How the POC atlas works (maturity model)" },
+  { "file": "0001-browser-surface-per-agent.md", "title": "0001 · Browser surface per agent ◇" }
+]
