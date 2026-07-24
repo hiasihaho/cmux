@@ -48,6 +48,7 @@ thing we later abandoned.
 | [0011](0011-features-board-generated-not-curated.md) | Features board: measured status, authored descriptions | Accepted |
 | [0012](0012-pinned-dashboards-in-sidebar.md) | Pinned dashboards in the workspace sidebar | **Proposed** |
 | [0013](0013-pane-tags-and-attention-workflows.md) | Pane tags, and (maybe) attention-driven workflows over them | **Proposed** |
+| [0014](0014-features-board-taxonomy.md) | Features board taxonomy: product / inbuilt-harness / meta-harness | Accepted |
 
 The 0007–0010 cluster came out of running batches 1–2: architectural
 questions about how the parallel-agent harness should be housed, how

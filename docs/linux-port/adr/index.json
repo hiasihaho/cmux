@@ -14,5 +14,6 @@
   { "file": "0010-visible-isolated-displays-for-agents.md",  "title": "0010 · Visible isolated displays ◷" },
   { "file": "0011-features-board-generated-not-curated.md",  "title": "0011 · Features board: measured, not curated ✅" },
   { "file": "0012-pinned-dashboards-in-sidebar.md",          "title": "0012 · Pinned dashboards in sidebar ◷" },
-  { "file": "0013-pane-tags-and-attention-workflows.md",     "title": "0013 · Pane tags & attention workflows ◷" }
+  { "file": "0013-pane-tags-and-attention-workflows.md",     "title": "0013 · Pane tags & attention workflows ◷" },
+  { "file": "0014-features-board-taxonomy.md",              "title": "0014 · Features board taxonomy ✅" }
 ]

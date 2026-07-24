@@ -3569,3 +3569,27 @@ panes (★ᵃ — macOS's only `ephemeral` hits are an unrelated URLSession
 config + a tmux mirror, not leave-no-trace panes). The existing four
 pages are parity features (blank Unique column). `--check` green, 7
 pages. Board files stay gitignored (generated); pages + generator commit.
+
+### Features board taxonomy: product / inbuilt / meta (ADR-0014, 2026-07-24)
+
+The board grew three genuinely different kinds of thing; a flat list
+conflated them. Added a `kind:` front-matter field driving three sections
+(features-board.py): **product** (leaf features, measured vs macOS with
+the verified-uniqueness column), **inbuilt harnesses** (product
+subsystems that are frameworks — control socket, browser automation,
+attention pipeline — same measured treatment, grouped apart), and **meta
+harnesses** (the dev tooling we built to develop/measure/verify the port
+— comparison harness, parallel-dogfood — a different table: what it
+detects/does + a `check:` verify command + its ADR, and NO vs-macOS
+column, since comparing our dev tooling to macOS's product is a category
+error). Authored 4 demonstrating pages (browser-automation +
+attention-notifications as inbuilt; comparison-harness + parallel-dogfood
+as meta). The board is now a complete map: what the port does AND what we
+built to prove it.
+
+Also answered the "improve the comparison harness?" question: it already
+exists (capslib + capabilities-sweep + macos-surface-survey), and the
+measured-over-asserted discipline is already in all three; the features
+board's verified-uniqueness (★/★ᵃ/⚠) is the cleanest expression, now
+documented as the "Comparison harness" meta page. `--check` green, 11
+pages. ADR-0014 Accepted; graph regenerated (14 ADRs).
