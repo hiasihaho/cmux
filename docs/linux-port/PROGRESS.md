@@ -3907,3 +3907,57 @@ run, and toggle-off. Verified visually: watch(1) ticking beside a live
 journalctl tail while the workspace terminal sits untouched. Deferred
 stages recorded in GAPS (browser panes, tiling, drag, --placement
 verbs, project trust).
+
+## 2026-07-24 — the macOS build was broken for two days and nobody could see it
+
+The standing caveat in UPSTREAM.md — "shared-source changes are
+reasoned-and-Linux-compiled, not verified on macOS" — is retired. A
+QEMU/KVM macOS 15.7.7 VM (`ssh hias@ultmos`, ULTMOS, x86_64, 12
+cores/32 GB) now serves as the macOS-side compile checker, and its very
+first run proved the caveat had been hiding real damage: the CLI-port
+commit `7af1ce44f5` (2026-07-22, "62k lines, 4 packages") used
+`__suseconds_t` in two `timeval` constructions
+(`CLI/cmux.swift`, `CmuxControlSocket/Transport/SocketTransport+
+ClientSocket.swift`). That spelling is glibc-internal — it compiles on
+every Linux box we have and does not exist on Darwin, so the macOS
+build of the shared sources was broken from the moment the port landed.
+Fix: `suseconds_t`, the POSIX name both platforms export (Int on Glibc,
+Int32 on Darwin — the comment above the line even said so while using
+the wrong name). Swept CLI/ + Packages/ for other `__*_t` glibc-isms:
+none left.
+
+**The checker: `macos-verify/`** — a five-line-of-substance SwiftPM
+package whose `Sources/CmuxCLI` symlinks to `linux/Sources/CmuxCLI`,
+i.e. the exact same file set the Linux CLI target compiles (the CLI/
+tree plus the seven app `Sources/*.swift` files the Xcode CLI target
+also includes). Same four local package deps; no swift-crypto (macOS
+uses CryptoKit behind the existing `#if canImport(CryptoKit)`); no
+Fedora linker workaround. `cd macos-verify && swift build` needs only
+Command Line Tools — no Xcode, no zig, no GhosttyKit — and now
+completes green: `cmux 0.64.19 (99)` as a Mach-O x86_64 binary that
+runs and correctly reports "Socket not found". Verified green on Linux
+in the same session (CLI product 45 s, full `CMUX_GHOSTTY=1` build).
+
+Gotchas recorded:
+- The first "successful" VM build was a lie: `swift build | tail`
+  reports the *pipe's* exit status. 1455 errors hid behind exit 0.
+  Capture `$?` from `swift build` directly (or `pipestatus`).
+- The VM's rsync is Apple's ancient openrsync — no `--info`, its own
+  `--delete` spellings. Stick to `-az --stats --exclude`.
+- A target dir of symlinks nests fine: SwiftPM follows
+  `macos-verify/Sources/CmuxCLI → linux/Sources/CmuxCLI → {CLI/, 7
+  file links}` on both platforms, so the shared-file list stays in
+  exactly one place.
+- The seven extra files matter: pointing the checker at `CLI/` alone
+  yields ~1455 cascade errors (missing `AgentHibernationLifecycleState`
+  et al. collapse type inference file-wide — 660 × "'nil' requires a
+  contextual type"). If the checker ever error-floods, first ask
+  whether `linux/Sources/CmuxCLI` gained a symlink the rsync missed.
+
+Also measured while in the VM: `MTLCopyAllDevices()` returns `[]` —
+zero Metal devices, confirming (against `ghostty/src/renderer/
+Metal.zig:443` `chooseDevice()` → `error.NoMetalDevice`) that the stock
+macOS app can never render terminals there, and that macOS Ghostty has
+no software/GPU-off path at all. The app-on-VM question is therefore:
+full Xcode + a null-renderer fork increment, or nothing. Parked;
+the compile checker needed neither.

@@ -133,8 +133,9 @@ you. Triage pattern: root-cause before trusting findings (cycle 2's
   cycle and the default flip), Flatpak packaging.
 - **Environment**: Fedora 43 host (GNOME 49 → adwaita-swift pinned;
   `CMUX_GNOME=50` or `linux/scripts/build-gnome50.sh` for the Fedora 44
-  container build). System Swift 6.2. Build from `linux/`, never the repo
-  root (the root Package.swift is a macOS stub).
+  container build). System Swift 6.2. Build from `linux/`, never the
+  repo root. A macOS 15 VM (`ssh hias@ultmos`, CLT-only, no GPU)
+  compile-checks shared sources: `cd macos-verify && swift build`.
 
 The macOS instructions below (xcodebuild, reload.sh, GhosttyKit) apply to
 the original app, not to Linux-port work.

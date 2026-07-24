@@ -69,8 +69,12 @@ chunk needs scanning) in our commit `183bdd102`. Worth flagging that the
 symptom is **no error and no truncation — it simply looks like a hang**,
 which is how it survived unnoticed.
 
-Caveat for whoever lands this: we have no macOS toolchain here, so the
-change is reasoned-and-Linux-compiled, not `xcodebuild`-verified.
+Caveat for whoever lands this: since 2026-07-24 shared-CLI changes are
+compile-verified on real macOS (15.7.7 VM, CLT-only) via the
+`macos-verify/` package — which on its first run caught two
+`__suseconds_t` glibc-isms our port commit had introduced. Still not
+`xcodebuild`-verified: the app target needs full Xcode + GhosttyKit,
+which the VM does not have.
 
 ### 4b. `browser.navigate` returns before the load commits — macOS bug, unfixed there
 

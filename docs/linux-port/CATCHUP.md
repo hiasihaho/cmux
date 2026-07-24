@@ -1,9 +1,11 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-24 ~03:30** (ADR-0010 accepted and landed —
-`scratch.sh watch`/`point` live agent displays + the pointing channel;
-POC-0002 is the first POC to graduate to `adopted`; the dev-starter
-"only VTE" incident traced to the plain-`swift-build` shim trap).
+Last updated: **2026-07-24 ~16:00** (macOS compile checker: the
+`hias@ultmos` VM + `macos-verify/` package; first run caught two
+`__suseconds_t` glibc-isms from the CLI-port commit — the macOS build
+of shared sources had been silently broken since 2026-07-22, now fixed
+and green on both platforms. Earlier same day: ADR-0010 watch/point,
+comfort mirror ①–⑦).
 Update this file at the end of every significant session; it is the
 fastest path from cold start to productive work.
 Deep history lives in [PROGRESS.md](PROGRESS.md), distilled
@@ -53,7 +55,26 @@ pick from its *Now* table, follow its rules (same-commit updates, suite
 per fix, sweep after every merge). The milestones below are the
 narrative context.
 
-## Latest session (2026-07-24): live agent displays + the pointing channel
+## Latest session (2026-07-24 afternoon): the macOS compile checker
+
+The UPSTREAM.md caveat "no macOS toolchain here" is retired. A QEMU/KVM
+macOS 15.7.7 VM is reachable as `ssh hias@ultmos` (CLT-only, no Xcode,
+no GPU — `MTLCopyAllDevices()` = `[]`, so the app itself can never
+render there; ghostty macOS is Metal-only with no software fallback).
+New `macos-verify/` package compiles the exact Linux CLI file set
+(symlink to `linux/Sources/CmuxCLI`) + its four packages on macOS with
+plain `swift build`. First run caught real damage: the 2026-07-22
+CLI-port commit `7af1ce44f5` used glibc-internal `__suseconds_t` in two
+files — macOS-broken since landing, invisible until now. Fixed
+(`suseconds_t`), swept for siblings (none), green both sides. Workflow
+now: after touching `CLI/` or the four shared packages, rsync + `cd
+cmux/macos-verify && swift build` on the VM (details: PROGRESS
+2026-07-24, gotchas incl. the pipe-exit-code lie and openrsync flags).
+Open decision for the app-on-VM question: full Xcode + a null-renderer
+fork increment would give a headless-but-fully-driveable macOS cmux
+(terminal state is CPU-side; only pixels need the GPU) — parked.
+
+## Earlier session (2026-07-24): live agent displays + the pointing channel
 
 **ADR-0010 accepted (A+B both) and fully landed.** `scratch.sh` gained
 `watch` (x11vnc+noVNC → browser pane in a *background* workspace of the

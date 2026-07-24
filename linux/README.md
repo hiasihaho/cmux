@@ -189,6 +189,10 @@ agent explicit permission) — it consumes Claude usage.
   Dogfood QA agents get the `Skill` tool for the same reason.
 - Changes to shared sources (`CLI/cmux.swift`) must keep building on macOS:
   Linux differences live behind `#if canImport(Darwin)` / `#if os(Linux)`.
+  This is checkable: `macos-verify/` compiles the exact Linux CLI file set
+  (`linux/Sources/CmuxCLI`) plus its four packages on any Mac with plain
+  Command Line Tools — `cd macos-verify && swift build` (currently run on
+  the `hias@ultmos` VM; see PROGRESS 2026-07-24).
 - The `ghostty/` submodule points at the **hiasihaho/ghostty** fork on this
   branch (`.gitmodules` switched; no push access to manaflow-ai/ghostty).
   Shim work lives on its `linux-gtk-embed` branch — always push the

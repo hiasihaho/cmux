@@ -1966,7 +1966,9 @@ final class SocketClient {
         )
         return timeval(
             tv_sec: Int(seconds),
-            tv_usec: __suseconds_t(microseconds)
+            // suseconds_t, not __suseconds_t: the double-underscore spelling
+            // is glibc-internal and does not exist on Darwin.
+            tv_usec: suseconds_t(microseconds)
         )
     }
 
