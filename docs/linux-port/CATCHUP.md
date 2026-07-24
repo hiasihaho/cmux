@@ -87,14 +87,18 @@ snapshot path.
 A `vncpoc` scratch instance (+watch) may still be running from the
 build session — `scratch.sh stop vncpoc` tears it all down.
 
-**Workspace groups stage 1 landed** (same session, later): all 17
+**Workspace groups stages 1+2 landed** (same session, later): all 17
 `workspace.group.*` verbs + the `workspace.create` group params serve
 with macOS wire parity — model, contiguity/pin-tier ordering, anchor
-semantics, session persistence. `workspace-groups-smoke` (34
-assertions) green; PARITY 🟡; the sidebar still renders flat.
-**Stage 2 next:** collapsible group sections in the sidebar (GAPS
-"Next" row — snapshot-boundary rules apply). The daily instance won't
-serve the new verbs until its next approved restart/promote.
+semantics, session persistence — AND the sidebar renders sections:
+chevron header rows (click toggles collapse, no selection theft),
+indented members, collapsed counts, attention aggregation.
+`workspace-groups-smoke` 39 green incl. rendered-row assertions via the
+new `debug.sidebar_rows` (projection shared with the view). New trap in
+PROGRESS: ListBox rows must be structure-stable across renders — wrap
+kind-switching rows in EitherView. Last mile (GAPS "Next", S):
+colors/icons rendering + a management context menu. The daily instance
+won't serve any of this until its next approved restart/promote.
 
 ## Current focus and the parity resume path (2026-07-22, ~17:00)
 

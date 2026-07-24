@@ -311,6 +311,70 @@ indirect enum PaneNode: Equatable {
     }
 }
 
+/// One sidebar row as displayed: an ungrouped workspace, a visible group
+/// member, or a group header (the anchor rendering as the group's
+/// disclosure row). Pure value — this is the sidebar's snapshot boundary:
+/// rows carry no references into live state.
+struct SidebarRowModel: Identifiable, Equatable {
+    enum Kind: Equatable {
+        case workspace
+        case groupHeader(groupId: UUID, collapsed: Bool, memberCount: Int)
+    }
+    /// The workspace id (for a header: the anchor's). Selecting the row
+    /// selects this workspace through the ordinary selection binding —
+    /// which is exactly the macOS "header click selects the anchor".
+    let id: UUID
+    var title: String
+    var kind: Kind
+}
+
+/// Pure projection (tabs, groups) → displayed sidebar rows. The single
+/// source of truth for BOTH the sidebar view and `debug.sidebar_rows`
+/// (shared-behavior rule) — a suite assertion on the verb is an assertion
+/// on what the human sees.
+enum SidebarRows {
+    static func project(tabs: [TerminalTab], groups: [WorkspaceGroup]) -> [SidebarRowModel] {
+        var rows: [SidebarRowModel] = []
+        for tab in tabs {
+            guard let gid = tab.groupId,
+                  let group = groups.first(where: { $0.id == gid }) else {
+                rows.append(SidebarRowModel(
+                    id: tab.id,
+                    title: (tab.needsAttention ? "●  " : "") + tab.title,
+                    kind: .workspace
+                ))
+                continue
+            }
+            let members = tabs.filter { $0.groupId == gid }
+            if tab.id == group.anchorWorkspaceId {
+                // Collapsed headers aggregate every member's attention —
+                // a hidden member's unread must still be visible.
+                let attention = group.isCollapsed
+                    ? members.contains { $0.needsAttention }
+                    : tab.needsAttention
+                let name = group.name.isEmpty ? tab.title : group.name
+                let count = group.isCollapsed ? "  (\(members.count))" : ""
+                rows.append(SidebarRowModel(
+                    id: tab.id,
+                    title: (attention ? "●  " : "") + name + count,
+                    kind: .groupHeader(
+                        groupId: gid,
+                        collapsed: group.isCollapsed,
+                        memberCount: members.count
+                    )
+                ))
+            } else if !group.isCollapsed {
+                rows.append(SidebarRowModel(
+                    id: tab.id,
+                    title: "      " + (tab.needsAttention ? "●  " : "") + tab.title,
+                    kind: .workspace
+                ))
+            }
+        }
+        return rows
+    }
+}
+
 /// A named, collapsible sidebar group of workspaces — mirroring the macOS
 /// `WorkspaceGroup` value exactly: the group stores NO member list.
 /// Membership is a relation on each workspace (`TerminalTab.groupId`);

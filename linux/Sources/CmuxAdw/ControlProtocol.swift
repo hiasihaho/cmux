@@ -438,7 +438,7 @@ struct ControlCommandHandler {
                     "surface.reorder", "surface.move",
                     "pane.swap", "pane.break", "pane.join", "pane.resize",
                     "pane.zoom",
-                    "surface.respawn", "debug.surfaces",
+                    "surface.respawn", "debug.surfaces", "debug.sidebar_rows",
                     "notification.jump_to_unread", "notification.mark_read",
                     "notification.dismiss", "notification.open",
                     "window.current", "window.focus", "browser.zoom.set",
@@ -571,6 +571,8 @@ struct ControlCommandHandler {
             return v2SessionSave(id: id)
         case "surface.respawn":
             return v2SurfaceRespawn(id: id, params: params)
+        case "debug.sidebar_rows":
+            return v2DebugSidebarRows(id: id)
         case "debug.surfaces":
             // The doctor verb: widget-lifecycle state of every surface
             // (backend, parent type, realized/mapped, refcount, readable).
@@ -1325,6 +1327,40 @@ struct ControlCommandHandler {
         slots.insert(moving, at: insertAt)
         recomposeTabs(slots: slots)
         return v2Ok(id: id, result: ["group_id": gid.uuidString])
+    }
+
+    /// UI path for the header chevron — flips the same state the
+    /// collapse/expand verbs mutate (shared-behavior rule: one mutation
+    /// path, whichever entrypoint).
+    func toggleGroupCollapsed(_ groupId: UUID) {
+        guard let index = groups.wrappedValue.firstIndex(where: { $0.id == groupId }) else { return }
+        groups.wrappedValue[index].isCollapsed.toggle()
+    }
+
+    /// What the sidebar actually displays, row for row — the projection is
+    /// shared with SidebarView, so asserting on this verb asserts on what
+    /// the human sees (the "Executed 0 tests"-class lesson: verb-level
+    /// suites must not diverge from the rendered surface).
+    private func v2DebugSidebarRows(id: Any?) -> String {
+        let registry = RefRegistry.shared
+        let rows = SidebarRows.project(tabs: tabs.wrappedValue, groups: groups.wrappedValue)
+        return v2Ok(id: id, result: ["rows": rows.map { row -> [String: Any] in
+            var entry: [String: Any] = [
+                "workspace_id": row.id.uuidString,
+                "workspace_ref": registry.ref(kind: "workspace", uuid: row.id),
+                "title": row.title
+            ]
+            switch row.kind {
+            case .workspace:
+                entry["kind"] = "workspace"
+            case .groupHeader(let gid, let collapsed, let count):
+                entry["kind"] = "group_header"
+                entry["group_ref"] = registry.ref(kind: "workspace_group", uuid: gid)
+                entry["collapsed"] = collapsed
+                entry["member_count"] = count
+            }
+            return entry
+        }])
     }
 
     /// Focus-intent verb: selects the group's anchor, like a header click.

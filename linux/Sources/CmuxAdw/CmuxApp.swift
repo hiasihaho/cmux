@@ -133,7 +133,11 @@ struct CmuxApp: App {
                         clearAll: clearAllNotifications
                     )
                 }, else: {
-                    SidebarView(tabs: tabs, selection: selectionBinding)
+                    SidebarView(
+                        rows: SidebarRows.project(tabs: tabs, groups: groups),
+                        selection: selectionBinding,
+                        toggleCollapse: { controlHandler.toggleGroupCollapsed($0) }
+                    )
                 })
                 .topToolbar {
                     HeaderBar {

@@ -2,21 +2,56 @@ import Adwaita
 import Foundation
 
 /// Vertical tab list — the Linux counterpart of cmux's sidebar with
-/// notification rings. Tabs needing attention get a leading dot marker.
+/// notification rings and workspace-group sections (features/04 stage 2).
+/// Rows are immutable `SidebarRowModel` snapshots plus one action closure
+/// (snapshot-boundary rule); group headers carry a disclosure chevron
+/// whose click toggles collapse without changing the selection, while a
+/// click on the header row itself selects the group's anchor.
 struct SidebarView: View {
-    var tabs: [TerminalTab]
+    var rows: [SidebarRowModel]
     @Binding var selection: UUID
+    var toggleCollapse: (UUID) -> Void
 
     var view: Body {
         ScrollView {
-            List(tabs, id: \.id, selection: $selection) { tab in
-                Text(tab.needsAttention ? "●  \(tab.title)" : tab.title)
-                    .halign(.start)
-                    .padding(10)
+            List(rows, id: \.id, selection: $selection) { row in
+                rowView(row)
             }
             .style("navigation-sidebar")
         }
         .vexpand()
+    }
+
+    /// Every row is the SAME top-level structure (an EitherView, i.e. a
+    /// ViewStack): the ListBox differ updates row content in place by id,
+    /// and a row whose view type changes between renders (workspace ⇄
+    /// header) would otherwise keep its stale widget — the ViewStack is
+    /// the supported structure-switch container.
+    private func rowView(_ row: SidebarRowModel) -> EitherView {
+        var isHeader = false
+        var groupId = UUID()
+        var collapsed = false
+        if case let .groupHeader(gid, isCollapsed, _) = row.kind {
+            isHeader = true
+            groupId = gid
+            collapsed = isCollapsed
+        }
+        return EitherView(isHeader, view1: {
+            HStack {
+                Button(collapsed ? "▸" : "▾") {
+                    toggleCollapse(groupId)
+                }
+                .style("flat")
+                Text(row.title)
+                    .halign(.start)
+                    .padding(6)
+            }
+            .halign(.start)
+        }, else: {
+            Text(row.title)
+                .halign(.start)
+                .padding(10)
+        })
     }
 }
 

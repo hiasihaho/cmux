@@ -3660,3 +3660,33 @@ PARITY 🟡 (verbs full, sidebar still renders flat); stage 2 (sidebar
 sections UI) is a GAPS "Next" row. The features board's contradiction
 guard did its job mid-commit: `linux: none` with measured-served verbs
 would have flagged ⚠ — the page moved to `partial` in the same change.
+
+### Workspace groups stage 2 — the sidebar renders sections (2026-07-24)
+
+The sidebar is group-aware: header rows with a real disclosure chevron
+(a flat Button inside the row — its click toggles collapse and never
+reaches row selection; clicking the header itself selects the anchor,
+the macOS semantics for free since the header's row id IS the anchor's
+workspace id), indented members, "(N)" counts on collapsed headers, and
+attention aggregation (a hidden member's dot surfaces on its collapsed
+header — asserted with a notification onto a hidden member). The
+projection `SidebarRows.project(tabs, groups) → [SidebarRowModel]` is a
+pure value snapshot shared verbatim between SidebarView and a new
+`debug.sidebar_rows` verb (debug.surfaces precedent), so suite
+assertions on the verb ARE assertions on the rendered rows —
+workspace-groups-smoke grew to 39 with rendered-row coverage.
+
+**New trap, paid for and documented:** adwaita-swift's ListBox differ
+updates rows in place by id; a row whose VIEW STRUCTURE changes between
+renders (plain Text ⇄ HStack when a workspace becomes a group header)
+keeps its stale widget silently — the header rendered the anchor's old
+title with no chevron. Fix: every row keeps a structure-stable shape by
+wrapping in EitherView (a ViewStack keyed by the condition — the
+supported structure-switch container). Corollary of the
+snapshot-boundary family: rows are value snapshots AND shape-stable.
+
+Verified with clean-session screenshots (expanded, chevron-clicked →
+collapsed with count) plus an xdotool click on the chevron confirming
+collapse-without-selection-theft; a first confusing shot turned out to
+be session restore faithfully resurrecting the previous demo's
+collapsed group — persistence proving itself by surprise.

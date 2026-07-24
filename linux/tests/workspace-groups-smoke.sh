@@ -51,6 +51,31 @@ v2 "{\"id\":1,\"method\":\"workspace.group.collapse\",\"params\":{\"group_id\":\
     && ok "collapse" || bad "collapse" "no is_collapsed:true"
 expect "expand" "False" "$(v2 "{\"id\":1,\"method\":\"workspace.group.expand\",\"params\":{\"group_id\":\"$G\"}}" >/dev/null; group_field "['is_collapsed']" 0)"
 
+# --------------------------------------------- sidebar row projection
+info "debug.sidebar_rows mirrors the rendered sidebar"
+sidebar_rows() { v2 '{"id":1,"method":"debug.sidebar_rows"}'; }
+row_count() { sidebar_rows | python3 -c "import json,sys;print(len(json.load(sys.stdin)['result']['rows']))"; }
+header_title() { sidebar_rows | python3 -c "
+import json,sys
+rows=[r for r in json.load(sys.stdin)['result']['rows'] if r['kind']=='group_header']
+print(rows[0]['title'] if rows else 'MISSING')"; }
+expect "one group header row" "1" "$(sidebar_rows | python3 -c "import json,sys;print(sum(1 for r in json.load(sys.stdin)['result']['rows'] if r['kind']=='group_header'))")"
+rows_open=$(row_count)
+v2 "{\"id\":1,\"method\":\"workspace.group.collapse\",\"params\":{\"group_id\":\"$G\"}}" >/dev/null
+expect "collapse hides the two member rows" "$((rows_open - 2))" "$(row_count)"
+case "$(header_title)" in
+    *"(3)"*) ok "collapsed header shows member count" ;;
+    *) bad "header count" "title: $(header_title)" ;;
+esac
+v2 "{\"id\":1,\"method\":\"notification.create_for_caller\",\"params\":{\"preferred_workspace_id\":\"$WS_A\",\"title\":\"ping\"}}" >/dev/null
+case "$(header_title)" in
+    "●"*) ok "collapsed header aggregates hidden member attention" ;;
+    *) bad "attention aggregation" "title: $(header_title)" ;;
+esac
+v2 "{\"id\":1,\"method\":\"workspace.group.expand\",\"params\":{\"group_id\":\"$G\"}}" >/dev/null
+expect "expand restores member rows" "$rows_open" "$(row_count)"
+cx select-workspace --workspace "$WS_A" >/dev/null 2>&1   # clear the attention dot
+
 # ------------------------------------------------------------ pin tier
 info "pinned group floats above ungrouped rows"
 v2 "{\"id\":1,\"method\":\"workspace.group.pin\",\"params\":{\"group_id\":\"$G\"}}" >/dev/null

@@ -21,13 +21,19 @@ On macOS: create/rename/collapse/pin groups in the sidebar, assign
 colors and icons, move workspaces between groups; the whole surface is
 also socket-drivable (the 17 `workspace.group.*` verbs).
 
-On Linux (stage 1, 2026-07-24): the **full verb family is served** with
-macOS wire parity — all 17 `workspace.group.*` verbs plus
+On Linux (stages 1+2, 2026-07-24): the **full verb family is served**
+with macOS wire parity — all 17 `workspace.group.*` verbs plus
 `workspace.create`'s `group_id`/`group_placement`/
 `group_reference_workspace_id` (so `cmux new-workspace --group …` and
-`cmux workspace-group …` work unchanged). Groups persist across restarts.
-The sidebar still renders the flat list — grouping is model-true but not
-yet visual, hence `partial`.
+`cmux workspace-group …` work unchanged) — and the **sidebar renders
+sections**: group header rows with a disclosure chevron (click toggles
+collapse without stealing selection; clicking the header itself selects
+the anchor, like macOS), indented member rows, a member count on
+collapsed headers, and attention aggregation (a hidden member's unread
+dot surfaces on its collapsed header). Groups persist across restarts.
+Still `partial`: colors/icons are stored but not yet rendered, and
+group management (create/rename/move) has no UI affordance — CLI/socket
+only.
 
 ## Implementation
 
@@ -43,10 +49,18 @@ restore, the macOS `anchorMemberIndex` trick). Suite:
 `tests/workspace-groups-smoke.sh` (34 assertions incl. the save/restart
 round-trip).
 
-**Stage 2 (open, GAPS "Next"):** collapsible sidebar sections with
-header rows, colors/icons, attention aggregation onto collapsed headers
-— touches the snapshot-boundary-sensitive sidebar row pattern, so it
-must follow the immutable-snapshot row rules.
+**Stage 2 (landed 2026-07-24):** the sidebar projects
+`(tabs, groups) → [SidebarRowModel]` through `SidebarRows.project` —
+a pure value snapshot shared verbatim with `debug.sidebar_rows`, so the
+suite's row assertions are assertions on what the human sees. Rows keep
+a structure-stable shape (every row is an EitherView/ViewStack): the
+ListBox differ updates rows in place by id, and a row whose widget type
+changes between renders keeps its stale widget otherwise — the trap
+stage 2 hit and documented (PROGRESS 2026-07-24). The chevron is a real
+flat Button inside the row, so its click never reaches row selection.
+
+**Remaining (GAPS "Next"):** render `custom_color`/`icon_symbol` on
+headers; UI affordances for create/rename/move (context menu).
 
 ## Links
 
