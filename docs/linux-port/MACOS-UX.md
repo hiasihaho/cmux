@@ -135,10 +135,12 @@ animated symbols use plain `Image(systemName:)`).
 Find bar is a separate overlay (`Sources/Find/BrowserSearchOverlay.swift`):
 `chevron.up`/`chevron.down`/`xmark`.
 
-**Linux today:** back/forward/reload arrows + profile icon + URL entry
-exist; missing: disabled-state dimming, reload⇄stop swap, https lock,
-downloads affordance, screenshot/devtools/theme buttons, compact
-overflow.
+**Linux today (state polish landed 2026-07-24):** back/forward dim +
+disable without history, reload ⇄ stop swaps while loading, https lock
+as the entry's primary icon (`channel-secure-symbolic`); projection
+shared with `debug.browser_chrome` and asserted in
+`browser-navigation-smoke` (14). Still missing: downloads affordance,
+screenshot/devtools/theme buttons, compact overflow.
 
 ### 2.2 Surface tab bar
 
@@ -359,9 +361,9 @@ multi-window routing, `--placement dock` verbs.
 
 Ranked by comfort-per-effort for the port, using the surveys above:
 
-1. **S — browser chrome state polish**: back/forward disabled+dimmed
-   without history, reload⇄stop swap while loading, https `lock`.
-   Daily-visible, tiny.
+1. ✅ **S — browser chrome state polish** (landed 2026-07-24):
+   back/forward disabled+dimmed without history, reload⇄stop swap
+   while loading, https `lock`.
 2. **S — hover affordances**: sidebar row hover-close ✕, group-header
    hover-＋ (GtkEventControllerMotion; the row snapshot pattern holds).
 3. **S–M — context menus** (the biggest comfort jump): GtkPopoverMenu

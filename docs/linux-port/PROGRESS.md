@@ -3742,3 +3742,19 @@ corrected in place. MACOS-UX ends with a proposed mirror order
 (browser-chrome state polish → hover affordances → context menus →
 workspace colors → tab icons → DnD → minimal Dock) — awaiting the
 human's pick.
+
+### Comfort mirror ①: browser chrome state polish (2026-07-24)
+
+First slice of the MACOS-UX mirror order. The URL bar now behaves like
+the macOS omnibar: back/forward buttons disable (and dim, via GTK
+sensitivity) when there is no history in that direction, the reload
+button swaps to a stop button (`process-stop-symbolic`, and actually
+stops the load) while a page is in flight, and an https page shows the
+lock (`channel-secure-symbolic`) as the entry's primary icon. Synced
+from `load-changed` + `notify::is-loading` per surface; the projection
+(`BrowserURLBar.chromeState`) is shared with a new
+`debug.browser_chrome` verb per the wiring/09 rule, so
+browser-navigation-smoke asserts the rendered truth (8 → 14
+assertions: history-edge sensitivity both ways, rest-state icon, http
+= no lock, fresh-surface both-disabled). Verified visually on a live
+https page: dimmed chevrons + lock in one shot.

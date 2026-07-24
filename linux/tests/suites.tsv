@@ -5,7 +5,7 @@
 # intentional change, so assertion-count changes are visible in diffs.
 # run.sh --list renders this file.
 webdriver-smoke	9	WebDriver stack: automation opt-in, attach, split adoption, trusted input, live GitHub CSP run (needs WebKitWebDriver + shim build; GitHub leg skips offline)
-browser-navigation-smoke	8	Navigation barrier: goto/back/forward/reload never let a following eval read the previous document; wait-flag chaining, honest timeouts
+browser-navigation-smoke	14	Navigation barrier: goto/back/forward/reload never let a following eval read the previous document; wait-flag chaining, honest timeouts
 browser-popup-smoke	12	Popup routing: window.open and target=_blank land in panes, window.opener survives, burst budget holds
 pane-search-smoke	11	cmux search across panes: both pane kinds, --kind/--regex/--case-sensitive, innerText semantics, JSON refs
 browser-find-smoke	11	Find-in-page: counts, next/previous wrap, case sensitivity, no-match recovery

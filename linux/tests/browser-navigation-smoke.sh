@@ -186,5 +186,21 @@ else
     bad "transport timeout cap" "wait --timeout-ms 18000 returned after ${elapsed}ms"
 fi
 
+# --- 9. chrome state (MACOS-UX §2.1 parity): the projection behind the
+# back/forward sensitivity, the reload⇄stop icon and the https lock.
+info "URL-bar chrome state (debug.browser_chrome)"
+chrome() { v2 "{\"id\":9,\"method\":\"debug.browser_chrome\",\"params\":{\"surface_id\":\"$1\"}}" \
+    | python3 -c "import json,sys;print(json.load(sys.stdin)['result'].get('$2'))"; }
+# $S carries plenty of history by now, sits on histB after test 7.
+expect "history behind -> back enabled" "True" "$(chrome "$S" can_go_back)"
+expect "settled load -> reload (not stop)" "False" "$(chrome "$S" is_loading)"
+expect "http fixture -> no https lock" "False" "$(chrome "$S" secure)"
+cx browser --surface "$S" back >/dev/null 2>&1
+expect "after back -> forward enabled" "True" "$(chrome "$S" can_go_forward)"
+S2=$(cx browser open "http://127.0.0.1:$PAGE_PORT/fresh" --workspace "$WS" | grep -oE 'surface:[0-9]+')
+sleep 2
+expect "fresh surface -> back disabled" "False" "$(chrome "$S2" can_go_back)"
+expect "fresh surface -> forward disabled" "False" "$(chrome "$S2" can_go_forward)"
+
 cx close-workspace --workspace "$WS" >/dev/null 2>&1
 finish

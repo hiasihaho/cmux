@@ -108,10 +108,11 @@ enum BrowserURLBar {
         let state = BrowserURLBarState(surfaceId: surfaceId, webView: webView, entry: entry)
         states[surfaceId] = state
 
+        @discardableResult
         func navButton(_ icon: String, _ tooltip: String, _ callback: @convention(c) (
             UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
-        ) -> Void) {
-            guard let button = gtk_button_new_from_icon_name(icon) else { return }
+        ) -> Void) -> UnsafeMutablePointer<GtkWidget>? {
+            guard let button = gtk_button_new_from_icon_name(icon) else { return nil }
             gtk_widget_add_css_class(button, "flat")
             gtk_widget_set_tooltip_text(button, tooltip)
             g_signal_connect_data(
@@ -121,12 +122,30 @@ enum BrowserURLBar {
                 browserURLBarStateDestroy, GConnectFlags(0)
             )
             gtk_box_append(box, button)
+            return button
         }
-        navButton("go-previous-symbolic", "Back", browserURLBarBack)
-        navButton("go-next-symbolic", "Forward", browserURLBarForward)
-        navButton("view-refresh-symbolic", "Reload", browserURLBarReload)
+        state.backButton = navButton("go-previous-symbolic", "Back", browserURLBarBack)
+        state.forwardButton = navButton("go-next-symbolic", "Forward", browserURLBarForward)
+        state.reloadButton = navButton("view-refresh-symbolic", "Reload", browserURLBarReload)
 
         gtk_box_append(box, entry)
+
+        // Chrome state (macOS omnibar parity, MACOS-UX §2.1): back/forward
+        // insensitive without history, reload ⇄ stop while loading, https
+        // lock in the entry. Synced on load-changed + is-loading notify.
+        syncNavState(state)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(webView), "load-changed",
+            unsafeBitCast(browserURLBarLoadChanged, to: GCallback.self),
+            Unmanaged.passRetained(state).toOpaque(),
+            browserURLBarStateDestroy, GConnectFlags(0)
+        )
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(webView), "notify::is-loading",
+            unsafeBitCast(browserURLBarLoadingNotify, to: GCallback.self),
+            Unmanaged.passRetained(state).toOpaque(),
+            browserURLBarStateDestroy, GConnectFlags(0)
+        )
 
         // Profile button + its (single, content-rebuilt-per-open) popover.
         if let profileButton = gtk_button_new_from_icon_name("system-users-symbolic") {
@@ -152,6 +171,44 @@ enum BrowserURLBar {
             browserURLBarStateDestroy, GConnectFlags(0)
         )
         return row
+    }
+
+    /// The chrome-state projection — one source of truth for the widget
+    /// sync AND `debug.browser_chrome` (shared-projection rule, wiring/09):
+    /// asserting on the verb asserts what the buttons/lock actually show.
+    static func chromeState(
+        _ state: BrowserURLBarState
+    ) -> (canGoBack: Bool, canGoForward: Bool, isLoading: Bool, secure: Bool, url: String) {
+        let url = webkit_web_view_get_uri(state.webView).map { String(cString: $0) } ?? ""
+        return (
+            canGoBack: webkit_web_view_can_go_back(state.webView) != 0,
+            canGoForward: webkit_web_view_can_go_forward(state.webView) != 0,
+            isLoading: webkit_web_view_is_loading(state.webView) != 0,
+            secure: url.lowercased().hasPrefix("https://"),
+            url: url
+        )
+    }
+
+    /// Applies the chrome state to the bar's widgets.
+    static func syncNavState(_ state: BrowserURLBarState) {
+        let chrome = chromeState(state)
+        if let back = state.backButton {
+            gtk_widget_set_sensitive(back, chrome.canGoBack ? 1 : 0)
+        }
+        if let forward = state.forwardButton {
+            gtk_widget_set_sensitive(forward, chrome.canGoForward ? 1 : 0)
+        }
+        if let reload = state.reloadButton {
+            let button = UnsafeMutableRawPointer(reload).assumingMemoryBound(to: GtkButton.self)
+            gtk_button_set_icon_name(
+                button, chrome.isLoading ? "process-stop-symbolic" : "view-refresh-symbolic")
+            gtk_widget_set_tooltip_text(reload, chrome.isLoading ? "Stop" : "Reload")
+        }
+        gtk_entry_set_icon_from_icon_name(
+            UnsafeMutableRawPointer(state.entry).assumingMemoryBound(to: GtkEntry.self),
+            GTK_ENTRY_ICON_PRIMARY,
+            chrome.secure ? "channel-secure-symbolic" : nil
+        )
     }
 
     /// Fills the profile popover with one row per profile (the pane's own
@@ -194,6 +251,9 @@ final class BrowserURLBarState {
     let surfaceId: UUID
     let webView: UnsafeMutablePointer<WebKitWebView>
     let entry: UnsafeMutablePointer<GtkWidget>
+    var backButton: UnsafeMutablePointer<GtkWidget>?
+    var forwardButton: UnsafeMutablePointer<GtkWidget>?
+    var reloadButton: UnsafeMutablePointer<GtkWidget>?
     /// The (single) profile popover, parented to the profile button; its
     /// content is rebuilt on every open so it always reflects the live
     /// profile list.
@@ -242,12 +302,35 @@ let browserURLBarForward: @convention(c) (
     webkit_web_view_go_forward(state.webView)
 }
 
+/// Reload doubles as Stop while a load is in flight (macOS behavior).
 let browserURLBarReload: @convention(c) (
     UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
 ) -> Void = { _, userData in
     guard let userData else { return }
     let state = Unmanaged<BrowserURLBarState>.fromOpaque(userData).takeUnretainedValue()
-    webkit_web_view_reload(state.webView)
+    if webkit_web_view_is_loading(state.webView) != 0 {
+        webkit_web_view_stop_loading(state.webView)
+    } else {
+        webkit_web_view_reload(state.webView)
+    }
+}
+
+/// load-changed → resync chrome (history availability, URI, lock).
+let browserURLBarLoadChanged: @convention(c) (
+    UnsafeMutableRawPointer?, UInt32, UnsafeMutableRawPointer?
+) -> Void = { _, _, userData in
+    guard let userData else { return }
+    let state = Unmanaged<BrowserURLBarState>.fromOpaque(userData).takeUnretainedValue()
+    BrowserURLBar.syncNavState(state)
+}
+
+/// notify::is-loading → reload ⇄ stop swap at both edges of the load.
+let browserURLBarLoadingNotify: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?
+) -> Void = { _, _, userData in
+    guard let userData else { return }
+    let state = Unmanaged<BrowserURLBarState>.fromOpaque(userData).takeUnretainedValue()
+    BrowserURLBar.syncNavState(state)
 }
 
 let browserURLBarProfileClicked: @convention(c) (

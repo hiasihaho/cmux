@@ -439,6 +439,7 @@ struct ControlCommandHandler {
                     "pane.swap", "pane.break", "pane.join", "pane.resize",
                     "pane.zoom",
                     "surface.respawn", "debug.surfaces", "debug.sidebar_rows",
+                    "debug.browser_chrome",
                     "notification.jump_to_unread", "notification.mark_read",
                     "notification.dismiss", "notification.open",
                     "window.current", "window.focus", "browser.zoom.set",
@@ -573,6 +574,8 @@ struct ControlCommandHandler {
             return v2SurfaceRespawn(id: id, params: params)
         case "debug.sidebar_rows":
             return v2DebugSidebarRows(id: id)
+        case "debug.browser_chrome":
+            return v2DebugBrowserChrome(id: id, params: params)
         case "debug.surfaces":
             // The doctor verb: widget-lifecycle state of every surface
             // (backend, parent type, realized/mapped, refcount, readable).
@@ -1998,6 +2001,28 @@ struct ControlCommandHandler {
         if let before = position(of: params["before_surface_id"] as? String, offset: 0) { return before }
         if let after = position(of: params["after_surface_id"] as? String, offset: 1) { return after }
         return nil
+    }
+
+    /// The URL bar's chrome-state projection (BrowserURLBar.chromeState —
+    /// the same values the back/forward sensitivity, reload⇄stop icon and
+    /// https lock render from), for honest suite assertions.
+    private func v2DebugBrowserChrome(id: Any?, params: [String: Any]) -> String {
+        guard let raw = params["surface_id"] as? String,
+              let surfaceId = UUID(uuidString: raw) ?? RefRegistry.shared.resolve(raw) else {
+            return v2Error(id: id, code: "invalid_params", message: "Missing or invalid surface_id")
+        }
+        guard let state = BrowserURLBar.states[surfaceId] else {
+            return v2Error(id: id, code: "not_found", message: "No URL bar for that surface")
+        }
+        let chrome = BrowserURLBar.chromeState(state)
+        return v2Ok(id: id, result: [
+            "surface_id": surfaceId.uuidString,
+            "can_go_back": chrome.canGoBack,
+            "can_go_forward": chrome.canGoForward,
+            "is_loading": chrome.isLoading,
+            "secure": chrome.secure,
+            "url": chrome.url
+        ])
     }
 
     private func v2SurfaceReorder(id: Any?, params: [String: Any]) -> String {
