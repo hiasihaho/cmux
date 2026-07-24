@@ -23,8 +23,14 @@ evolves_to: >
   launched with `CMUX_TAG=vmprobe`, **survives without Metal** — control
   plane up, socket created, auth enforced, surfaces loop "not ready" as
   predicted. Full story + measurements: PROGRESS 2026-07-24 (evening).
-  Next: external-probe socket auth (keychain-only today; no password file
-  by default), then increment 2's null renderer for real terminal content.
+  **External-probe auth SOLVED same evening** — `defaults write
+  com.cmuxterm.app.debug socketControlMode password` + a
+  `~/.local/state/cmux/socket-control-password` file (0600) that app and
+  CLI both read: `ping` → PONG, workspaces list/create work against the
+  Metal-less instance. The headless macOS reference EXISTS and is
+  driveable. Remaining for graduation: a live-socket sweep mode in
+  capabilities-sweep.py (GAPS row) to make the board's `mac` column
+  empirical; increment 2's null renderer for real terminal content.
   Side-product: the ghostty fork catch-up merge (see GAPS "shim
   increment 4" for the one piece still open).
 - **Substrate:** the `hias@ultmos` VM + `macos-verify/` + the ghostty fork

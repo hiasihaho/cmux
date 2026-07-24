@@ -4046,3 +4046,33 @@ Toolchain inventory now on the VM: Xcode 16.4 (16F6), swift.org
 6.2.3, zig 0.15.2 (linked at /usr/local/bin), rustup 1.97.1,
 GhosttyKit.xcframework (merged tree, x86_64, i18n off), app at
 `~/cmux-derived/Build/Products/Debug/cmux DEV.app`.
+
+## 2026-07-24 (late) — the headless macOS cmux is DRIVEABLE: external socket auth solved
+
+The gap between "app runs" and "app driveable" closed in one step. The
+denial was not password mismatch but **access mode**: the server's
+default `socketControlMode` is cmuxOnly ("only processes started inside
+cmux", ancestry-verified). The recipe, now part of the VM setup:
+
+```sh
+# on the Mac, once:
+openssl rand -base64 24 > ~/.local/state/cmux/socket-control-password
+chmod 600 ~/.local/state/cmux/socket-control-password
+defaults write com.cmuxterm.app.debug socketControlMode password
+```
+
+Both the app (SocketControlPasswordStore + FileWatcher) and the shared
+CLI (SocketPasswordResolver: explicit → env → file → keychain) read that
+same state-dir file — the exact design issue 5146 put in place to avoid
+TCC prompts — so no secret ever needs to travel through a shell.
+
+**Measured live** (first-ever external drive of a macOS cmux in this
+project): `ping` → PONG; `workspace list` shows workspace:1; `workspace
+create --background` → OK workspace:2, listed. All against an app with
+zero Metal devices.
+
+Note for the graduation step: `capabilities-sweep.py` is a *static*
+source analyzer — a live-socket probe mode (classify every v2 method by
+served/unknown_method against a running instance) does not exist yet and
+is the missing piece for an empirical `mac` column on the features
+board. Tracked in GAPS.

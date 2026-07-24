@@ -1,6 +1,6 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-24 ~19:30** (POC-0003 increment 1 EXECUTED:
+Last updated: **2026-07-24 ~20:00** (POC-0003 increment 1 EXECUTED:
 the full macOS app builds on the GPU-less Intel VM — Xcode 16.4 +
 swift.org 6.2.3 hybrid, `macos-verify/build-app.sh` — and RUNS
 headless: socket up, auth enforced, surfaces degrade exactly as
