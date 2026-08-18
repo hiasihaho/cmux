@@ -17,6 +17,11 @@ public enum WorkstreamSource: String, Codable, Sendable, CaseIterable, Equatable
     case codebuddy
     case factory
     case qoder
+    // cmux ships kimi hook support (KimiCodeHookConfig in this very
+    // package); without this case `_source: "kimi"` fell back to claude
+    // and landed mislabeled — invisible to source-filtered feed queries
+    // (kimi-session field report, 2026-08-18).
+    case kimi
 
     /// Parses a wire-frame `_source` string. Unknown sources fall back to
     /// `nil`; callers should persist the raw string separately when they want

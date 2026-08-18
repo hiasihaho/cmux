@@ -4178,3 +4178,23 @@ sees run N−1's items unless cleaned. Persisted payloads follow
 upstream's redaction (tool inputs/results redacted, prompts kept) —
 the opt-in unredacted mode remains a deliberate future decision
 (lfm-dl ask, roadmap/08).
+
+## 2026-08-18 (night) — kimi was relabeled, not dropped: source fidelity in the feed
+
+First field report to arrive THROUGH the new announce channel (the kimi
+session read the feed announcement, probed, and banked a one-line
+repro): `_source: "kimi"` was "acknowledged but never listed". The
+sharper truth on re-reproduction: the item DID land — mislabeled
+`source: "claude"`, workstream `claude-<id>` — because
+`WorkstreamSource` lacked a `kimi` case and unknown sources fall back
+to claude in the store's item mapping. To every source-filtered query
+(feedprobe's per-source verdicts, "check the source field")
+mislabeling is indistinguishable from a drop. The absurdity: kimi hook
+support (`KimiCodeHookConfig`) lives in the SAME package as the enum
+that didn't know kimi. Fix: the case (wire value `kimi`); red-first
+suite leg (feed-smoke 24). TRAP worth keeping: the silent
+unknown-source→claude fallback swallows attribution errors by design —
+the enum's own doc says callers should persist the raw string, which
+the store does not; upstream-relevant observation. macos-verify:
+PENDING (VM off) — enum-case addition, all found switches carry
+`default:`, run at next VM boot.
