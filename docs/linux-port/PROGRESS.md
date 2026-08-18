@@ -4270,3 +4270,16 @@ CR) is needed to actually execute a typed command.
 Recording coverage after tonight: claude, opencode, hermes-agent, kimi,
 codex (fresh installs for the last two). The NEXT promote is the first
 where kimi survives.
+
+## 2026-08-18 (final) — the resume audit becomes an instrument: debug.resume_plan
+
+The "who would resume" audit graduated from a throwaway session script
+to infrastructure, with the drift-proofing insight the user's suggestion
+prompted: rather than re-implementing the resolver's gates in a script
+(which silently diverges as gates evolve — three were added TODAY), the
+app answers with its real code. `debug.resume_plan` runs
+AgentResume.resumeCommand per terminal surface; `resume-audit.sh` just
+formats. Suite-asserted (agent-resume-smoke 11/11 — the plan leg checks
+the verb against the fixture store before any restart). Precedent:
+debug.dock / debug.sidebar_rows — measured projections over shared code,
+never parallel logic.

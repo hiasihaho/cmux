@@ -181,6 +181,8 @@ up.
 | Navigation barrier on `goto`/`back`/`forward`/`reload` | the verb holds its response until the new document commits. macOS has the same latent race (`v2BrowserNavigate` → `navigateSmart` → immediate `.ok`) — see [UPSTREAM.md](UPSTREAM.md) §4b |
 | Quadratic CLI transfer fix | in the **shared** `CLI/cmux.swift`, so macOS benefits once merged — UPSTREAM.md §4a |
 
+| debug.resume_plan + `linux/scripts/resume-audit.sh` | ★ | 2026-08-18: "who would auto-resume at the next restore" answered by the app's REAL resolver (AgentResume.resumeCommand) per terminal surface — drift-proof by construction; the script is a thin formatter. Suite-asserted (agent-resume-smoke). No macOS counterpart |
+
 ## Deliberate deviations from macOS (upstream candidates)
 
 Dogfood cycle 4 found these behaviors broken in the inherited macOS

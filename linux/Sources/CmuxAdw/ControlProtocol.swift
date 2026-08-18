@@ -718,6 +718,8 @@ struct ControlCommandHandler {
             notifications.wrappedValue.removeAll()
             clearAllAttention()
             return v2Ok(id: id, result: ["cleared": true])
+        case "debug.resume_plan":
+            return v2DebugResumePlan(id: id)
         default:
             return v2Error(
                 id: id,
@@ -1839,6 +1841,33 @@ struct ControlCommandHandler {
         }
         select(target)
         return v2Ok(id: id, result: workspaceRefResult(target))
+    }
+
+    /// What auto-resume WOULD do per terminal surface, computed by the real
+    /// resolver (AgentResume.resumeCommand) against the current hook stores
+    /// and setting — the drift-proof source for the resume-audit instrument.
+    /// A snapshot: actual resolution happens at restore time.
+    private func v2DebugResumePlan(id: Any?) -> String {
+        var rows: [[String: Any]] = []
+        for tab in tabs.wrappedValue {
+            for entry in tab.allSurfaces where entry.surface.kind.typeName == "terminal" {
+                let sid = entry.surface.surfaceId
+                var row: [String: Any] = [
+                    "workspace_id": tab.id.uuidString,
+                    "workspace_ref": RefRegistry.shared.ref(kind: "workspace", uuid: tab.id),
+                    "surface_id": sid.uuidString,
+                    "title": tab.title,
+                ]
+                if let command = AgentResume.resumeCommand(surfaceId: sid) {
+                    row["resume_command"] = command
+                }
+                rows.append(row)
+            }
+        }
+        return v2Ok(id: id, result: [
+            "auto_resume_enabled": LinuxSettings.autoResumeAgentSessions,
+            "surfaces": rows,
+        ])
     }
 
     private func v2SurfaceList(id: Any?, params: [String: Any]) -> String {

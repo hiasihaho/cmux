@@ -106,6 +106,10 @@ When agent events are missing from the feed (`cmux rpc feed.list`):
    instance never persisted (pre-2026-08-18 binary), or the instance is
    fresh (file appears on first ingest).
 
+Resume coverage ("who comes back at the next restore/promote"):
+`linux/scripts/resume-audit.sh` — a thin formatter over the
+`debug.resume_plan` verb, which answers with the app's real resolver.
+
 ## Rules
 
 - Stay read-only until the user asks to fix something.

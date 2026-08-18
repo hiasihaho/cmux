@@ -38,6 +38,8 @@ export PATH="$STUBDIR:$PATH"
 # (found 2026-08-18 when a debug instance popped a real kimi trust prompt).
 INSTANCE_ENV=(CMUX_HOOK_SESSIONS_DIR=$FIXDIR SHELL=/bin/sh)
 
+jfield() { python3 -c "import json,sys;print(json.load(sys.stdin)$1)"; }
+
 start_xvfb
 start_instance || exit 2
 
@@ -61,6 +63,13 @@ cat > "$FIXDIR/claude-hook-sessions.json" << EOF
 EOF
 
 force_save && ok "session saved" || bad "session.save" "no saved marker"
+
+# The debug.resume_plan verb answers with the REAL resolver against the
+# fixture store — the resume-audit instrument's backend.
+plan=$(v2 '{"id":2,"method":"debug.resume_plan"}')
+expect "resume plan reports the pending resume" \
+    "claude --resume $CUUID" \
+    "$(echo "$plan" | jfield "['result']['surfaces'][0].get('resume_command','')")"
 
 # --- phase B: restart onto the same session — the resume command runs ---
 kill_instance
