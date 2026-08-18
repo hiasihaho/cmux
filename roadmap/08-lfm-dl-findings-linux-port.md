@@ -6,6 +6,15 @@ week — as a measurement target, an agent harness, and an event source. Every
 item below was hit in practice and is reproducible; file/line pointers
 included. Left uncommitted for hias to review and commit.*
 
+**Status (2026-08-18 work-down):** item 1 DONE (`feed.*` verbs live —
+shared CMUXAgentLaunch engine, `feed-smoke.sh` 19 assertions; run the
+feedprobe verifier against a hooked session to confirm end-to-end).
+Item 2 DONE (walk bound 6; `cli-open-smoke.sh` guards it). Item 5:
+file:// parsing DONE (same suite); the exit-0 half did NOT reproduce on
+the current binary (exit is 1) — if your harness still sees 0, capture
+the invocation. Items 3 + 6 tracked in GAPS. Item 4's suggestions
+noted, unactioned.
+
 ## 1. Linux port: `feed.*` verbs unimplemented (blocks the hook-event pipeline)
 
 **Symptom:** `cmux rpc feed.list` → `Error: unknown_method: Method not

@@ -4125,3 +4125,17 @@ jump known/unknown, both invalid_params contracts, and the CLI ingest
 path (`cmux hooks feed`, which no-ops without CMUX_SURFACE_ID — the
 suite impersonates a pane of its own instance; cx scrubs identity on
 purpose). PARITY row added; GAPS row retired same-commit.
+
+## 2026-08-18 — lfm-dl S-fixes: plugin-install fallback walk, `cmux open file://`
+
+Items 2 + 5 of roadmap/08, both shared-CLI: the opencode-plugin repo
+fallback walked at most 4 hops up from the executable while the Linux
+debug binary sits 5 below the repo root (`linux/.build/<triple>/debug/`)
+— bound raised to 6; and `cmux open file:///…` treated the scheme as a
+relative path (`<cwd>/file:///…` not found) — file URLs now decode to
+their filesystem path (empty ones rejected). The reported exit-0-on-
+error did NOT reproduce (current binary exits 1); noted in roadmap/08.
+`cli-open-smoke.sh` (4 assertions, no instance needed) guards all of
+it. macos-verify compile check PENDING — the ultmos VM is offline;
+both changes are portable Foundation code, run the check at the next
+VM boot before any upstream PR.

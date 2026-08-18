@@ -34153,7 +34153,10 @@ export default CMUXSessionRestore;
             }
 
             var current = execDir
-            for _ in 0..<4 {
+            // 6 hops, not 4: the Linux debug binary lives at
+            // linux/.build/<triple>/debug/, which puts the repo root on
+            // hop 5 (roadmap/08 item 2 — the 4-hop walk missed it).
+            for _ in 0..<6 {
                 if current.pathExtension == "app" {
                     appendIfExisting(current.appendingPathComponent("Contents/Resources/opencode-plugin.js", isDirectory: false))
                     break

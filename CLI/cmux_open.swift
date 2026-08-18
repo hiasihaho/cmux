@@ -1471,13 +1471,23 @@ extension CMUXCLI {
     }
 
     private func resolveOpenTarget(_ raw: String) throws -> OpenTarget {
-        if let url = URL(string: raw),
-           let scheme = url.scheme?.lowercased(),
-           scheme == "http" || scheme == "https" {
-            return .url(url.absoluteString, defaultFocus: true)
+        var pathInput = raw
+        if let url = URL(string: raw), let scheme = url.scheme?.lowercased() {
+            if scheme == "http" || scheme == "https" {
+                return .url(url.absoluteString, defaultFocus: true)
+            }
+            // file:// resolves to its filesystem path and continues as a
+            // path open. Without this the scheme was treated as a relative
+            // path ("<cwd>/file:///…" not found — roadmap/08 item 5).
+            if scheme == "file" {
+                guard url.isFileURL, !url.path.isEmpty else {
+                    throw CLIError(message: "Invalid file:// URL: \(raw)")
+                }
+                pathInput = url.path
+            }
         }
 
-        let resolved = resolvePath(raw)
+        let resolved = resolvePath(pathInput)
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: resolved, isDirectory: &isDir) else {
             throw CLIError(message: "Path does not exist: \(resolved)")
