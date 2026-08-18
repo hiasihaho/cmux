@@ -85,6 +85,27 @@ skills/cmux-diagnostics/scripts/cmux-diagnostics --include-context
 - Session store exists but restore does not launch agents: check `terminal.autoResumeAgentSessions` and whether the saved executable still exists on PATH.
 - Settings validation fails: fix the config first. Invalid config can make later symptoms misleading.
 
+## Feed pipeline checks
+
+When agent events are missing from the feed (`cmux rpc feed.list`):
+
+1. `cmux rpc feed.list` answers `unknown_method` → the running instance
+   predates the feed verbs (Linux: 2026-08-18); restart/promote onto the
+   current binary.
+2. Events from a specific agent missing → its hook chain: the generic tap
+   is `... | cmux hooks feed --source <agent>`, which silently prints `{}`
+   outside a cmux pane (no `CMUX_SURFACE_ID`) and on unparseable stdin —
+   fail-open by design. Confirm the pane env and the hook entry exist.
+3. Tool-level / prompt events missing for Claude sessions → the
+   PreToolUse/PostToolUse/UserPromptSubmit entries in
+   `~/.claude/settings.json` (see `skills/cmux-feed`); settings
+   hot-reload, so no restart is needed once present.
+4. Feed empty right after app start → history load may still be running;
+   verbs queue behind it (answers arrive, slightly late).
+5. `<session-stem>-feed.jsonl` absent beside the session file → the
+   instance never persisted (pre-2026-08-18 binary), or the instance is
+   fresh (file appears on first ingest).
+
 ## Rules
 
 - Stay read-only until the user asks to fix something.

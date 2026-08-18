@@ -13,7 +13,14 @@ Item 2 DONE (walk bound 6; `cli-open-smoke.sh` guards it). Item 5:
 file:// parsing DONE (same suite); the exit-0 half did NOT reproduce on
 the current binary (exit is 1) — if your harness still sees 0, capture
 the invocation. Items 3 + 6 tracked in GAPS. Item 4's suggestions
-noted, unactioned.
+noted, unactioned. **Same-evening additions:** feed persistence fixed
+(needed the app-wide MainActor pump — PROGRESS 2026-08-18 late; JSONL
+survives restarts, on-disk payloads redacted per upstream design, the
+opt-in unredacted mode stays a deliberate future decision); Claude
+sessions now stream tool-level + prompt events (settings hooks →
+`cmux hooks feed`); usage patterns documented as the `cmux-feed` skill
+(live via ~/.claude/skills) and measured on the features board
+(features/13).
 
 ## 1. Linux port: `feed.*` verbs unimplemented (blocks the hook-event pipeline)
 
