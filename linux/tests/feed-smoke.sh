@@ -82,6 +82,15 @@ after=$(v2 '{"id":17,"method":"feed.list"}' | jfield "['result']['items'].__len_
 [ "$after" -gt "$before" ] && ok "hooks feed ingests via the CLI" \
     || bad "hooks feed" "item count did not grow ($before -> $after)"
 
+# --- 7b: source fidelity — kimi must not be relabeled --------------------
+# kimi-session bug report 2026-08-18: cmux ships kimi hook support
+# (KimiCodeHookConfig) but WorkstreamSource lacked the case, so
+# `_source: "kimi"` fell back to claude — landing mislabeled, invisible
+# to every source-filtered query (indistinguishable from a drop).
+resp=$(v2 '{"id":18,"method":"feed.push","params":{"event":{"session_id":"kimi-src","hook_event_name":"PreToolUse","_source":"kimi","tool_name":"Bash","tool_input":"{}"}}}')
+expect "kimi push acknowledged" "acknowledged" "$(echo "$resp" | jfield "['result']['status']")"
+expect "kimi source survives (not relabeled)" "kimi" "$(v2 '{"id":19,"method":"feed.list"}' | jfield "['result']['items'][-1]['source']")"
+
 # --- 8: persistence — the JSONL beside the session file ------------------
 # Appends hop through the persistence actor; give the async writes a beat.
 FEEDLOG="${SESSION%.json}-feed.jsonl"
