@@ -22,16 +22,21 @@ MARKER=/tmp/cmux-resumetest-marker
 rm -rf "$FIXDIR" "$STUBDIR"
 rm -f "$MARKER" "$SESSION"
 mkdir -p "$FIXDIR" "$STUBDIR"
-cat > "$STUBDIR/claude" << EOF
+for stub in claude kimi; do
+    cat > "$STUBDIR/$stub" << EOF
 #!/bin/sh
-echo "\$@" > $MARKER
+echo "$stub \$@" > $MARKER
 EOF
-chmod +x "$STUBDIR/claude"
+    chmod +x "$STUBDIR/$stub"
+done
 
 # Instance shells inherit the suite env: the stub claude wins the PATH
 # race, and the fixture store replaces the developer's real ~/.cmuxterm.
 export PATH="$STUBDIR:$PATH"
-INSTANCE_ENV=(CMUX_HOOK_SESSIONS_DIR=$FIXDIR)
+# SHELL=/bin/sh: rc-free shells, so the env PATH (stub first) survives —
+# the real kimi lives in an rc-prepended dir and beat the stub otherwise
+# (found 2026-08-18 when a debug instance popped a real kimi trust prompt).
+INSTANCE_ENV=(CMUX_HOOK_SESSIONS_DIR=$FIXDIR SHELL=/bin/sh)
 
 start_xvfb
 start_instance || exit 2
@@ -41,14 +46,15 @@ SID=$(v2 '{"id":1,"method":"surface.list"}' \
     | python3 -c "import json,sys;print(json.load(sys.stdin)['result']['surfaces'][0]['id'])")
 [ -n "$SID" ] && ok "got the live surface uuid" || bad "surface uuid" "empty"
 
+CUUID="11111111-2222-4333-8444-555555555555"
 cat > "$FIXDIR/claude-hook-sessions.json" << EOF
 {
   "version": 1,
   "sessions": {
-    "ses_smoke1": { "isRestorable": true, "agentLifecycle": "idle", "updatedAt": 100 }
+    "$CUUID": { "isRestorable": true, "agentLifecycle": "idle", "updatedAt": 100 }
   },
   "activeSessionsBySurface": {
-    "$SID": { "sessionId": "ses_smoke1", "updatedAt": 100 }
+    "$SID": { "sessionId": "$CUUID", "updatedAt": 100 }
   },
   "activeSessionsByWorkspace": {}
 }
@@ -68,16 +74,63 @@ done
 if [ "$found" = "yes" ]; then
     ok "stub agent ran on restore"
     expect "resume command carries the recorded session id" \
-        "--resume ses_smoke1" "$(cat "$MARKER")"
+        "claude --resume $CUUID" "$(cat "$MARKER")"
 else
     bad "auto-resume" "marker never appeared (stub claude did not run)"
     bad "resume command" "no marker to inspect"
 fi
 
+# --- phase B2: wrapper-written ses_ ids under claude are skipped --------
+# (2026-08-18: claude-compatible wrappers record ses_<id> shapes through
+# the claude hooks; resuming those with claude --resume would misfire, so
+# only real UUID session ids resume under claude.)
+rm -f "$MARKER"
+kill_instance
+python3 - "$FIXDIR/claude-hook-sessions.json" "$SID" << 'PY'
+import json, sys
+json.dump({
+    "version": 1,
+    "sessions": {"ses_wrapper1": {"isRestorable": True, "agentLifecycle": "idle", "updatedAt": 100}},
+    "activeSessionsBySurface": {sys.argv[2]: {"sessionId": "ses_wrapper1", "updatedAt": 100}},
+    "activeSessionsByWorkspace": {},
+}, open(sys.argv[1], "w"))
+PY
+start_instance || exit 2
+sleep 4
+[ ! -f "$MARKER" ] && ok "non-UUID claude record is skipped" \
+    || bad "claude UUID gate" "resumed a wrapper id: $(cat "$MARKER")"
+
+# --- phase B3: kimi resumes via --session (verified 2026-08-18) ---------
+rm -f "$MARKER" "$FIXDIR/claude-hook-sessions.json"
+kill_instance
+python3 - "$FIXDIR/kimi-hook-sessions.json" "$SID" << 'PY'
+import json, sys
+json.dump({
+    "version": 1,
+    "sessions": {"session_smoke42": {"isRestorable": True, "agentLifecycle": "idle", "updatedAt": 100}},
+    "activeSessionsBySurface": {sys.argv[2]: {"sessionId": "session_smoke42", "updatedAt": 100}},
+    "activeSessionsByWorkspace": {},
+}, open(sys.argv[1], "w"))
+PY
+start_instance || exit 2
+found=""
+for _ in $(seq 1 30); do
+    [ -f "$MARKER" ] && { found=yes; break; }
+    sleep 0.5
+done
+if [ "$found" = "yes" ]; then
+    ok "kimi stub ran on restore"
+    expect "kimi resumes via --session" \
+        "kimi --session session_smoke42" "$(cat "$MARKER")"
+else
+    bad "kimi auto-resume" "marker never appeared"
+    bad "kimi resume command" "no marker to inspect"
+fi
+
 # --- phase C: the setting suppresses it ---------------------------------
 rm -f "$MARKER"
 kill_instance
-INSTANCE_ENV=(CMUX_HOOK_SESSIONS_DIR=$FIXDIR CMUX_AUTO_RESUME=0)
+INSTANCE_ENV=(CMUX_HOOK_SESSIONS_DIR=$FIXDIR SHELL=/bin/sh CMUX_AUTO_RESUME=0)
 start_instance || exit 2
 sleep 4
 [ ! -f "$MARKER" ] && ok "CMUX_AUTO_RESUME=0 suppresses the resume" \

@@ -57,6 +57,10 @@ enum AgentResume {
         case "codebuddy": return "codebuddy --resume \(sessionId)"
         case "factory": return "droid --resume \(sessionId)"
         case "qoder": return "qodercli --resume \(sessionId)"
+        // Verified live by the kimi session (2026-08-18): Kimi Code resumes
+        // with --session (alias -r/--resume); accepts both the current
+        // session_<uuid> and legacy ses_<uuid> id shapes.
+        case "kimi": return "kimi --session \(sessionId)"
         default: return nil
         }
     }
@@ -84,6 +88,12 @@ enum AgentResume {
             guard sessionId.range(
                 of: "^[A-Za-z0-9._-]+$", options: .regularExpression
             ) != nil else { continue }
+            // Real claude session ids are UUIDs. Claude-compatible wrappers
+            // (found 2026-08-18: ses_… ids in the claude store from
+            // ~/lfm-research, absent from every other agent's index) write
+            // their own id shapes through the same hooks — resuming those
+            // with `claude --resume` would misfire, so they are skipped.
+            if agent == "claude", UUID(uuidString: sessionId) == nil { continue }
 
             let record = (root["sessions"] as? [String: Any])?[sessionId] as? [String: Any]
             if let restorable = record?["isRestorable"] as? Bool, !restorable { continue }

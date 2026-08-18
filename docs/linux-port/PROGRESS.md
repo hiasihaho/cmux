@@ -4224,3 +4224,28 @@ promote: the merged fork branch now lives on the remote as
 move only after runtime validation). Cadence: re-merge manaflow main
 into staging opportunistically — measured cost two hunks per 16.8k
 commits.
+
+## 2026-08-18 (later still) — kimi joins auto-resume; two id-shape traps found and gated
+
+The kimi session answered the resume question with a live-verified spec
+(`kimi --session <id>`, alias -r/--resume; both session_<uuid> and
+legacy ses_<uuid> shapes; store under $KIMI_CODE_HOME with a global
+session_index.jsonl) — kimi is now in the resume table
+(agent-resume-smoke 8/8, kimi leg included). Two traps surfaced en
+route:
+
+1. **Wrapper ids in the claude store.** Four ses_… records (cwd
+   ~/lfm-research) sat in claude-hook-sessions.json with VALID
+   transcripts but absent from kimi's own index — some claude-compatible
+   wrapper records its own id shapes through the claude hooks. `claude
+   --resume ses_…` would misfire, so claude records now additionally
+   require UUID session ids (suite leg proves the skip).
+2. **The stub-vs-rc PATH race.** The kimi suite leg failed while claude's
+   passed: spawned shells source rc files which re-prepend real agent
+   dirs (~/.kimi-code/bin) ahead of the suite's stub dir. Diagnosed by
+   the HUMAN: a (mistakenly non-headless) debug instance popped a real
+   kimi trust prompt on the desktop — accidental proof the resume fires
+   end-to-end with the real binary. Suites now spawn rc-free shells
+   (SHELL=/bin/sh in INSTANCE_ENV) so env PATH survives. Also a fresh
+   lesson in the old rule: never hand-roll a probe instance without a
+   display override — it pops on the human's desktop.
