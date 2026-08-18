@@ -5,7 +5,8 @@ Last updated: **2026-08-18** (lfm-dl findings work-down, roadmap/08:
 built on the shared CMUXAgentLaunch WorkstreamStore, `feed-smoke.sh`
 19 green; opencode-plugin install fallback + `cmux open file://` fixed,
 `cli-open-smoke.sh` 4 green. NEEDS PROMOTE to reach the daily. macOS
-compile check of the shared-CLI edits pending (ultmos VM offline).
+compile check GREEN on the revived ultmos VM (flatpak virtqemud
+socket takeover diagnosed + Restart=always hardening, see PROGRESS).
 Standing from 2026-07-24: ghostty fork catch-up compiled on trial
 branch `trial-merge-probe`, runtime validation next — see GAPS.)
 

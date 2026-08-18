@@ -4136,6 +4136,9 @@ relative path (`<cwd>/file:///…` not found) — file URLs now decode to
 their filesystem path (empty ones rejected). The reported exit-0-on-
 error did NOT reproduce (current binary exits 1); noted in roadmap/08.
 `cli-open-smoke.sh` (4 assertions, no instance needed) guards all of
-it. macos-verify compile check PENDING — the ultmos VM is offline;
-both changes are portable Foundation code, run the check at the next
-VM boot before any upstream PR.
+it. macos-verify compile check GREEN same evening (the VM had vanished
+from virt-manager — Field Monitor's flatpak virtqemud had taken over
+the libvirt session socket after the host session daemon exited
+cleanly on Aug 16; evicted, unit restarted, and all four
+virt*-session user units hardened to Restart=always so takeovers
+self-heal. VM definitions were never gone).
