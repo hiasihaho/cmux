@@ -593,6 +593,7 @@ struct TerminalStackWidget: AdwaitaWidget {
         // Mapping used to be what started background shells; with eager
         // realize the replay poll can usually begin before first show.
         TerminalScrollbackStore.replayPendingIfReady()
+        AgentResumeStore.startPendingIfReady()
 
         if let tab = tabs.first(where: { $0.id == selection }) {
             gtk_stack_set_visible_child_name(stack, tab.id.uuidString)
@@ -744,6 +745,7 @@ struct TerminalStackWidget: AdwaitaWidget {
         // Replay restored scrollback. Unlike Ghostty (terminal exists only
         // after first map), a VTE terminal is usable immediately.
         TerminalScrollbackStore.startReplay(surfaceId: leaf.surfaceId)
+        AgentResumeStore.start(surfaceId: leaf.surfaceId)
         connectSignals(for: leaf, in: tab, terminal: terminal, widget: widget, storage: storage)
     }
 

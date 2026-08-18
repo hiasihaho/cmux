@@ -160,6 +160,8 @@ are implemented on both**, 47 are macOS-only, and a further 29 macOS
 | CLI (shared `CLI/cmux.swift`) | ✅ | builds unmodified on Linux; global flags before subcommand |
 | Claude hooks (Stop/Notification → cmux claude-hook) | ✅ | |
 
+| Agent session auto-resume on restore | ✅ | 2026-08-18: restored terminal surfaces whose agent session the shared-CLI hooks recorded get the agent's native resume command typed into the fresh shell (`AgentResume.swift`; per-surface exact matching — surface UUIDs persist in SessionStore v3; readiness-gated delivery mirroring the scrollback replay poll; resumed surfaces skip stale scrollback replay, macOS parity). Setting: `linux.autoResumeAgentSessions` / `CMUX_AUTO_RESUME` (default on; no preferences row yet). Deviations: fixed 13-agent command table only (record's launch command never executed, session ids charset-validated; no approval store/launcher scripts/custom bindings; no agentWasRunning gate). kimi resume command unknown → skipped. `agent-resume-smoke.sh` (5) |
+
 ## Linux-only additions (no macOS counterpart)
 
 Things this port has that macOS cmux does not. Full descriptions and the

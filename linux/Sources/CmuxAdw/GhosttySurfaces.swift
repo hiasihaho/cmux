@@ -150,6 +150,7 @@ enum GhosttySurfaceFactory {
         // Replay saved screen text once the shell is actually up — the
         // surface has no terminal until it is first mapped.
         TerminalScrollbackStore.startReplay(surfaceId: leaf.surfaceId)
+        AgentResumeStore.start(surfaceId: leaf.surfaceId)
 
         let tabId = tab.id
         let surfaceId = leaf.surfaceId

@@ -2940,25 +2940,10 @@ struct ControlCommandHandler {
         ])
     }
 
-    /// Raw PTY write dispatched by surface kind (VTE feed / ghostty shim).
-    /// Returns nil on success.
+    /// Raw PTY write dispatched by surface kind. One shared mutation path
+    /// with agent auto-resume (AgentResumeStore) — see surfacePTYWrite.
     private func sendBytes(_ text: String, to surfaceId: UUID) -> (code: String, message: String)? {
-        #if canImport(CGhosttyEmbed)
-        if SurfaceRegistry.shared.ghostty(for: surfaceId) != nil {
-            if SurfaceRegistry.shared.ghosttyChildExited(for: surfaceId) {
-                return ("unavailable", "Surface shell has exited")
-            }
-            guard SurfaceRegistry.shared.ghosttySendText(text, to: surfaceId) else {
-                return ("unavailable", "Surface shell not running yet (select its workspace to start it)")
-            }
-            return nil
-        }
-        #endif
-        guard let terminal = SurfaceRegistry.shared.terminal(for: surfaceId) else {
-            return ("not_found", "Surface not found")
-        }
-        feed(terminal, text)
-        return nil
+        surfacePTYWrite(text, to: surfaceId)
     }
 
     private func v2SurfaceSendKey(id: Any?, params: [String: Any]) -> String {
@@ -3342,4 +3327,32 @@ struct ControlCommandHandler {
             return copy
         }
     }
+}
+
+
+/// Raw PTY write dispatched by surface kind (VTE feed / ghostty shim).
+/// Returns nil on success. Shared by the send verbs and agent auto-resume
+/// so typed input has exactly one path per backend.
+func surfacePTYWrite(_ text: String, to surfaceId: UUID) -> (code: String, message: String)? {
+    #if canImport(CGhosttyEmbed)
+    if SurfaceRegistry.shared.ghostty(for: surfaceId) != nil {
+        if SurfaceRegistry.shared.ghosttyChildExited(for: surfaceId) {
+            return ("unavailable", "Surface shell has exited")
+        }
+        guard SurfaceRegistry.shared.ghosttySendText(text, to: surfaceId) else {
+            return ("unavailable", "Surface shell not running yet (select its workspace to start it)")
+        }
+        return nil
+    }
+    #endif
+    guard let terminal = SurfaceRegistry.shared.terminal(for: surfaceId) else {
+        return ("not_found", "Surface not found")
+    }
+    let bytes = Array(text.utf8)
+    bytes.withUnsafeBufferPointer { buffer in
+        buffer.baseAddress!.withMemoryRebound(to: CChar.self, capacity: bytes.count) {
+            vte_terminal_feed_child(terminal, $0, bytes.count)
+        }
+    }
+    return nil
 }

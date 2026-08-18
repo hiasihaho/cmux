@@ -357,10 +357,16 @@ enum SessionStore {
                     }
                 } else {
                     kind = .terminal
+                    // Agent auto-resume wins over scrollback replay
+                    // (macOS parity: the resumed agent redraws; replaying
+                    // stale prompts under it is the documented anti-goal).
+                    if let resume = AgentResume.resumeCommand(surfaceId: id) {
+                        AgentResumeStore.pending[id] = resume
+                    }
                     // Sessions written before scrollback moved out of band
                     // still carry it inline; prefer the file, keep the
                     // fallback so nothing is lost on the first upgrade.
-                    if let text = ScrollbackStore.read(for: id) ?? entry.scrollback,
+                    else if let text = ScrollbackStore.read(for: id) ?? entry.scrollback,
                        !text.isEmpty {
                         TerminalScrollbackStore.pending[id] = text
                     }

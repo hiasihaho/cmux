@@ -105,6 +105,19 @@ enum LinuxSettings {
         return TerminalScrollback.maxCharacters
     }
 
+    /// Resume recorded agent sessions in restored terminals (the macOS
+    /// `terminal.autoResumeAgentSessions` behavior; see AgentResume.swift).
+    /// Env: CMUX_AUTO_RESUME (0/false disables). Key: linux.autoResumeAgentSessions.
+    static var autoResumeAgentSessions: Bool {
+        if let raw = ProcessInfo.processInfo.environment["CMUX_AUTO_RESUME"] {
+            return !(raw == "0" || raw.lowercased() == "false")
+        }
+        if let value = linuxSection()["autoResumeAgentSessions"] as? Bool {
+            return value
+        }
+        return true
+    }
+
     /// Search URL template for non-URL text in the browser address bar;
     /// `%s` is replaced with the query.
     /// Env: CMUX_SEARCH_URL. Key: linux.searchUrl.

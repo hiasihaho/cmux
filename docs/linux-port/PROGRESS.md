@@ -4198,3 +4198,29 @@ the enum's own doc says callers should persist the raw string, which
 the store does not; upstream-relevant observation. macos-verify:
 PENDING (VM off) — enum-case addition, all found switches carry
 `default:`, run at next VM boot.
+
+## 2026-08-18 (late night) — auto-resume: promotes now bring agents back mid-conversation
+
+The macOS `terminal.autoResumeAgentSessions` feature, ported
+(features/14, PARITY row, `agent-resume-smoke.sh` 5/5 first run). The
+port was cheap because both halves already existed: the shared-CLI
+hooks have been RECORDING sessions on Linux all along
+(`~/.cmuxterm/<agent>-hook-sessions.json` v1,
+`activeSessionsBySurface[<uuid>]` → session id + restorable/lifecycle
+records), and SessionStore v3 persists surface UUIDs — so matching is
+per-surface exact. New: `AgentResume.swift` (resolver + a
+readiness-gated delivery store cloned from the scrollback-replay
+pattern), `surfacePTYWrite` extracted as the single typed-input path
+(shared-behavior rule), `linux.autoResumeAgentSessions` /
+`CMUX_AUTO_RESUME` setting, resume-wins-over-replay in restoreV3.
+Security posture: fixed 13-agent command table, ids charset-validated,
+the record's own launch command never executed. Suite trick worth
+reusing: `CMUX_HOOK_SESSIONS_DIR` fixture store + a stub agent binary
+on the instance's PATH proves the typed command end-to-end.
+
+Same session, the ghostty git tension resolved by decoupling push from
+promote: the merged fork branch now lives on the remote as
+`linux-gtk-embed-next` (staging; `linux-gtk-embed` + submodule pointer
+move only after runtime validation). Cadence: re-merge manaflow main
+into staging opportunistically — measured cost two hunks per 16.8k
+commits.
