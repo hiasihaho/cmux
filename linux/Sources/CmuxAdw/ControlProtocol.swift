@@ -398,6 +398,8 @@ struct ControlCommandHandler {
             return v2BrowserCookiesSet(id: id, params: params, respond: respond)
         case "browser.cookies.clear":
             return v2BrowserCookiesClear(id: id, params: params, respond: respond)
+        case "feed.push":
+            return v2FeedPush(id: id, params: params, respond: respond)
         default:
             break
         }
@@ -706,6 +708,16 @@ struct ControlCommandHandler {
             notifications.wrappedValue.removeAll()
             clearAllAttention()
             return v2Ok(id: id, result: ["cleared": true])
+        case "feed.list":
+            return v2FeedList(id: id, params: params)
+        case "feed.jump":
+            return v2FeedJump(id: id, params: params)
+        case "feed.permission.reply":
+            return v2FeedPermissionReply(id: id, params: params)
+        case "feed.question.reply":
+            return v2FeedQuestionReply(id: id, params: params)
+        case "feed.exit_plan.reply":
+            return v2FeedExitPlanReply(id: id, params: params)
         default:
             return v2Error(
                 id: id,

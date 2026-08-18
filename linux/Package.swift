@@ -61,7 +61,9 @@ let package = Package(
             dependencies: [
                 "CVte",
                 "CWebKit",
-                .product(name: "Adwaita", package: "adwaita-swift")
+                .product(name: "Adwaita", package: "adwaita-swift"),
+                // Shared workstream (Feed) engine — same model the macOS app uses.
+                .product(name: "CMUXAgentLaunch", package: "CMUXAgentLaunch")
             ] + (ghosttyEmbed ? ["CGhosttyEmbed"] : []),
             path: "Sources/CmuxAdw",
             swiftSettings: [.swiftLanguageMode(.v5)]

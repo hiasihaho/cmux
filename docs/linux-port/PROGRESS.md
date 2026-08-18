@@ -4098,3 +4098,30 @@ its GAPS row stands. Runtime validation (scratch instance on the new
 .so) is the remaining gate before the fork push and submodule pointer
 move; then the null renderer (POC-0003 increment 2) lands on a settled
 fork.
+
+## 2026-08-18 — feed verbs land: the agent-hook event pipeline works on Linux
+
+First item of the lfm-dl field report (roadmap/08). The discovery that
+made it an M instead of an L: the ENTIRE workstream engine —
+`WorkstreamStore`, `WorkstreamEvent`, `WorkstreamItem`, ring buffer,
+JSONL persistence — lives in `CMUXAgentLaunch`, one of the four shared
+packages the Linux CLI has compiled since the port began. The macOS Feed
+and the Linux port now run the *same* ingest/correlation code; the port
+only added composition: `linux/Sources/CmuxAdw/Feed.swift` (FeedService
++ a faithful mirror of `FeedSocketEncoding`) and six dispatcher cases.
+
+Design note: blocking `feed.push` (request_id + wait_timeout_seconds)
+is a main-loop timeout + deferred respond on Linux — macOS parks a
+socket-worker thread on a semaphore, which on GTK would freeze the main
+loop. Same wire contract (`acknowledged`/`resolved` with decision/
+`timed_out` + item expiry); the reply verbs resolve the store even when
+no waiter exists, mirroring `deliverReply`. Feed JSONL sits beside the
+session file (`<stem>-feed.jsonl`) per the scrollback isolation lesson.
+
+`feed-smoke.sh`: 19 assertions — telemetry + actionable ingest, both
+event forms, pending_only, reply→resolved with decision, blocking push
+resolved live by a reply from a second connection, timeout→expired,
+jump known/unknown, both invalid_params contracts, and the CLI ingest
+path (`cmux hooks feed`, which no-ops without CMUX_SURFACE_ID — the
+suite impersonates a pane of its own instance; cx scrubs identity on
+purpose). PARITY row added; GAPS row retired same-commit.
