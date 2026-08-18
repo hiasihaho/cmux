@@ -51,6 +51,9 @@ enum AgentResume {
         case "cursor": return "cursor-agent --resume \(sessionId)"
         case "amp": return "amp threads continue \(sessionId)"
         case "copilot": return "copilot --resume \(sessionId)"
+        // The FLAG, never the subcommand: `hermes resume` (no dashes) lifts
+        // the emergency stop set by `hermes pause` — a dangerous confusable
+        // (verified against hermes --help, 2026-08-18).
         case "hermes-agent": return "hermes --resume \(sessionId)"
         case "grok": return "grok -r \(sessionId)"
         case "pi": return "pi --session \(sessionId)"
