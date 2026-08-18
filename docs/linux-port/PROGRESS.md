@@ -4249,3 +4249,24 @@ route:
    (SHELL=/bin/sh in INSTANCE_ENV) so env PATH survives. Also a fresh
    lesson in the old rule: never hand-roll a probe instance without a
    display override — it pops on the human's desktop.
+
+## 2026-08-18 (post-promote) — auto-resume's first production run; kimi closed the loop
+
+The promote worked as designed: the Claude sessions (this one included)
+came back mid-conversation with nobody typing anything — auto-resume's
+first production run carried the session that built it. Kimi restored
+as a plain shell exactly as predicted (no hook records), which was
+fixed live: `cmux hooks setup kimi --yes` (+ codex), then the lost kimi
+session resumed by socket-typing `kimi --continue` into its pane.
+
+That immediately surfaced the next real-world shape: kimi's fresh hooks
+write the session RECORD (with surfaceId) before filling
+`activeSessionsBySurface` — the only key the resolver read. Fix
+red-first (agent-resume-smoke 10/10): the resolver now falls back to
+scanning records by their surfaceId field, newest updatedAt wins. Also
+learned: v1 `cmux send` types literally — a trailing `\n` (unescaped to
+CR) is needed to actually execute a typed command.
+
+Recording coverage after tonight: claude, opencode, hermes-agent, kimi,
+codex (fresh installs for the last two). The NEXT promote is the first
+where kimi survives.

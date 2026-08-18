@@ -78,11 +78,28 @@ enum AgentResume {
         for file in files where file.lastPathComponent.hasSuffix("-hook-sessions.json") {
             let agent = String(file.lastPathComponent.dropLast("-hook-sessions.json".count))
             guard let data = try? Data(contentsOf: file),
-                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let active = root["activeSessionsBySurface"] as? [String: Any],
-                  let entry = active[surfaceId.uuidString] as? [String: Any],
-                  let sessionId = entry["sessionId"] as? String
+                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             else { continue }
+            let sessions = root["sessions"] as? [String: Any] ?? [:]
+            // Primary: the per-surface index. Fallback: scan session
+            // records by their surfaceId field — some writers (kimi's
+            // SessionStart, observed 2026-08-18) create the record before
+            // filling the index; newest updatedAt wins.
+            var sessionId: String?
+            if let active = root["activeSessionsBySurface"] as? [String: Any],
+               let entry = active[surfaceId.uuidString] as? [String: Any],
+               let indexed = entry["sessionId"] as? String {
+                sessionId = indexed
+            } else {
+                var newest = -Double.infinity
+                for (sid, raw) in sessions {
+                    guard let rec = raw as? [String: Any],
+                          rec["surfaceId"] as? String == surfaceId.uuidString else { continue }
+                    let updated = (rec["updatedAt"] as? Double) ?? 0
+                    if updated > newest { newest = updated; sessionId = sid }
+                }
+            }
+            guard let sessionId else { continue }
             // The id is typed into a live shell: strict charset, no
             // metacharacters, regardless of what the store claims.
             guard sessionId.range(
@@ -95,13 +112,12 @@ enum AgentResume {
             // with `claude --resume` would misfire, so they are skipped.
             if agent == "claude", UUID(uuidString: sessionId) == nil { continue }
 
-            let record = (root["sessions"] as? [String: Any])?[sessionId] as? [String: Any]
+            let record = sessions[sessionId] as? [String: Any]
             if let restorable = record?["isRestorable"] as? Bool, !restorable { continue }
             if let lifecycle = record?["agentLifecycle"] as? String, lifecycle == "ended" { continue }
             guard let command = command(agent: agent, sessionId: sessionId) else { continue }
 
-            let updated = (entry["updatedAt"] as? Double)
-                ?? (record?["updatedAt"] as? Double) ?? 0
+            let updated = (record?["updatedAt"] as? Double) ?? 0
             if best == nil || updated > best!.updated {
                 best = (updated, command)
             }
