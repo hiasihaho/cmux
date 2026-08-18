@@ -1,6 +1,15 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-07-24 ~20:00** (POC-0003 increment 1 EXECUTED:
+Last updated: **2026-08-18** (lfm-dl findings work-down, roadmap/08:
+`feed.*` verbs LIVE on Linux — the agent-hook event pipeline works,
+built on the shared CMUXAgentLaunch WorkstreamStore, `feed-smoke.sh`
+19 green; opencode-plugin install fallback + `cmux open file://` fixed,
+`cli-open-smoke.sh` 4 green. NEEDS PROMOTE to reach the daily. macOS
+compile check of the shared-CLI edits pending (ultmos VM offline).
+Standing from 2026-07-24: ghostty fork catch-up compiled on trial
+branch `trial-merge-probe`, runtime validation next — see GAPS.)
+
+Previous update: **2026-07-24 ~20:00** (POC-0003 increment 1 EXECUTED:
 the full macOS app builds on the GPU-less Intel VM — Xcode 16.4 +
 swift.org 6.2.3 hybrid, `macos-verify/build-app.sh` — and RUNS
 headless: socket up, auth enforced, surfaces degrade exactly as
