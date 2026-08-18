@@ -127,6 +127,37 @@ else
     bad "kimi resume command" "no marker to inspect"
 fi
 
+# --- phase B4: record-only stores (kimi SessionStart shape) -------------
+# Kimi's hook writer creates the session record (with surfaceId) BEFORE
+# filling activeSessionsBySurface — observed live 2026-08-18 right after
+# hook install. The resolver must fall back to scanning records.
+rm -f "$MARKER"
+kill_instance
+python3 - "$FIXDIR/kimi-hook-sessions.json" "$SID" << 'PY'
+import json, sys
+json.dump({
+    "version": 1,
+    "sessions": {"session_recordonly7": {
+        "surfaceId": sys.argv[2], "agentLifecycle": "unknown", "updatedAt": 100}},
+    "activeSessionsBySurface": {},
+    "activeSessionsByWorkspace": {},
+}, open(sys.argv[1], "w"))
+PY
+start_instance || exit 2
+found=""
+for _ in $(seq 1 30); do
+    [ -f "$MARKER" ] && { found=yes; break; }
+    sleep 0.5
+done
+if [ "$found" = "yes" ]; then
+    ok "record-only store resumes via surfaceId fallback"
+    expect "record-only resume carries the session id" \
+        "kimi --session session_recordonly7" "$(cat "$MARKER")"
+else
+    bad "record-only fallback" "marker never appeared"
+    bad "record-only command" "no marker to inspect"
+fi
+
 # --- phase C: the setting suppresses it ---------------------------------
 rm -f "$MARKER"
 kill_instance
