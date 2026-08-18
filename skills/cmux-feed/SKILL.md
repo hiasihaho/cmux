@@ -73,6 +73,31 @@ cmux rpc feed.push '{"event":{"session_id":"s1","hook_event_name":"PreToolUse","
 top-level `prompt` key is silently ignored on raw pushes (only the
 `cmux hooks feed` path maps agent hook JSON into the right fields).
 
+## Messaging sessions: feed as mailbox, prompt as doorbell
+
+To inform or task another agent session (proven pattern, 2026-08-18):
+
+1. **Post durably**: `feed.push` a `UserPromptSubmit` event with the
+   message in `tool_input` (`{"prompt": "..."}`), `session_id` set to a
+   stable per-target workstream (`announce-<target>`). It survives
+   restarts; the target reads it whenever it looks. Follow-ups go into
+   the SAME workstream so the thread accumulates.
+2. **Ring the doorbell**: type a short read-request into the target's
+   pane — `cmux send --workspace <ws> '<one-liner: read announce-… via
+   cmux rpc feed.list>'` then `cmux send-key --workspace <ws> Enter`.
+   TEXT AND ENTER ARE SEPARATE SENDS: a trailing `\n` becomes a newline
+   INSIDE modern TUI input boxes, leaving the prompt typed but never
+   submitted.
+3. **Check the recipient is alive first** (`read-screen` its pane): a
+   nudge typed at a dead prompt goes nowhere. Agents that exited can be
+   revived first (their resume command), then nudged.
+4. The target reads with its own hands (`cmux rpc feed.list`, filter its
+   workstream) and replies the same way — or through the human when it
+   has no socket access.
+
+This is the pull-channel + doorbell composition; for blocking
+approvals use the decision flow above instead.
+
 ## Decision flows: approve/reject over the socket
 
 Actionable events (`PermissionRequest`, `AskUserQuestion`, `ExitPlanMode`)

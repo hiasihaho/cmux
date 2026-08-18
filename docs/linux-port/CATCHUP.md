@@ -1,6 +1,19 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-08-18** (lfm-dl findings work-down, roadmap/08:
+Last updated: **2026-08-18 late** (the agent-fleet session: feed
+pipeline + persistence + tool-level capture LIVE and promote-proven;
+AGENT AUTO-RESUME landed and carried the fleet across two promotes
+(claude ×2, kimi, opencode ×3 — 14-agent command table, UUID gate for
+claude, record-fallback for kimi-shaped stores, hermes --resume-flag
+confusable pinned); `debug.resume_plan` + `linux/scripts/resume-audit.sh`
+as the drift-proof coverage instrument; the feed doubles as an
+inter-session channel (announce workstreams + prompt-typed nudges —
+pattern in the cmux-feed skill, incl. the tool_input text rule and
+text-then-Enter delivery). Suites: feed-smoke 24, agent-resume-smoke 11,
+cli-open-smoke 4. Ghostty merge staged on the fork as
+`linux-gtk-embed-next`. Earlier same day below.)
+
+Previous update: **2026-08-18** (lfm-dl findings work-down, roadmap/08:
 `feed.*` verbs LIVE on Linux — the agent-hook event pipeline works,
 built on the shared CMUXAgentLaunch WorkstreamStore, `feed-smoke.sh`
 19 green; opencode-plugin install fallback + `cmux open file://` fixed,
