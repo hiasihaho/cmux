@@ -78,5 +78,28 @@ after=$(v2 '{"id":17,"method":"feed.list"}' | jfield "['result']['items'].__len_
 [ "$after" -gt "$before" ] && ok "hooks feed ingests via the CLI" \
     || bad "hooks feed" "item count did not grow ($before -> $after)"
 
+# --- 8: persistence — the JSONL beside the session file ------------------
+# Appends hop through the persistence actor; give the async writes a beat.
+FEEDLOG="${SESSION%.json}-feed.jsonl"
+sleep 1
+if [ -f "$FEEDLOG" ]; then
+    ok "feed JSONL exists beside the session file"
+    lines=$(wc -l < "$FEEDLOG")
+    [ "$lines" -ge 8 ] && ok "JSONL holds the ingested items ($lines lines)" \
+        || bad "JSONL line count" "expected >= 8, got $lines"
+    if python3 -c "
+import json,sys
+[json.loads(l) for l in open('$FEEDLOG') if l.strip()]
+" 2>/dev/null; then
+        ok "JSONL lines parse as items"
+    else
+        bad "JSONL parse" "invalid JSON line in $FEEDLOG"
+    fi
+else
+    bad "feed persistence" "no JSONL at $FEEDLOG"
+    bad "JSONL line count" "file missing"
+    bad "JSONL parse" "file missing"
+fi
+
 rm -f "$blockout"
 finish
