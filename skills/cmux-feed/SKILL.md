@@ -68,7 +68,10 @@ cmux rpc feed.push '{"event":{"session_id":"s1","hook_event_name":"PreToolUse","
 ```
 
 `event` object or the same keys top-level; `session_id`,
-`hook_event_name`, `_source` are required.
+`hook_event_name`, `_source` are required. **Text rides in `tool_input`**
+(a raw string, or JSON with a `prompt`/`text`/`message` key) — a
+top-level `prompt` key is silently ignored on raw pushes (only the
+`cmux hooks feed` path maps agent hook JSON into the right fields).
 
 ## Decision flows: approve/reject over the socket
 
