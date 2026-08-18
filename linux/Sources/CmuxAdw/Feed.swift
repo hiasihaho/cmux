@@ -45,6 +45,20 @@ final class FeedService {
     }
     private var waiters: [String: Waiter] = [:]
 
+    /// True once `store.start()` has loaded persisted history. Verbs that
+    /// touch the store queue behind this: `start()` ASSIGNS the loaded page
+    /// to `store.items`, so an ingest racing the load would be clobbered
+    /// (seen as feed-smoke leg 1 losing its push once the MainActor pump
+    /// made start() actually run).
+    private(set) var ready = false
+    private var pendingUntilReady: [() -> Void] = []
+
+    /// Runs `action` now if history load finished, else queues it (FIFO)
+    /// until it does. All feed verbs route through this.
+    func whenReady(_ action: @escaping () -> Void) {
+        if ready { action() } else { pendingUntilReady.append(action) }
+    }
+
     private init() {
         // Beside the session file, per instance — scoped to the session
         // FILE like scrollback (`<stem>-feed.jsonl`), so suites and dev
@@ -57,8 +71,14 @@ final class FeedService {
             persistence: WorkstreamPersistence(fileURL: logURL)
         )
         self.store = store
-        // Loads the persisted history page; live ingest works regardless.
-        Task { @MainActor in await store.start() }
+        // Loads the persisted history page, then releases queued verbs.
+        Task { @MainActor in
+            await store.start()
+            self.ready = true
+            let queued = self.pendingUntilReady
+            self.pendingUntilReady = []
+            for action in queued { action() }
+        }
     }
 
     // MARK: push
@@ -351,72 +371,101 @@ extension ControlCommandHandler {
         }
 
         MainActor.assumeIsolated {
-            FeedService.shared.push(event: event, waitTimeoutSeconds: waitTimeout) { payload in
-                respond(v2Ok(id: id, result: payload))
+            FeedService.shared.whenReady {
+                FeedService.shared.push(event: event, waitTimeoutSeconds: waitTimeout) { payload in
+                    respond(v2Ok(id: id, result: payload))
+                }
             }
         }
     }
 
-    func v2FeedList(id: Any?, params: [String: Any]) -> String {
+    func v2FeedList(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
         // Only a real JSON boolean counts (macOS legacy `as? Bool` behavior).
         let pendingOnly = (params["pending_only"] as? Bool) ?? false
-        let items = MainActor.assumeIsolated {
-            FeedService.shared.list(pendingOnly: pendingOnly)
+        MainActor.assumeIsolated {
+            FeedService.shared.whenReady {
+                let items = MainActor.assumeIsolated {
+                    FeedService.shared.list(pendingOnly: pendingOnly)
+                }
+                respond(v2Ok(id: id, result: ["items": items]))
+            }
         }
-        return v2Ok(id: id, result: ["items": items])
     }
 
-    func v2FeedJump(id: Any?, params: [String: Any]) -> String {
+    func v2FeedJump(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
         guard let workstreamID = params["workstream_id"] as? String else {
-            return v2Error(id: id, code: "invalid_params", message: "feed.jump requires workstream_id")
+            respond(v2Error(id: id, code: "invalid_params", message: "feed.jump requires workstream_id"))
+            return
         }
-        let matched = MainActor.assumeIsolated {
-            FeedService.shared.isKnownWorkstream(workstreamID)
+        MainActor.assumeIsolated {
+            FeedService.shared.whenReady {
+                let matched = MainActor.assumeIsolated {
+                    FeedService.shared.isKnownWorkstream(workstreamID)
+                }
+                respond(v2Ok(id: id, result: ["workstream_id": workstreamID, "matched": matched]))
+            }
         }
-        return v2Ok(id: id, result: ["workstream_id": workstreamID, "matched": matched])
     }
 
-    func v2FeedPermissionReply(id: Any?, params: [String: Any]) -> String {
+    func v2FeedPermissionReply(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
         guard let requestId = params["request_id"] as? String else {
-            return v2Error(id: id, code: "invalid_params", message: "feed.permission.reply requires request_id")
+            respond(v2Error(id: id, code: "invalid_params", message: "feed.permission.reply requires request_id"))
+            return
         }
         guard let modeRaw = params["mode"] as? String,
               let mode = WorkstreamPermissionMode(rawValue: modeRaw)
         else {
-            return v2Error(id: id, code: "invalid_params", message: "feed.permission.reply requires mode ∈ once|always|all|bypass|deny")
+            respond(v2Error(id: id, code: "invalid_params", message: "feed.permission.reply requires mode ∈ once|always|all|bypass|deny"))
+            return
         }
         MainActor.assumeIsolated {
-            FeedService.shared.deliverReply(requestId: requestId, decision: .permission(mode))
+            FeedService.shared.whenReady {
+                MainActor.assumeIsolated {
+                    FeedService.shared.deliverReply(requestId: requestId, decision: .permission(mode))
+                }
+                respond(v2Ok(id: id, result: ["delivered": true]))
+            }
         }
-        return v2Ok(id: id, result: ["delivered": true])
     }
 
-    func v2FeedQuestionReply(id: Any?, params: [String: Any]) -> String {
+    func v2FeedQuestionReply(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
         guard let requestId = params["request_id"] as? String else {
-            return v2Error(id: id, code: "invalid_params", message: "feed.question.reply requires request_id")
+            respond(v2Error(id: id, code: "invalid_params", message: "feed.question.reply requires request_id"))
+            return
         }
         guard let selections = params["selections"] as? [String] else {
-            return v2Error(id: id, code: "invalid_params", message: "feed.question.reply requires selections: [string]")
+            respond(v2Error(id: id, code: "invalid_params", message: "feed.question.reply requires selections: [string]"))
+            return
         }
         MainActor.assumeIsolated {
-            FeedService.shared.deliverReply(requestId: requestId, decision: .question(selections: selections))
+            FeedService.shared.whenReady {
+                MainActor.assumeIsolated {
+                    FeedService.shared.deliverReply(requestId: requestId, decision: .question(selections: selections))
+                }
+                respond(v2Ok(id: id, result: ["delivered": true]))
+            }
         }
-        return v2Ok(id: id, result: ["delivered": true])
     }
 
-    func v2FeedExitPlanReply(id: Any?, params: [String: Any]) -> String {
+    func v2FeedExitPlanReply(id: Any?, params: [String: Any], respond: @escaping (String) -> Void) {
         guard let requestId = params["request_id"] as? String else {
-            return v2Error(id: id, code: "invalid_params", message: "feed.exit_plan.reply requires request_id")
+            respond(v2Error(id: id, code: "invalid_params", message: "feed.exit_plan.reply requires request_id"))
+            return
         }
         guard let modeRaw = params["mode"] as? String,
               let mode = WorkstreamExitPlanMode(rawValue: modeRaw)
         else {
-            return v2Error(id: id, code: "invalid_params", message: "feed.exit_plan.reply requires mode ∈ ultraplan|bypassPermissions|autoAccept|manual|deny")
+            respond(v2Error(id: id, code: "invalid_params", message: "feed.exit_plan.reply requires mode ∈ ultraplan|bypassPermissions|autoAccept|manual|deny"))
+            return
         }
         let feedback = params["feedback"] as? String
         MainActor.assumeIsolated {
-            FeedService.shared.deliverReply(requestId: requestId, decision: .exitPlan(mode, feedback: feedback))
+            FeedService.shared.whenReady {
+                MainActor.assumeIsolated {
+                    FeedService.shared.deliverReply(requestId: requestId, decision: .exitPlan(mode, feedback: feedback))
+                }
+                respond(v2Ok(id: id, result: ["delivered": true]))
+            }
         }
-        return v2Ok(id: id, result: ["delivered": true])
     }
 }

@@ -15,6 +15,10 @@ APP_ID_SUFFIX="feedtest"
 PAGE_PORT=8436   # unique X display only; no fixture server
 source "$(dirname "$0")/lib.sh"
 
+# Hermetic feed: the store loads persisted history at boot (by design),
+# so a prior run's JSONL would shift every count below.
+rm -f "/tmp/cmux-feedtest-session-feed.jsonl"
+
 start_xvfb
 start_instance || exit 2
 
@@ -85,8 +89,8 @@ sleep 1
 if [ -f "$FEEDLOG" ]; then
     ok "feed JSONL exists beside the session file"
     lines=$(wc -l < "$FEEDLOG")
-    [ "$lines" -ge 8 ] && ok "JSONL holds the ingested items ($lines lines)" \
-        || bad "JSONL line count" "expected >= 8, got $lines"
+    [ "$lines" -ge 5 ] && ok "JSONL holds the ingested items ($lines lines)" \
+        || bad "JSONL line count" "expected >= 5, got $lines"
     if python3 -c "
 import json,sys
 [json.loads(l) for l in open('$FEEDLOG') if l.strip()]

@@ -4142,3 +4142,39 @@ the libvirt session socket after the host session daemon exited
 cleanly on Aug 16; evicted, unit restarted, and all four
 virt*-session user units hardened to Restart=always so takeovers
 self-heal. VM definitions were never gone).
+
+## 2026-08-18 (late) — the MainActor executor never ran: feed persistence fix uncovers an app-wide trap
+
+The "feed JSONL never writes" gap (same evening's discovery) had a root
+cause far bigger than the feed: **cmux-adw never drained the MainActor
+executor.** Swift Concurrency enqueues MainActor work onto libdispatch's
+main queue; only `dispatch_main()`/RunLoop pumping services that queue,
+and the GTK main loop does neither — so every `Task {}` created in
+MainActor context was queued forever. Nothing noticed for a month
+because the feed was the FIRST CmuxAdw code to use Swift Concurrency at
+all (everything else is GLib-callback-shaped). Fix:
+`CmuxApp.installMainActorPump()` — a 20 ms `scheduleOnMainLoop` tick
+calling `RunLoop.main.run(until: Date())`, one non-blocking pass on the
+GTK thread. TRAP for the ledger: on this app, `Task { @MainActor … }`
+was a silent no-op before this; if MainActor code ever "does nothing",
+check the pump first.
+
+The pump immediately exposed a second latent bug: `store.start()`
+(history load) now actually ran — and its `items = page.items`
+assignment CLOBBERS any event ingested before the load completes
+(feed-smoke leg 1 lost its push to the race). Upstream orders start
+before socket accept; the Linux mirror is a readiness gate:
+`FeedService.whenReady` queues all six feed verbs (now uniformly
+respond-shaped) until the history load finishes — deterministic, no
+upstream changes, no boot coupling.
+
+Red-first honored: 3 persistence legs committed failing (`1b00940887`),
+then the fix. feed-smoke 22/22; pump side effects sampled clean
+(dock-smoke 8, browser-navigation 14). Suite made hermetic: the store
+LOADS history at boot by design, so feed-smoke now removes its own
+JSONL first — run 2's "failures" were yesterday's history restoring
+correctly. Restart-persistence is thereby covered implicitly: run N
+sees run N−1's items unless cleaned. Persisted payloads follow
+upstream's redaction (tool inputs/results redacted, prompts kept) —
+the opt-in unredacted mode remains a deliberate future decision
+(lfm-dl ask, roadmap/08).

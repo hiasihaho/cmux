@@ -21,7 +21,25 @@ struct CmuxApp: App {
     @State private var dockVisible = false
     @State private var tabCounter = 1
 
+    /// Drains the MainActor executor from the GLib loop. Swift Concurrency
+    /// enqueues MainActor work onto libdispatch's main queue, which only
+    /// `dispatch_main()`/RunLoop pumping services — the GTK main loop never
+    /// does, so without this every `Task {}` created in MainActor context
+    /// (and every hop back to `@MainActor`) is queued forever. Found via
+    /// the feed's silently-dead JSONL persistence (GAPS 2026-08-18); fixes
+    /// MainActor concurrency app-wide. A 20 ms tick bounds the latency and
+    /// costs nothing when the queue is empty; `run(until:)` executes one
+    /// non-blocking pass on this same thread.
+    private static func installMainActorPump() {
+        func tick() {
+            RunLoop.main.run(until: Date())
+            scheduleOnMainLoop(afterMs: 20) { tick() }
+        }
+        scheduleOnMainLoop(afterMs: 20) { tick() }
+    }
+
     init() {
+        Self.installMainActorPump()
         if let restored = SessionStore.restore() {
             _tabs.rawValue = restored.tabs
             _selection.rawValue = restored.selection
