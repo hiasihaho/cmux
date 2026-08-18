@@ -88,9 +88,12 @@ To inform or task another agent session (proven pattern, 2026-08-18):
    TEXT AND ENTER ARE SEPARATE SENDS: a trailing `\n` becomes a newline
    INSIDE modern TUI input boxes, leaving the prompt typed but never
    submitted.
-3. **Check the recipient is alive first** (`read-screen` its pane): a
-   nudge typed at a dead prompt goes nowhere. Agents that exited can be
-   revived first (their resume command), then nudged.
+3. **Check the recipient is alive AND idle first** (`read-screen` its
+   pane): a nudge typed at a dead prompt goes nowhere, and one typed
+   during an ACTIVE turn queues as an unsubmitted draft (Enter becomes a
+   newline inside it). Wait for the turn to finish — screen-stability
+   between two reads is a workable idle heuristic — then send Enter.
+   Agents that exited can be revived first (their resume command).
 4. The target reads with its own hands (`cmux rpc feed.list`, filter its
    workstream) and replies the same way — or through the human when it
    has no socket access.
