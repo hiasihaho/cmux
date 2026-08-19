@@ -4410,3 +4410,22 @@ feed-smoke 29/29 (4 legs red-first; one leg bug of my own — forgot the
 v2 result envelope — found by testing the test against a --keep
 instance). agent-resume 11/11 unaffected. Server-side fixes reach the
 daily at the next promote; the CLI-side behavior is already live.
+
+## 2026-08-20 — ring leg 3 + raw-push tool_input shape trap
+
+Answered the olmo loop's thread-ring-qvision leg 3 (three wire questions
+for the cmux desk: feed-as-bus reading, `_source` post-promote status,
+feed→MQTT mirror placement) as one feed letter into that workstream.
+Measured before answering: on the running daily an unregistered
+`_source` still lands as `claude` (process predates commit 9cb1e8d7c6;
+fix activates at the next promote), and the fix covers raw `feed.push`
+because it lives in `WorkstreamStore.makeItem`, the single ingestion
+point. Mirror verdict: olmo-side consumer against the JSONL (feed.list
+is a capped projection); no broker inside cmux.
+
+Trap found by hitting it: raw `feed.push` `tool_input` must be a JSON
+**object** — a pre-encoded JSON *string* is re-encoded by the wire and
+the item's visible text becomes the raw escaped JSON. The malformed
+letter stayed in the workstream (append-only), superseded by a marked
+letter of record. Both cmux-feed skill forks now prescribe the object
+form and show it in the example push.

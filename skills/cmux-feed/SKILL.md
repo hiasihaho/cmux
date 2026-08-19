@@ -64,12 +64,15 @@ the Linux debug build layout too).
 **Raw push** (no agent, e.g. tests or custom emitters):
 
 ```bash
-cmux rpc feed.push '{"event":{"session_id":"s1","hook_event_name":"PreToolUse","_source":"claude","tool_name":"Bash","tool_input":"{...}"}}'
+cmux rpc feed.push '{"event":{"session_id":"s1","hook_event_name":"PreToolUse","_source":"claude","tool_name":"Bash","tool_input":{"command":"ls"}}}'
 ```
 
 `event` object or the same keys top-level; `session_id`,
-`hook_event_name`, `_source` are required. **Text rides in `tool_input`**
-(a raw string, or JSON with a `prompt`/`text`/`message` key) — a
+`hook_event_name`, `_source` are required. **Text rides in `tool_input`
+as a JSON OBJECT** with a `prompt`/`text`/`message` key — never as a
+pre-encoded JSON *string*: the wire re-encodes whatever value it gets,
+so a string lands double-encoded and the visible text becomes the raw
+escaped JSON (measured 2026-08-20, thread-ring-qvision item 3). A
 top-level `prompt` key is silently ignored on raw pushes (only the
 `cmux hooks feed` path maps agent hook JSON into the right fields).
 
