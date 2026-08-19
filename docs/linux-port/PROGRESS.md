@@ -4351,3 +4351,36 @@ where public work stopped. Key strategic delta: CmuxLiteCore (4.5 kLOC)
 is platform-free Swift — a Linux frontend could reuse most of it, so the
 "frontend over the core" cost estimate drops to ~9 kLOC total / ~3 kLOC
 hard. Recommendation unchanged; starting points recorded in the appendix.
+
+## 2026-08-19 (deep parity audit) — one month of upstream drift mined; own drift fixed
+
+The requested deep 2-way check ran as a three-way source mine of upstream
+25dc913922 (merge-base, 2026-07-16) → 786a35d099 (2026-08-18): 4,067
+commits, releases 0.64.20/21/22, three parallel Explore miners (shared
+CLI, served dispatcher, schema/shortcuts/panels surface). Durable
+distillation: **docs/linux-port/DRIFT-2026-08.md** (PARITY now carries a
+baseline note; five new Now rows + four Next rows in GAPS).
+
+Found and fixed in our tree the same session:
+- **capabilities advertise drift (7 methods)** — `debug.resume_plan` and
+  all six `feed.*` were dispatched but unadvertised;
+  `capabilities-sweep.py` (the tripwire built for exactly this) flagged
+  it and now exits 0 again. Fix in ControlProtocol.swift's methods
+  array; shim-linked build green.
+- **verified non-bug:** upstream fixed a UTF-8-across-read-boundary
+  framing bug (ControlClientLineReader) — our ControlSocketServer already
+  accumulates bytes and decodes per completed line; no action.
+
+Headline hidden edges now on record (see DRIFT for the full table):
+upstream inverted `workspace.group.delete` to non-destructive-by-default
+and made anchor-close PROMOTE instead of dissolve (we implement both old
+contracts — bare delete on our port destroys workspaces upstream keeps);
+destructive verbs fail closed on stale explicit surfaces (#9422) where we
+still fall back to focused; `feed.push` grew an id-less form that must
+get NO reply; `system.capabilities` gained a feature-token array;
+`system.tree` gained `layout`; Dock topology joined the main list verbs
+with `dock_scope` and macOS now PERSISTS Dock panes; `equalizeSplits`
+was silently rebound (old chord = new font zoom); panel types 11→15;
+shortcut registry 125→145; `surface.resume.*` grew the `restore_record`
+that the new shell-free `cmux restore` verb requires. Zero methods were
+removed or renamed — the whole risk is semantic.

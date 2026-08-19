@@ -19,6 +19,11 @@ The three-way *concept* comparison against upstream's Rust core
 (cmux-tui) — the stamped strategy snapshot behind any future
 frontend-over-the-core decision — lives in [COMPARISON.md](COMPARISON.md).
 
+Baseline: ✅ marks are measured against upstream at our merge-base
+`25dc913922` (2026-07-16). Upstream drift since then (4,067 commits,
+audited 2026-08-19) is tracked in [DRIFT-2026-08.md](DRIFT-2026-08.md)
+until the next upstream merge re-baselines this file.
+
 ## Control socket — v2 methods
 
 ### system / window / workspace
@@ -31,7 +36,7 @@ frontend-over-the-core decision — lives in [COMPARISON.md](COMPARISON.md).
 | window.create / close / current / focus | ❌ | multi-window is a later phase |
 | workspace.list / create / select / current / close | ✅ | create honors `focus:false` (background) |
 | workspace.rename / next / previous / last | ✅ | rename pins a custom title (OSC updates stop overwriting; persisted in session); next/previous wrap; last uses the selection-history stack |
-| workspace.group.* (17 verbs) | ✅ | full macOS wire parity: anchor-owned groups, membership as a relation, contiguity + pin-tier ordering, anchor-close dissolution, session persistence; `workspace.create` honors `group_id`/`group_placement`/`group_reference_workspace_id`. Sidebar renders sections (chevron headers, indented members, collapsed counts, attention aggregation; `debug.sidebar_rows` mirrors the render). ✅ comfort slice complete 2026-07-24 (mirrors ③④⑥): colors/icons rendered, context menus, palette pickers, drag membership (features/04) |
+| workspace.group.* (17 verbs) | 🟡 | full wire parity **with 2026-07-16 macOS**; upstream then changed the removal semantics (#8542: bare `delete` dissolves, `close_workspaces:true` closes, result gains `operation`/`kept_workspace_count`; #8925: anchor close promotes the next member instead of dissolving; `create` dropped ambient child derivation) — see [DRIFT-2026-08.md](DRIFT-2026-08.md) A1–A3 and the GAPS Now row. Otherwise: anchor-owned groups, membership as a relation, contiguity + pin-tier ordering, session persistence; `workspace.create` honors `group_id`/`group_placement`/`group_reference_workspace_id`. Sidebar renders sections (chevron headers, indented members, collapsed counts, attention aggregation; `debug.sidebar_rows` mirrors the render). ✅ comfort slice complete 2026-07-24 (mirrors ③④⑥): colors/icons rendered, context menus, palette pickers, drag membership (features/04) |
 | workspace.reorder | ✅ | macOS wire (workspace_id + exactly one of index/before/after + dry_run); before/after adopt the neighbor's group membership, before-a-header stays top-level, anchors move their whole group slot; shared core with sidebar drag-and-drop |
 | workspace.move_to_window / action | ❌ | |
 
@@ -148,7 +153,7 @@ are implemented on both**, 47 are macOS-only, and a further 29 macOS
 | Terminal surfaces | ✅ | **Ghostty is the default** in shim-linked builds (CMUX_GHOSTTY=1; CMUX_TERM=vte falls back to VTE): titles/pwd/bell/focus, send/read verbs incl. scrollback, shell integration, auto-close on exit, resize fixed (fork renderer patch Darwin-gated). Eager background spawn landed 2026-07-22 (shim ensure_started + host realize walk): never-shown workspaces have live shells |
 | Settings file + preferences window | ✅ | same file as macOS (`~/.config/cmux/cmux.json`) under a `linux` object; env > file > default; prefs window (Ctrl+comma) with backend ComboRow, scrollback slider (preset marks incl. unlimited), search-URL row. macOS has a far larger settings surface — this is the Linux-relevant subset |
 | Browser panes (WebKitGTK) | ✅ | |
-| Browser profiles (isolated cookie/storage/cache spaces) | ✅ | one `WebKitNetworkSession` per profile (data beside the session file), same verbs/payloads/slug rules as macOS's BrowserProfileStore; persistent cookies via explicit sqlite storage; popups inherit the opener's container via related-view; v3 snapshots carry the assignment. Linux extension: `browser open --profile <slug|id|name>` (macOS selects via popover — flag is an upstreaming candidate). Deviations: `clear`/`delete` require the profile's panes closed (macOS clears live stores); no profile popover UI yet; per-profile history n/a (Linux has no history file) |
+| Browser profiles (isolated cookie/storage/cache spaces) | ✅ | one `WebKitNetworkSession` per profile (data beside the session file), same verbs/payloads/slug rules as macOS's BrowserProfileStore; persistent cookies via explicit sqlite storage; popups inherit the opener's container via related-view; v3 snapshots carry the assignment. Linux extension: `browser open --profile <slug|id|name>`. **2026-08 drift:** upstream added its own CLI profile targeting (#8874) but wired it to `pane.create` (`profile`/`profile_id`/`profile_name` params, rich candidate errors) — not `browser.open_split` as we did; convergence decision at the next merge (DRIFT A13). Deviations: `clear`/`delete` require the profile's panes closed (macOS clears live stores); no profile popover UI yet; per-profile history n/a (Linux has no history file) |
 | Browser find-in-page | ✅ | WebKitFindController behind a GTK find bar (Ctrl+Shift+F), match counter, next/prev with wrap, case toggle; also socket-drivable (`browser find-in-page`) so an agent and the human share one controller |
 | Terminal find overlay | ✅ | Ghostty panes: built-in search overlay via the shim (Ctrl+Shift+F / header magnifier) — needle entry, next/prev, highlight, Esc-to-close all native. VTE panes: no overlay (VTE search API unused) |
 | Browser URL / address bar | ✅ | editable entry above each browser pane; follows navigations, and typed text uses macOS's own resolver rules (`resolveBrowserNavigableURL` — loopback before generic parsing, spaces mean search, bare domain → https), falling through to a search engine (`CMUX_SEARCH_URL`, default Google as on macOS) |

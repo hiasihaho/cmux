@@ -1,6 +1,19 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-08-19** (cmux-tui triangulation: upstream's Rust
+Last updated: **2026-08-19 late** (deep 2-way parity audit: one month of
+upstream drift — 4,067 commits, 0.64.20/21/22 — mined by three parallel
+source readers into **DRIFT-2026-08.md**; PARITY gained a baseline note,
+GAPS gained 5 Now + 4 Next rows incl. the upstream-merge-#2 umbrella.
+Fixed same-session: 7-method capabilities advertise drift (feed.* +
+debug.resume_plan; sweep green, shim build green — needs promote).
+Sharpest edges: group `delete` is now non-destructive upstream and
+anchor-close PROMOTES (we implement the old destructive contracts);
+destructive verbs fail closed on stale ids (#9422); `feed.push` id-less
+form wants NO reply; `equalizeSplits` silently rebound; Dock panes now
+persist on macOS. Our socket line framing verified already-correct.
+Earlier same day: cmux-tui triangulation below.)
+
+Previous update: **2026-08-19** (cmux-tui triangulation: upstream's Rust
 core/TUI subproject was built and run on this host — zig 0.16 + their
 pinned rust toolchain, headless smoke green, the TUI ran nested inside a
 cmux-adw pane. New strategy doc **COMPARISON.md**: stamped three-way
