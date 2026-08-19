@@ -4331,3 +4331,23 @@ integration or embedded browser by design — exactly our strongest
 subsystems. Recommendation recorded in the doc: stay on the macOS parity
 track, re-survey monthly, filter big investments by "would this survive a
 move onto the core".
+
+## 2026-08-19 (later) — CmuxLite recovered from public history and read
+
+Follow-up to the COMPARISON work: cmux-lite (upstream's private native
+frontend over the Rust core) turned out to have lived **in-tree** for its
+first five days — `cmux-tui/frontends/swift/CmuxLite/`, 2026-07-13
+(`a0c177ecc4`) to 2026-07-18 (`ecebdbb64b`, PR #8305 moved it out). The
+last public state was extracted via `git archive ecebdbb64b^` into
+`~/cmux-lite-snapshot/` and structurally read end-to-end (report distilled
+into COMPARISON.md Appendix A). Headline numbers: 9,252 LOC / 111 files,
+zero external deps, render-mode-only client whose entire terminal
+renderer is 418 lines because the core does all VT parsing; 16 wire
+commands; no tree deltas (full re-snapshot on 4 event names); one socket
+per visible pane. The hard-won parts are resize echo-suppression and
+optimistic split-ratio commit; the frozen scaffolding (Ghostty
+palette/selection parsed with tests but zero consumers) marks exactly
+where public work stopped. Key strategic delta: CmuxLiteCore (4.5 kLOC)
+is platform-free Swift — a Linux frontend could reuse most of it, so the
+"frontend over the core" cost estimate drops to ~9 kLOC total / ~3 kLOC
+hard. Recommendation unchanged; starting points recorded in the appendix.

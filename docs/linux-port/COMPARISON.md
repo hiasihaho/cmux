@@ -407,8 +407,96 @@ duplicates the Gain list.
 
 ---
 
+## Appendix A — CmuxLite: a worked example of a native frontend (frozen public snapshot)
+
+The cmux-lite native frontend (§0) is private, but it spent its first five
+days **in-tree in the public repo**: `cmux-tui/frontends/swift/CmuxLite/`
+from 2026-07-13 (`a0c177ecc4`, "minimal Swift libghostty frontend") to
+2026-07-18 (`ecebdbb64b`, PR #8305 "move CmuxLite out of tree"), 19
+public commits. The last public state is recoverable:
+
+```sh
+git -C ~/cmux-upstream archive ecebdbb64b^ cmux-tui/frontends/swift/CmuxLite \
+  | tar -x -C <dest> --strip-components=4
+```
+
+A full structural read of that snapshot (local copy:
+`~/cmux-lite-snapshot/`, surveyed 2026-08-19) yields the best available
+empirical answer to *"how much work is a native GUI over cmux-tui-core?"*
+
+**Scale.** 9,252 LOC / 111 Swift files: AppKit app 2,736 · protocol core
+4,561 · smoke harness 415 · tests 1,508 (46 tests, core only). **Zero
+external dependencies** — Foundation/AppKit/Network/CoreText, no
+GhosttyKit, no packages. Swift 6 actors throughout, macOS 14+, dark-only,
+single window, no menu bar.
+
+**Architecture at the freeze (protocol v7+):**
+
+- **Server-rendered only.** Attaches `mode:"render"`; the client never
+  sees an escape sequence. The entire styled-terminal renderer — 7 SGR
+  attrs, 5 underline styles, 3 cursor shapes, blink, retina-exact cell
+  alignment via a kerning trick — is **418 lines** (`CmuxRenderView`)
+  plus ~80 of font metrics; delta application is **83 lines**. This is
+  the payoff of the core's parse-once model, quantified.
+- **16 wire commands total** (identify, set-client-info, list-workspaces,
+  subscribe, new-workspace/screen/tab, split, set-ratio, close-surface,
+  select-tab, attach-surface, send, send-key, read-scrollback,
+  resize-surface). Navigation is client-local by design — it never sends
+  select-workspace/screen (test-asserted). No tree deltas: four event
+  names (`tree-changed`, `layout-changed`, `surface-exited`,
+  `title-changed`) each trigger a full `list-workspaces` re-snapshot and
+  AppKit view rebuild — correct by construction, the design's biggest
+  scaling shortcut.
+- **One connection per visible pane**, with generation counters guarding
+  every async callback against staleness; pane view controllers cached
+  across snapshot rebuilds.
+- **Where the effort actually went:** not rendering — *protocol
+  correctness*. Resize left the most scar tissue (a dedicated echo-
+  suppression policy with a documented rule, 100 ms debounce with
+  cancellation, all geometry in backing pixels, 7 tests); split-ratio
+  needed optimistic commit with request-id rollback and a subtle
+  (pane,direction) divider-target search. One empirically-tuned liveness
+  hack (`wakePeer` sending **two** unsolicited WebSocket pongs after each
+  response) marks a real backend bug they worked around.
+- **Ghostty theming confirmed**: it shells out to `ghostty +show-config`
+  (2 s deadline) to seed font and colors — and parses palette/selection/
+  cursor fields **with tests but zero consumers**: scaffolding for
+  selection rendering, frozen exactly where the public work stopped.
+
+**Omissions at the freeze** (what five days had not reached): no
+reconnect (a dropped socket is a dead window), no text selection or copy,
+no mouse reporting to the PTY (vim/tmux mouse dead — the §"resolve" #1
+render-mode input gap, observed biting a real frontend), no browser panes
+(deliberately filtered, with a test), no notifications, no config, no
+multi-window. Localization en/ja, partial.
+
+**What this changes in our assessment:**
+
+1. **The frontend-cost estimate now has a number:** ~9 kLOC for a usable
+   splits/tabs/screens/workspaces terminal frontend, of which only
+   ~3 kLOC is genuinely hard logic (session orchestration, resize/ratio
+   correctness, transport) — *provided the backend does all VT work*.
+   The GUI itself is the cheap part (2.7 kLOC).
+2. **CmuxLiteCore is largely platform-free and Sendable** — value types,
+   render model, scrollback windowing, key encoding, layout/geometry
+   math have no AppKit dependency. A Linux frontend could reuse most of
+   the 4.5 kLOC core outright (same AGPL ecosystem as our fork),
+   swapping the two NWConnection transports (~250 LOC) for POSIX
+   sockets. The moat is smaller than the §"resolve" section assumed.
+3. **The render-mode input gap is confirmed in practice, not just spec:**
+   upstream's own frontend shipped its public phase without mouse
+   support. Watch `send-mouse`/`send-focus` (spec/frontends.md) — their
+   arrival likely coincides with cmux-lite maturing.
+4. The recommendation in the main document stands unchanged — but if the
+   frontend path is ever taken, the starting point is now concrete:
+   study `CmuxFrontendSession` (718 LOC) and `CmuxResizePolicy` first;
+   they encode the two hardest lessons upstream already paid for.
+
+---
+
 *Sources: cmux-tui `docs/` (10 files) + `spec/` (18 files) + README/
 AGENTS/Cargo at the stamped commit; our PARITY.md / FEATURES.md /
 CONCEPTS.md / MENTAL-MODEL.md / GHOSTTY-SHIM.md / UX-PARITY.md /
 MACOS-UX.md / GAPS.md / CATCHUP.md / kb/; live build + smoke on Fedora 43,
-2026-08-19 (PROGRESS.md entry of that date).*
+2026-08-19 (PROGRESS.md entry of that date); CmuxLite frozen snapshot
+structural read, 2026-08-19 (Appendix A).*
