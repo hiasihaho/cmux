@@ -91,6 +91,34 @@ resp=$(v2 '{"id":18,"method":"feed.push","params":{"event":{"session_id":"kimi-s
 expect "kimi push acknowledged" "acknowledged" "$(echo "$resp" | jfield "['result']['status']")"
 expect "kimi source survives (not relabeled)" "kimi" "$(v2 '{"id":19,"method":"feed.list"}' | jfield "['result']['items'][-1]['source']")"
 
+# --- 7c: unknown sources land as "unknown", never as claude --------------
+# (olmo-loop desk ask 2, 2026-08-19: an unregistered _source wearing the
+# claude identity is an authority inversion; "cmux" is a registered
+# source for app/desk-authored events.)
+resp=$(v2 '{"id":20,"method":"feed.push","params":{"event":{"session_id":"src-foo","hook_event_name":"Stop","_source":"foobar"}}}')
+expect "unknown-source push acknowledged" "acknowledged" "$(echo "$resp" | jfield "['result']['status']")"
+expect "unknown source lands as unknown" "unknown" "$(v2 '{"id":21,"method":"feed.list"}' | jfield "['result']['items'][-1]['source']")"
+resp=$(v2 '{"id":22,"method":"feed.push","params":{"event":{"session_id":"src-cmux","hook_event_name":"Stop","_source":"cmux"}}}')
+expect "cmux is a registered source" "cmux" "$(v2 '{"id":23,"method":"feed.list"}' | jfield "['result']['items'][-1]['source']")"
+
+# --- 7d: socket-typed pane input is tagged in the feed -------------------
+# (olmo-loop desk ask 3: agent pane-sends must be distinguishable from
+# human typing; metadata only — the typed content itself is never copied.)
+before=$(v2 '{"id":24,"method":"feed.list"}' | jfield "['result']['items'].__len__()")
+cx send 'echo tagged-input-probe' >/dev/null 2>&1
+sleep 1
+tagged=$(v2 '{"id":25,"method":"feed.list"}' | python3 -c "
+import json,sys
+items=[i for i in json.load(sys.stdin)['items'] if i['workstream_id'].startswith('cmux-socket-input')]
+print(len(items))")
+[ "$tagged" -ge 1 ] && ok "socket-typed input tagged in the feed" \
+    || bad "socket-input tagging" "no cmux-socket-input item after a send"
+notext=$(v2 '{"id":26,"method":"feed.list"}' | python3 -c "
+import json,sys
+items=[i for i in json.load(sys.stdin)['items'] if i['workstream_id'].startswith('cmux-socket-input')]
+print('leak' if any('tagged-input-probe' in json.dumps(i) for i in items) else 'clean')")
+expect "tagged item carries metadata only, not the typed text" "clean" "$notext"
+
 # --- 8: persistence — the JSONL beside the session file ------------------
 # Appends hop through the persistence actor; give the async writes a beat.
 FEEDLOG="${SESSION%.json}-feed.jsonl"
@@ -98,8 +126,8 @@ sleep 1
 if [ -f "$FEEDLOG" ]; then
     ok "feed JSONL exists beside the session file"
     lines=$(wc -l < "$FEEDLOG")
-    [ "$lines" -ge 5 ] && ok "JSONL holds the ingested items ($lines lines)" \
-        || bad "JSONL line count" "expected >= 5, got $lines"
+    [ "$lines" -ge 8 ] && ok "JSONL holds the ingested items ($lines lines)" \
+        || bad "JSONL line count" "expected >= 8, got $lines"
     if python3 -c "
 import json,sys
 [json.loads(l) for l in open('$FEEDLOG') if l.strip()]
