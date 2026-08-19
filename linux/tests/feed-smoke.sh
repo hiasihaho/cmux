@@ -109,13 +109,13 @@ cx send 'echo tagged-input-probe' >/dev/null 2>&1
 sleep 1
 tagged=$(v2 '{"id":25,"method":"feed.list"}' | python3 -c "
 import json,sys
-items=[i for i in json.load(sys.stdin)['items'] if i['workstream_id'].startswith('cmux-socket-input')]
+items=[i for i in json.load(sys.stdin)['result']['items'] if i['workstream_id'].startswith('cmux-socket-input')]
 print(len(items))")
 [ "$tagged" -ge 1 ] && ok "socket-typed input tagged in the feed" \
     || bad "socket-input tagging" "no cmux-socket-input item after a send"
 notext=$(v2 '{"id":26,"method":"feed.list"}' | python3 -c "
 import json,sys
-items=[i for i in json.load(sys.stdin)['items'] if i['workstream_id'].startswith('cmux-socket-input')]
+items=[i for i in json.load(sys.stdin)['result']['items'] if i['workstream_id'].startswith('cmux-socket-input')]
 print('leak' if any('tagged-input-probe' in json.dumps(i) for i in items) else 'clean')")
 expect "tagged item carries metadata only, not the typed text" "clean" "$notext"
 

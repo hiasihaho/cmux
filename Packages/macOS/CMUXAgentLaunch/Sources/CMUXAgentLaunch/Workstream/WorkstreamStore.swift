@@ -212,7 +212,9 @@ public final class WorkstreamStore {
     }
 
     private func makeItem(from event: WorkstreamEvent) -> WorkstreamItem {
-        let source = WorkstreamSource(wireName: event.source) ?? .claude
+        // .unknown, not .claude: an unregistered source must never wear a
+        // registered identity (authority inversion — olmo desk ask 2).
+        let source = WorkstreamSource(wireName: event.source) ?? .unknown
         let (kind, payload) = decode(event: event, source: source)
         let status: WorkstreamStatus = kind.isActionable ? .pending : .telemetry
         return WorkstreamItem(

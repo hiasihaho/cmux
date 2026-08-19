@@ -172,6 +172,33 @@ final class FeedService {
     }
 }
 
+// MARK: - socket-input tagging
+
+/// Olmo-loop desk ask 3 (2026-08-19): input typed into a pane over the
+/// socket (send verbs, agent auto-resume) must be distinguishable from
+/// human typing downstream. Every successful pty text write emits one
+/// metadata-only feed event — surface id and byte count, NEVER the typed
+/// content — under workstream `cmux-socket-input`.
+enum SocketInputTag {
+    static func emit(surfaceId: UUID, byteCount: Int) {
+        MainActor.assumeIsolated {
+            let event = WorkstreamEvent(
+                sessionId: "cmux-socket-input",  // workstreamId = sessionId verbatim
+                hookEventName: .preToolUse,
+                source: "cmux",
+                surfaceId: surfaceId.uuidString,
+                toolName: "socket-input",
+                toolInputJSON: "{\"surface_id\":\"\(surfaceId.uuidString)\",\"bytes\":\(byteCount)}"
+            )
+            FeedService.shared.whenReady {
+                MainActor.assumeIsolated {
+                    FeedService.shared.push(event: event, waitTimeoutSeconds: 0) { _ in }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - wire encoding (mirror of macOS FeedSocketEncoding)
 
 enum FeedWireEncoding {

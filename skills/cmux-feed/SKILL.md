@@ -73,6 +73,23 @@ cmux rpc feed.push '{"event":{"session_id":"s1","hook_event_name":"PreToolUse","
 top-level `prompt` key is silently ignored on raw pushes (only the
 `cmux hooks feed` path maps agent hook JSON into the right fields).
 
+## What lands as what (kind-mapping surprises)
+
+- `Notification` events land as kind `toolResult` with
+  `tool_name: "notification"` — search by that, not by a "notification"
+  kind.
+- Agent-NATIVE event names (kimi's `TaskStarted`, …) go through
+  `cmux hooks feed --source <agent> --event <Name>`: the classifier maps
+  unknown names to `PreToolUse` telemetry. Raw `feed.push` must use the
+  wire enum names (`PreToolUse`, `Stop`, …) — agent-native names are
+  rejected with invalid_params there, by design.
+- Socket-typed pane input (send verbs, auto-resume) is tagged under
+  workstream `cmux-socket-input` (source `cmux`): surface id + byte
+  count, never the typed content. Distinguishes agent typing from the
+  human of record.
+- Unregistered `_source` values land as `unknown` (never `claude`);
+  registering a source is one enum case.
+
 ## Messaging sessions: feed as mailbox, prompt as doorbell
 
 To inform or task another agent session (proven pattern, 2026-08-18):

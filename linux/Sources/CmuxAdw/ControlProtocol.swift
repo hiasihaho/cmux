@@ -238,7 +238,8 @@ struct ControlCommandHandler {
             .replacingOccurrences(of: "\\n", with: "\r")
             .replacingOccurrences(of: "\\r", with: "\r")
             .replacingOccurrences(of: "\\t", with: "\t")
-        feed(terminal, unescaped)
+        // Through the shared path so the write is socket-input-tagged.
+        _ = surfacePTYWrite(unescaped, to: focused.surfaceId)
         return "OK"
     }
 
@@ -3365,8 +3366,17 @@ struct ControlCommandHandler {
 
 /// Raw PTY write dispatched by surface kind (VTE feed / ghostty shim).
 /// Returns nil on success. Shared by the send verbs and agent auto-resume
-/// so typed input has exactly one path per backend.
+/// so typed input has exactly one path per backend — which is also where
+/// every successful write gets its socket-input feed tag (metadata only).
 func surfacePTYWrite(_ text: String, to surfaceId: UUID) -> (code: String, message: String)? {
+    let failure = surfacePTYWriteRaw(text, to: surfaceId)
+    if failure == nil {
+        SocketInputTag.emit(surfaceId: surfaceId, byteCount: text.utf8.count)
+    }
+    return failure
+}
+
+private func surfacePTYWriteRaw(_ text: String, to surfaceId: UUID) -> (code: String, message: String)? {
     #if canImport(CGhosttyEmbed)
     if SurfaceRegistry.shared.ghostty(for: surfaceId) != nil {
         if SurfaceRegistry.shared.ghosttyChildExited(for: surfaceId) {

@@ -4384,3 +4384,29 @@ was silently rebound (old chord = new font zoom); panel types 11→15;
 shortcut registry 125→145; `surface.resume.*` grew the `restore_record`
 that the new shell-free `cmux restore` verb requires. Zero methods were
 removed or renamed — the whole risk is semantic.
+
+## 2026-08-19 — the olmo loop files asks at the desk; two land, one was already fixed
+
+First structured asks THROUGH the channel (relayed file, three items,
+evidence-isolated). Reproduction before implementation paid off again:
+
+1. **kimi task events "drop"** — already fixed: their evidence predated
+   the kimi source-relabel fix, which had been masking their own
+   verification (probes landed as claude). On the current binary
+   `hooks feed --source kimi --event TaskStarted` lands as kimi/toolUse
+   (classifier maps unknown agent-native names to PreToolUse telemetry)
+   and raw `Notification` lands as toolResult "notification" — both
+   kind-mappings now documented in the cmux-feed skill.
+2. **Unknown `_source` → claude** (authority inversion): fixed —
+   `unknown` + `cmux` join WorkstreamSource; the store fallback is
+   `?? .unknown`. Deliberate shared-code divergence from upstream's
+   `?? .claude`, PARITY-noted, upstream candidate.
+3. **Socket-input tagging**: every successful pty text write (send
+   verbs — v1 send now routes through the shared surfacePTYWrite too —
+   and auto-resume) emits a metadata-only feed event under workstream
+   `cmux-socket-input`: surface id + byte count, NEVER content.
+
+feed-smoke 29/29 (4 legs red-first; one leg bug of my own — forgot the
+v2 result envelope — found by testing the test against a --keep
+instance). agent-resume 11/11 unaffected. Server-side fixes reach the
+daily at the next promote; the CLI-side behavior is already live.

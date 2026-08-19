@@ -22,6 +22,14 @@ public enum WorkstreamSource: String, Codable, Sendable, CaseIterable, Equatable
     // and landed mislabeled — invisible to source-filtered feed queries
     // (kimi-session field report, 2026-08-18).
     case kimi
+    // The app/desk itself as an event author (announcements, socket-input
+    // tags). 2026-08-19, olmo-loop desk asks.
+    case cmux
+    // Landing spot for unregistered `_source` values. Falling back to
+    // claude let unknown sources wear a registered identity — an
+    // authority inversion (olmo-loop desk ask 2, 2026-08-19). The raw
+    // wire string is not preserved; registering a source is one case.
+    case unknown
 
     /// Parses a wire-frame `_source` string. Unknown sources fall back to
     /// `nil`; callers should persist the raw string separately when they want
