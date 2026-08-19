@@ -14,6 +14,11 @@ lists what this port has that macOS does not, and
 [FEATURES.md](FEATURES.md) describes them. Method-level gaps below were
 measured by diffing the two capability lists, not estimated.
 
+Scope: this file tracks **two-way wire parity with the macOS app** only.
+The three-way *concept* comparison against upstream's Rust core
+(cmux-tui) — the stamped strategy snapshot behind any future
+frontend-over-the-core decision — lives in [COMPARISON.md](COMPARISON.md).
+
 ## Control socket — v2 methods
 
 ### system / window / workspace

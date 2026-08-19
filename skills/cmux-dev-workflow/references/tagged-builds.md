@@ -37,7 +37,7 @@ For CLI or socket dogfood against a tagged Debug app, use:
 
 ```bash
 CMUX_TAG=<tag> scripts/cmux-debug-cli.sh list-workspaces
-CMUX_TAG=<tag> scripts/cmux-debug-cli.sh send --workspace workspace:1 --surface surface:1 "echo ok"
+CMUX_TAG=<tag> scripts/cmux-debug-cli.sh send --workspace workspace:1 --surface surface:1 "echo ok\n"
 ```
 
 Do not use `/tmp/cmux-cli` for tagged dogfood. That symlink points at the most recently reloaded build and can target the user's main app socket.

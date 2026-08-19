@@ -4283,3 +4283,51 @@ formats. Suite-asserted (agent-resume-smoke 11/11 — the plan leg checks
 the verb against the fixture store before any restart). Precedent:
 debug.dock / debug.sidebar_rows — measured projections over shared code,
 never parallel logic.
+
+## 2026-08-19 — cmux-tui evaluated empirically; three-way COMPARISON.md lands
+
+Upstream's Rust subproject `cmux-tui` (born 2026-07-06 as `mux`, ~30
+commits/day) was built and run on this host to ground the strategy
+question it raises. Evaluation sandbox: `git worktree add ~/cmux-upstream
+upstream/main` + a detached ghostty worktree at upstream's pinned commit
+(our shallow ghostty clone can't serve as `--reference`, but held the pin's
+objects, so `git worktree add --detach` from it was free). Nothing
+installed; binaries are `cmux-tui`/`cmux-tui-hook`, sockets under
+`$XDG_RUNTIME_DIR/cmux-tui-<uid>/`, env namespaces verified disjoint from
+ours (`CMUX_TUI_*`/`CMUX_MUX_*` only).
+
+Two build traps worth remembering:
+- **zig dependency fetch is fragile**: `zig build` of libghostty-vt
+  truncated its download of unicode.org's UCD.zip → `ZipNoEndRecord`.
+  Fix: `curl -fL --retry 3` the file, verify with python zipfile, then
+  `zig fetch <local-file>` *from a directory with a build.zig* to seed the
+  global cache by content hash.
+- **`cargo build 2>&1 | tail` made a failed build report exit 0** (pipeline
+  exit is tail's). Background builds must redirect to a file and echo
+  `$?` explicitly.
+
+Smoke (all green): headless `--headless --session eval`; noun-first CLI
+`workspace create/list`, `workspace current run -- echo` (typed exit
+record retained on the session-owned terminal after its placement count
+hit zero — the placement-vs-resource model observed live), idempotent
+`server stop` preserving durable topology. The interactive TUI then ran
+nested inside a cmux-adw pane (a multiplexer inside the multiplexer).
+Send-verb aside, verified while launching it: macOS `send` also appends
+no newline — CLI `unescapeSendText` (CLI/cmux.swift:17557), macOS
+`v1UnescapedSendText` (TerminalController.swift:13143), and our
+`sendInput` (ControlProtocol.swift:237) are byte-identical `\n`→CR
+unescapes; `cmux send ... "cmd\n"` is the execute form. Docs examples
+showing bare `send "echo ok"` mislead agents into typing-not-running.
+
+Deliverable: **docs/linux-port/COMPARISON.md** — stamped three-way
+concept comparison (cmux-adw · cmux-macos · cmux-tui @ 786a35d099),
+grounded in a full read of cmux-tui's docs/ + spec/ (two Explore
+subagents) plus our parity corpus. Headline finds: upstream develops a
+**native macOS frontend over the Rust core in the private repo
+`manaflow-ai/cmux-lite`** (the monolith may become the legacy target);
+render-mode frontends have no mouse/focus input yet (vNext), so a GUI
+frontend today would keep a local VT anyway; the core has no desktop
+integration or embedded browser by design — exactly our strongest
+subsystems. Recommendation recorded in the doc: stay on the macOS parity
+track, re-survey monthly, filter big investments by "would this survive a
+move onto the core".

@@ -1,6 +1,22 @@
 # Catch-up — start here (living document)
 
-Last updated: **2026-08-18 late** (the agent-fleet session: feed
+Last updated: **2026-08-19** (cmux-tui triangulation: upstream's Rust
+core/TUI subproject was built and run on this host — zig 0.16 + their
+pinned rust toolchain, headless smoke green, the TUI ran nested inside a
+cmux-adw pane. New strategy doc **COMPARISON.md**: stamped three-way
+concept comparison (cmux-adw · cmux-macos · cmux-tui @ upstream
+786a35d099). Headline finds: upstream builds a native macOS frontend
+over the Rust core in the *private* repo `manaflow-ai/cmux-lite`; the
+core's terminal model is placement-vs-resource with detach/attach and 7
+SDKs; render-mode frontends still lack mouse/focus input (vNext); no
+desktop integration or embedded browser in the core by design.
+Recommendation recorded there: **stay on the macOS parity track**,
+re-survey monthly (watch cmux-lite), filter big investments by "would
+this survive a move onto the core". Evaluation worktree at
+`~/cmux-upstream` (build traps in PROGRESS 2026-08-19). Back to 2-way
+parity work next.)
+
+Previous update: **2026-08-18 late** (the agent-fleet session: feed
 pipeline + persistence + tool-level capture LIVE and promote-proven;
 AGENT AUTO-RESUME landed and carried the fleet across two promotes
 (claude ×2, kimi, opencode ×3 — 14-agent command table, UUID gate for
