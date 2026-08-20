@@ -31,6 +31,24 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         name = self.path.strip("/") or "index"
         time.sleep(DELAY)                      # server-side stall
+        if name == "tall":
+            # 5 x 600px blocks: taller than any pane the suite can have,
+            # so a full-document capture is unambiguously distinguishable
+            # from a viewport one.
+            body = (
+                "<!doctype html><title>tall</title><body style='margin:0'>"
+                + "".join(
+                    "<div style='height:600px;background:#%s'>block</div>" % c
+                    for c in ("fee", "efe", "eef", "ffe", "fef")
+                )
+                + "</body>"
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         body = (
             "<!doctype html><title>%s</title>"
             "<body><h1 id='who'>%s</h1>"
@@ -201,6 +219,35 @@ S2=$(cx browser open "http://127.0.0.1:$PAGE_PORT/fresh" --workspace "$WS" | gre
 sleep 2
 expect "fresh surface -> back disabled" "False" "$(chrome "$S2" can_go_back)"
 expect "fresh surface -> forward disabled" "False" "$(chrome "$S2" can_go_forward)"
+
+# --- full-page screenshot captures the DOCUMENT, not the viewport.
+# Regression 2026-08-21: `--full-page` was documented in the CLI help and
+# implemented server-side (WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT), but the
+# CLI never parsed the flag — so every "full page" capture was silently a
+# viewport shot, and the result looked plausible enough to believe.
+png_height() {
+    python3 -c "
+import struct, sys
+d = open(sys.argv[1], 'rb').read(33)
+print(struct.unpack('>II', d[16:24])[1])" "$1" 2>/dev/null || echo 0
+}
+# Screenshots need the surface visible; this is an isolated instance, so
+# selecting its own workspace is free (never do this to the human's).
+cx select-workspace --workspace "$WS" >/dev/null 2>&1
+cx browser --surface "$S" goto "http://127.0.0.1:$PAGE_PORT/tall" >/dev/null 2>&1
+sleep 1
+doc_h=$(cx browser --surface "$S" eval 'document.documentElement.scrollHeight' 2>/dev/null | tr -dc '0-9')
+cx browser --surface "$S" screenshot --out "$WORK/vp.png" >/dev/null 2>&1
+cx browser --surface "$S" screenshot --full-page --out "$WORK/full.png" >/dev/null 2>&1
+vp_h=$(png_height "$WORK/vp.png")
+full_h=$(png_height "$WORK/full.png")
+[ "${vp_h:-0}" -gt 0 ] && ok "viewport screenshot captured (${vp_h}px tall)" \
+    || bad "viewport screenshot" "no PNG written"
+if [ "${full_h:-0}" -gt "${vp_h:-0}" ]; then
+    ok "--full-page captures past the viewport (${full_h}px vs ${vp_h}px, doc ${doc_h:-?}px)"
+else
+    bad "--full-page" "got ${full_h}px, same as the viewport ${vp_h}px (doc ${doc_h:-?}px)"
+fi
 
 cx close-workspace --workspace "$WS" >/dev/null 2>&1
 finish
