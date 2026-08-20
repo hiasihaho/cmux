@@ -4579,3 +4579,28 @@ So the flatpak has TWO working configurations: Ghostty panes (host
 shells via Ghostty's portal integration) and CMUX_TERM=vte panes (host
 shells via our wrapper). agent-resume matrix stayed 11/11 on both
 backends after the revert.
+
+## 2026-08-21 — browser --full-page was never wired (and two silent-wrong-answer traps)
+
+A question about full-height screenshots turned up a bug of our own:
+`--full-page` has been in the CLI help since 2026-07-21 and the server
+has honoured `full_page` since the same commit
+(`WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT`) — but the CLI never parsed the
+flag, so every "full page" capture was a viewport shot. Nothing failed;
+the PNG just quietly contained less than it claimed. Fixed red-first
+(browser-navigation-smoke gained a tall fixture page + a height
+assertion; 15/1 red, 16/0 green). Measured: 3000px document → 6000px PNG
+(captures are DEVICE pixels, 2x here) vs 1324px viewport.
+
+Worth stating plainly because WebKitGTK is ahead of WKWebView here:
+full-document capture is a native one-enum feature on our side, where
+macOS has no clean equivalent. Same for the interaction-recording idea —
+the user-content-manager script channel we already use for console
+capture is the ready-made path for DOM-level interaction traces.
+
+Second trap, still open (GAPS row annotated): asking for a screenshot of
+a BACKGROUND-workspace surface does not surface the server's
+`invalid_state`; the CLI returned a plausible PNG of a different,
+visible pane. That is how the first measurement in this investigation
+came out wrong (identical dimensions for viewport and full-page), and it
+is a worse failure mode than an error. Mechanism not yet isolated.
