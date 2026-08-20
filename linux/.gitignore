@@ -8,3 +8,4 @@
 # Claude Code conversation exports — local notes, not for publishing.
 /2026-*.txt
 tmp-local/
+.flatpak-build/

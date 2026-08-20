@@ -1,0 +1,80 @@
+# Flatpak manifest for the cmux Linux port — ROUND 1 (scoping): VTE-only,
+# dev-profile permissions, network during build. Deviations from Flathub
+# rules are marked DEV-ONLY and mapped to later rounds in
+# docs/linux-port/features/15-flatpak-packaging.md (the harness contract
+# lives there too — keep the two in sync).
+#
+# Build with: linux/scripts/flatpak-build.sh build
+app-id: com.manaflow.cmux
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.swift6
+command: cmux-adw
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # venus (virtio-GPU) Vulkan fences hang GTK teardown in VMs — verified
+  # 2026-08-20 (PROGRESS). GL-only is the safe default on every host.
+  - --env=GDK_DISABLE=vulkan
+  # Swift runtime libs are bundled into /app/lib (the SDK extension is
+  # build-time only; the Platform runtime ships no Swift).
+  - --env=LD_LIBRARY_PATH=/app/lib
+  # DEV-ONLY breadth: round 1 runs shells inside the sandbox and reads
+  # the user's projects directly. Round 2 replaces this with
+  # flatpak-spawn --host shells + portals and narrows the filesystem.
+  - --share=network
+  - --filesystem=home
+
+build-options:
+  append-path: /usr/lib/sdk/swift6/bin
+  prepend-ld-library-path: /usr/lib/sdk/swift6/lib
+
+modules:
+  - name: vte-gtk4
+    buildsystem: meson
+    config-opts:
+      - -Dgtk4=true
+      - -Dgtk3=false
+      - -Dvapi=false
+      - -Dgir=false
+      - -Ddocs=false
+    sources:
+      - type: archive
+        # Pin = the version validated on Fedora 43 + the x12vm toolbox
+        # deployment (2026-08-20). GNOME 49 series.
+        url: https://download.gnome.org/sources/vte/0.82/vte-0.82.3.tar.xz
+        sha256: 6dc6278f6fee30d07d1a03e2ba3335b1ea4e8d2956ceb59d861943115d930a85
+
+  - name: cmux-adw
+    buildsystem: simple
+    build-options:
+      build-args:
+        # DEV-ONLY: SwiftPM fetches adwaita-swift etc. at build time.
+        # Round 3 pregenerates offline sources for Flathub compliance.
+        - --share=network
+    build-commands:
+      # Debug configuration on purpose: it is the configuration every
+      # host/VM deployment has validated. Release is a later round with
+      # its own verification pass.
+      - cd linux && swift build --product cmux-adw
+      - cd linux && swift build --product cmux
+      - install -Dm755 linux/.build/debug/cmux-adw /app/bin/cmux-adw
+      - install -Dm755 linux/.build/debug/cmux /app/bin/cmux
+      - mkdir -p /app/lib && cp -a /usr/lib/sdk/swift6/lib/swift/linux/*.so* /app/lib/
+      - install -Dm644 linux/flatpak/com.manaflow.cmux.desktop /app/share/applications/com.manaflow.cmux.desktop
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - ghostty
+          - linux/.build
+          - linux/.build-gnome50
+          - linux/.flatpak-build
+          - web
+          - node_modules
