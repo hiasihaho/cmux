@@ -159,7 +159,7 @@ enum AgentResumeStore {
         }
         // `\r`, not `\n`: pty line discipline — the same normalization the
         // v1 send verb applies to typed input.
-        if SurfaceRegistry.shared.readyForReplay(for: surfaceId),
+        if SurfaceRegistry.shared.readyForPTYWrite(for: surfaceId),
            surfacePTYWrite(command + "\r", to: surfaceId) == nil {
             pending.removeValue(forKey: surfaceId)
             polling.remove(surfaceId)

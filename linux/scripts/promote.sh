@@ -110,6 +110,19 @@ if $build; then
     echo "== building (CMUX_GHOSTTY=1 swift build)"
     (cd "$ROOT/linux" && CMUX_GHOSTTY=1 swift build 2>&1 | tail -1)
 fi
+# The build above uses CMUX_GHOSTTY=1, but a stale/foreign binary can
+# still be sitting there with --no-build. Never promote a backend the
+# user did not ask for (2026-08-20: the daily came up VTE-only).
+want=auto
+for arg in "${passthrough[@]+"${passthrough[@]}"}"; do
+    [ "$arg" = "--vte" ] && want=vte
+    [ "$arg" = "--ghostty" ] && want=ghostty
+done
+"$ROOT/linux/scripts/shim-guard.sh" "$ROOT/linux/.build/debug/cmux-adw" "$want" || {
+    echo "promote.sh: refusing to promote a backend mismatch" >&2
+    exit 1
+}
+
 if $test; then
     echo "== running the suite"
     "$ROOT/linux/tests/run-all.sh" || {

@@ -42,8 +42,12 @@ set -uo pipefail
 
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/.." && pwd)"
-CLI="$ROOT/.build/debug/cmux"
-APP="$ROOT/.build/debug/cmux-adw"
+# Binaries under test. CMUX_TEST_BUILD_DIR points suites at a DIFFERENT
+# build (e.g. a `swift build --scratch-path` VTE-only binary) without
+# touching .build — which the daily instance promotes from, so a suite
+# must never rebuild it into a different flavour.
+CLI="${CMUX_TEST_BUILD_DIR:-$ROOT/.build}/debug/cmux"
+APP="${CMUX_TEST_BUILD_DIR:-$ROOT/.build}/debug/cmux-adw"
 APP_ID="com.manaflow.cmux.$APP_ID_SUFFIX"
 SOCK="/tmp/cmux-$APP_ID_SUFFIX.sock"
 SESSION="/tmp/cmux-$APP_ID_SUFFIX-session.json"

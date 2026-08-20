@@ -4514,3 +4514,39 @@ mirror-name identity corruption, rofiles-fuse leftovers, self-matching
 monitors, restored-scrollback masquerade) is in features/15 — written
 as harness input, per hias's reproducibility requirement. Host build +
 feed-smoke stayed green throughout (spawn passthrough outside flatpak).
+
+## 2026-08-20 (night) — three guards after the VTE/resume incident
+
+Root-caused the morning's double failure (daily came up VTE-only; agent
+auto-resume dead in every workspace) and closed all three holes:
+
+1. **Silent backend downgrade.** `swift build` WITHOUT `CMUX_GHOSTTY=1`
+   produced a VTE-only binary — an agent compile-check did exactly that,
+   and start.sh's fallback started the daily on it without a word. Fixed
+   at the source: `Package.swift` now AUTO-LINKS the shim when
+   `ghostty/zig-out/lib/libghostty-gtk.so` exists (`CMUX_GHOSTTY=0`
+   forces VTE-only, which is what the Flatpak build uses;
+   `CMUX_GHOSTTY_OUT` relocates the shim tree for out-of-repo builds).
+   Backstop: `scripts/shim-guard.sh` compares a binary's linkage against
+   the configured backend and REFUSES the start/promote — wired into
+   start.sh (replacing the silent fallback) and promote.sh. Covered by
+   `tests/shim-guard-smoke.sh` (6 legs, red-first).
+2. **Auto-resume wrote into a pty with no shell.** The real bug behind
+   "all resume automatizations did not work": Ghostty gates delivery on
+   "io running", but the VTE branch of `readyForReplay` returned true as
+   soon as the WIDGET existed — and `vte_terminal_spawn_async` is async,
+   so the resume command was written into a pty whose child had not
+   started and was swallowed. New `readyForPTYWrite` gates typing on the
+   spawn callback's pid (scrollback replay keeps the old, display-level
+   readiness so replayed text still lands BEFORE the first prompt).
+3. **The suite could not have caught either.** agent-resume-smoke ran
+   whichever backend happened to be linked (silently), and its stub
+   agents lost the PATH race under Ghostty, which spawns a LOGIN shell
+   that reads ~/.bashrc (`~/.kimi-code/bin` prepended → the real kimi
+   answered the resume). Now: a backend MATRIX (re-execs once per
+   backend the binary supports) plus a throwaway rc-free HOME. Result:
+   11/11 on ghostty AND 11/11 on vte — the VTE column was 5/11 before
+   the fix, i.e. the suite is now the regression test for (2).
+   `tests/lib.sh` gained `CMUX_TEST_BUILD_DIR` so a suite can be pointed
+   at a scratch build instead of `.build` — the daily promotes from
+   `.build`, so suites must never rebuild it into another flavour.

@@ -9,16 +9,29 @@ import Foundation
 // revision. Select with: CMUX_GNOME=50 swift build
 let gnome50 = ProcessInfo.processInfo.environment["CMUX_GNOME"] == "50"
 
-// Opt-in Ghostty terminal surfaces (experimental): CMUX_GHOSTTY=1 links the
-// embedding shim built from the ghostty submodule (branch linux-gtk-embed):
+// Ghostty terminal surfaces. The shim is built from the ghostty submodule
+// (branch linux-gtk-embed):
 //   cd ../ghostty && zig build lib-gtk -Dapp-runtime=gtk -Dversion-string=1.3.0-dev
-// Runtime still requires CMUX_TERM=ghostty to swap the VTE factory.
-let ghosttyEmbed = ProcessInfo.processInfo.environment["CMUX_GHOSTTY"] == "1"
+//
+// AUTO-DETECT (2026-08-20): if that library is present, link it — a plain
+// `swift build` used to produce a VTE-only binary, which silently
+// downgraded the daily on the next start and broke agent auto-resume in
+// every background workspace (Ghostty-only eager spawn). Presence of the
+// artifact is the honest signal of intent; CMUX_GHOSTTY=1 forces on,
+// CMUX_GHOSTTY=0 forces off (flatpak/VTE-only builds use that).
 let repoRoot = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()  // Package.swift
     .deletingLastPathComponent()  // linux/
     .path
-let ghosttyOut = "\(repoRoot)/ghostty/zig-out"
+// CMUX_GHOSTTY_OUT relocates the shim's zig-out (lib/ + include/):
+// the Flatpak build installs it under /app, where there is no repo
+// checkout to walk to. Defaults to the submodule's own output.
+let ghosttyOut = ProcessInfo.processInfo.environment["CMUX_GHOSTTY_OUT"]
+    ?? "\(repoRoot)/ghostty/zig-out"
+let ghosttyFlag = ProcessInfo.processInfo.environment["CMUX_GHOSTTY"]
+let ghosttyEmbed = ghosttyFlag == "1"
+    || (ghosttyFlag != "0"
+        && FileManager.default.fileExists(atPath: "\(ghosttyOut)/lib/libghostty-gtk.so"))
 
 let adwaitaSwift: Package.Dependency = gnome50
     ? .package(url: "https://git.aparoksha.dev/aparoksha/adwaita-swift", branch: "main")

@@ -368,6 +368,21 @@ final class SurfaceRegistry {
         return false
     }
 
+    /// Readiness for typing INTO a pane (auto-resume), which is a
+    /// different question from readiness to paint scrollback into it.
+    /// A VTE widget exists the instant it is constructed, but
+    /// `vte_terminal_spawn_async` is ASYNC: bytes written before the
+    /// child exists are swallowed by the pty, so auto-resume commands
+    /// vanished silently (2026-08-20 — the same "write into a
+    /// not-started surface loses the text" trap the Ghostty branch
+    /// above already guards). The spawn callback's pid is the honest
+    /// signal that there is a shell on the other end.
+    func readyForPTYWrite(for surfaceId: UUID) -> Bool {
+        if terminals[surfaceId] != nil { return childPids[surfaceId] != nil }
+        if ghosttys[surfaceId] != nil { return readyForReplay(for: surfaceId) }
+        return false
+    }
+
     @discardableResult
     func writeDisplay(for surfaceId: UUID, text: String) -> Bool {
         if terminals[surfaceId] != nil {

@@ -14,6 +14,24 @@
 SUITE_NAME="agent-resume-smoke"
 APP_ID_SUFFIX="resumetest"
 PAGE_PORT=8438   # unique X display only; no fixture server
+
+# BACKEND MATRIX. Resume delivery differs per backend — eager background
+# spawn is Ghostty-only, so a VTE pane that is never shown has no shell
+# to type into. This suite used to test whichever backend happened to be
+# LINKED, so it went green on VTE while the Ghostty path was unproven
+# (and vice versa) — 2026-08-20. Run every backend the binary supports.
+if [ -z "${CMUX_SUITE_BACKEND:-}" ]; then
+    _backends=(vte)
+    ldd "$(dirname "$0")/../.build/debug/cmux-adw" 2>/dev/null \
+        | grep -q libghostty-gtk && _backends=(ghostty vte)
+    _rc=0
+    for _b in "${_backends[@]}"; do
+        echo "== $SUITE_NAME: backend $_b"
+        CMUX_SUITE_BACKEND="$_b" "$0" "$@" || _rc=1
+    done
+    exit "$_rc"
+fi
+
 source "$(dirname "$0")/lib.sh"
 
 FIXDIR=/tmp/cmux-resumetest-hooks
@@ -33,10 +51,16 @@ done
 # Instance shells inherit the suite env: the stub claude wins the PATH
 # race, and the fixture store replaces the developer's real ~/.cmuxterm.
 export PATH="$STUBDIR:$PATH"
-# SHELL=/bin/sh: rc-free shells, so the env PATH (stub first) survives —
-# the real kimi lives in an rc-prepended dir and beat the stub otherwise
-# (found 2026-08-18 when a debug instance popped a real kimi trust prompt).
-INSTANCE_ENV=(CMUX_HOOK_SESSIONS_DIR=$FIXDIR SHELL=/bin/sh)
+# SHELL=/bin/sh keeps the VTE path rc-free, but Ghostty spawns the passwd
+# shell as a LOGIN shell and reads ~/.bashrc regardless — which prepends
+# the real agent dirs (~/.kimi-code/bin) ahead of the stubs, so the real
+# kimi answered the resume and the leg failed (2026-08-18 via VTE,
+# 2026-08-20 again via Ghostty). A throwaway HOME has no rc files at all,
+# which is the only version of this that holds for BOTH backends.
+STUBHOME="$FIXDIR/home"
+mkdir -p "$STUBHOME"
+INSTANCE_ENV=(CMUX_HOOK_SESSIONS_DIR=$FIXDIR SHELL=/bin/sh HOME=$STUBHOME
+              CMUX_TERM=$CMUX_SUITE_BACKEND)
 
 jfield() { python3 -c "import json,sys;print(json.load(sys.stdin)$1)"; }
 
@@ -170,7 +194,8 @@ fi
 # --- phase C: the setting suppresses it ---------------------------------
 rm -f "$MARKER"
 kill_instance
-INSTANCE_ENV=(CMUX_HOOK_SESSIONS_DIR=$FIXDIR SHELL=/bin/sh CMUX_AUTO_RESUME=0)
+INSTANCE_ENV=(CMUX_HOOK_SESSIONS_DIR=$FIXDIR SHELL=/bin/sh HOME=$STUBHOME
+              CMUX_TERM=$CMUX_SUITE_BACKEND CMUX_AUTO_RESUME=0)
 start_instance || exit 2
 sleep 4
 [ ! -f "$MARKER" ] && ok "CMUX_AUTO_RESUME=0 suppresses the resume" \

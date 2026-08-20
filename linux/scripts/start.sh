@@ -47,11 +47,13 @@ require_binary() {
         echo "error: $BIN not built — run: cd $ROOT/linux && swift build" >&2
         exit 1
     fi
-    if $ghostty && ! linked_ghostty; then
-        echo "error: binary lacks the Ghostty shim. Build it with:" >&2
-        echo "  cd $ROOT/linux && CMUX_GHOSTTY=1 swift build" >&2
-        exit 1
-    fi
+    # Backend match: refuse to start a shim-less binary when Ghostty is
+    # what the user configured (or asked for). --vte is the deliberate
+    # opt-out. Without this, the fallback below is silent — 2026-08-20.
+    local want=auto
+    $ghostty && want=ghostty
+    $vte && want=vte
+    "$ROOT/linux/scripts/shim-guard.sh" "$BIN" "$want" || exit 1
 }
 
 ping_daily() {
