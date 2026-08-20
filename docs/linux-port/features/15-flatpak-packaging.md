@@ -77,8 +77,11 @@ Round-1 build evidence (same day):
   proven answer**: that path is host-visible with zero extra
   permissions; round 2 should make it the app's default socket path
   when running inside flatpak (`$FLATPAK_ID` is set in-sandbox).
-  In-sandbox shell behavior was not captured in this probe (screen
-  read returned empty before shutdown) — verify with decision 1.
+  In-sandbox shell behavior user-confirmed same day (screenshot): the
+  pane spawns a sandbox shell (Fedora's `📦 <app-id>` prompt), `pwd` =
+  real /home/hias via --filesystem=home. Files reachable, host tools
+  absent — the sandbox /usr is the slim GNOME runtime, so the pane is
+  not a dev environment until decision 1 (flatpak-spawn --host) lands.
 - **Isolation is mandatory, encoded in the driver**: with
   `--filesystem=home` an unisolated launch would register the daily's
   GApplication id and write the daily's session store — and
