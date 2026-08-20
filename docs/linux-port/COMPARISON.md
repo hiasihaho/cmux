@@ -8,13 +8,30 @@ plane. Verb-level two-way parity stays in [PARITY.md](PARITY.md); the
 prioritized work-down list stays in [GAPS.md](GAPS.md). Nothing here creates
 work items by itself.
 
-**Snapshot stamp.** Surveyed **2026-08-19** against:
+**Snapshot stamp.** Refreshed **2026-08-21** (previous survey 2026-08-19):
 
 | Column | Code | Commit | Date |
 |---|---|---|---|
-| **cmux-adw** (our Linux port) | branch `linux-port`, `linux/` | `fefbc69044` | 2026-08-18 |
-| **cmux-macos** (original app) | upstream/main, `Sources/` + `CLI/` | `786a35d099` | 2026-08-18 |
-| **cmux-tui** (Rust core + TUI) | upstream/main, `cmux-tui/` | `786a35d099` | 2026-08-18 |
+| **cmux-adw** (our Linux port) | branch `linux-port`, `linux/` | `c1e94371a8` | 2026-08-20 |
+| **cmux-macos** (original app) | upstream/main, `Sources/` + `CLI/` | `12e3c4fe76` | 2026-08-20 |
+| **cmux-tui** (Rust core + TUI) | upstream/main, `cmux-tui/` | `b25dce409e` | 2026-08-20 |
+
+**Delta since the 2026-08-19 stamp** — 322 upstream commits, 83 of them
+in `cmux-tui/`; re-checked the claims this document rests on:
+
+- **No Linux GUI frontend has appeared.** `cmux-tui/frontends/` still
+  holds only `web` (plus READMEs) and `frontends/README.md` is
+  byte-unchanged — the native frontend effort remains the private macOS
+  `cmux-lite`. The premise of UPSTREAM-OFFER.md holds.
+- **Protocol boundaries unchanged**: public `cmux.protocol/2`, private
+  control protocol 12, remote protocol 5.
+- **Bindings are now eight language dirs** (cpp, go, java, python, rust,
+  rust-sidebar, typescript, zig) — the earlier "seven SDKs" count has
+  already moved; treat SDK counts as the fastest-rotting cell here.
+- **New spec surface**: `report-focus` (protocol 12, capability
+  `client-focus-v1`) — per-client focus memory that never moves live
+  session focus. Config/keyboard docs churned ~84 lines, and
+  `spec/sdk-schema.json` is regenerated wholesale most days.
 
 cmux-tui is moving at ~30 commits/day (736 commits in August 2026 alone;
 ~1,255 since the `mux` → `cmux-tui` rename on 2026-07-09, project born
@@ -56,7 +73,8 @@ pane. It is real, working software, not a paper spec.
   tmux-like TUI, an in-tree web frontend (xterm.js), and a **native macOS
   frontend developed in the separate private repo `manaflow-ai/cmux-lite`**
   (per `cmux-tui/frontends/README.md`). Public API `cmux.protocol/2` with
-  seven generated SDKs; private frontend protocol v12.
+  generated SDKs in eight languages (2026-08-21 count); private frontend
+  protocol v12, remote protocol 5.
 
 **The single most decision-relevant fact of this survey:** upstream is
 already building a native GUI frontend over the Rust core (cmux-lite), and
