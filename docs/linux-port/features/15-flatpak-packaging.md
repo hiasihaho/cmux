@@ -164,6 +164,70 @@ Failure catalog from the build loop (harness-critical, each verified):
 7. Session restore also restores scrollback — probe FRESH workspaces,
    or old probe output masquerades as current behavior.
 
+## Round 3a — Ghostty inside the Flatpak (2026-08-20 night)
+
+The VM deployment could copy a host-built `libghostty-gtk.so` because
+host and toolbox were both Fedora 43. That does NOT transfer here: the
+GNOME runtime carries an older glibc than Fedora, so the shim must be
+BUILT IN THE SANDBOX. Modules added, in order:
+
+- `gtk4-layer-shell` v1.3.0 (meson) — Ghostty's GTK runtime links it and
+  the GNOME runtime has no such library. sha256-pinned tarball.
+- `ghostty-shim` — Zig 0.15.2 as a sha256-pinned self-contained tarball
+  (`02aa270f…`), then `zig build lib-gtk -Dapp-runtime=gtk
+  -Dversion-string=1.3.0-dev -Doptimize=ReleaseFast`, installing
+  `libghostty-gtk.so` → /app/lib, headers → /app/include, and the
+  shell-integration/theme tree → /app/share/ghostty. Sources: the zig
+  archive plus a `type: dir` of the ghostty submodule (skipping .git,
+  .zig-cache, zig-out). Still DEV-ONLY on one count: zig's package
+  manager fetches Ghostty's own dependencies, so the module keeps
+  `--share=network` (round 4 vendors them, the same treatment SwiftPM
+  already got).
+- `cmux-adw` builds with `CMUX_GHOSTTY=1` and `CMUX_GHOSTTY_OUT=/app`.
+  That second variable is new: `Package.swift` used to hardcode the
+  shim tree at `<repo>/ghostty/zig-out`, which does not exist inside
+  the sandbox.
+- finish-arg `GHOSTTY_RESOURCES_DIR=/app/share/ghostty`, because the
+  app's self-locate walks the repo tree for that directory and there is
+  no repo in the sandbox.
+
+Round-3a traps (each cost a build):
+
+- **Do not "improve" the shim build recipe.** Adding
+  `-Doptimize=ReleaseFast` (for a 32 MB library instead of 125 MB)
+  produced a shim that SIGSEGV'd inside `ghostty_embed_init` on first
+  launch — Zig's ReleaseFast drops the safety checks the validated
+  Debug recipe runs with. The manifest must mirror
+  linux/README.md's recipe exactly; optimize only with evidence.
+  Diagnosis path: the app died silently with no stderr, but
+  `coredumpctl info` named `/app/lib/libghostty-gtk.so` in frame #0.
+- **Ghostty panes bypass the VTE spawn path**, and the fix is NOT ours
+  to write. Ghostty ships its own Flatpak host-spawning
+  (`FlatpakHostCommand`, src/termio/Exec.zig) behind the build flag
+  `-Dflatpak=true`; without it, Ghostty panes are SANDBOX shells. Our
+  first attempt — wrapping the surface command in `flatpak-spawn
+  --host` the way the VTE path must — fails by construction: Ghostty
+  runs that command on the HOST, where flatpak-spawn has no portal to
+  reach ("Can't find bus"), so the shell exits instantly and the pane
+  answers `unavailable: Surface shell has exited`. The evidence trail
+  that identified it: dump the pane's own env — `PATH=/app/bin`, no
+  `DBUS_SESSION_BUS_ADDRESS`, no HOME, while a VTE pane in the SAME
+  build shows a full sandbox env. So: shim built with `-Dflatpak=true`,
+  and cmux passes a command for Ghostty panes ONLY on respawn. The
+  asymmetry is deliberate — VTE needs our wrapper, Ghostty must not
+  get it.
+- **A silent instant exit is usually the app-id collision**, not a
+  crash: the flatpak's GApplication id equals the daily's, so launching
+  it while the daily runs makes GTK forward activation and exit 0. Always
+  probe with `CMUX_APP_ID=com.manaflow.cmux.flatpak` (the driver's `run`
+  sets it); a stale socket file with no process means it got further
+  than that and died — check coredumpctl.
+
+Related host-side change worth knowing when reading this manifest:
+`Package.swift` now AUTO-LINKS the shim when the library is present, so
+the Flatpak's VTE-only rounds must pass `CMUX_GHOSTTY=0` explicitly if
+they ever want the old behaviour back.
+
 ## Permission model (decided direction, hias + desk 2026-08-20)
 
 The question "ship `--filesystem=home` or narrower, maybe per-folder

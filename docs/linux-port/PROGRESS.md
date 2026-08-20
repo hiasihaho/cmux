@@ -4550,3 +4550,32 @@ auto-resume dead in every workspace) and closed all three holes:
    `tests/lib.sh` gained `CMUX_TEST_BUILD_DIR` so a suite can be pointed
    at a scratch build instead of `.build` — the daily promotes from
    `.build`, so suites must never rebuild it into another flavour.
+
+## 2026-08-20 (night) — Ghostty inside the Flatpak
+
+The flatpak now ships Ghostty and its panes are HOST shells: probe shows
+`hias@fedora:~$`, Fedora (not the GNOME runtime), 28 PATH entries, git +
+swift resolvable — a Ghostty-rendered pane that is also a real dev
+environment. Modules: `gtk4-layer-shell` v1.3.0 (absent from the GNOME
+runtime) and `ghostty-shim`, which builds the shim FROM SOURCE in the
+sandbox with sha256-pinned Zig 0.15.2 — the host-built .so cannot be
+copied in (runtime glibc is older than Fedora's), unlike the toolbox
+deployment earlier today. `Package.swift` gained `CMUX_GHOSTTY_OUT` so
+the build links the shim from /app.
+
+Two traps, each costing a build. (1) `-Doptimize=ReleaseFast` — my
+"improvement" over the validated recipe — SIGSEGV'd in
+ghostty_embed_init; the app died with NO stderr and only a stale socket,
+and `coredumpctl info` named libghostty-gtk.so in frame #0. Match the
+validated recipe. (2) Host shells for Ghostty panes are GHOSTTY's job:
+it ships FlatpakHostCommand (src/termio/Exec.zig) behind
+`-Dflatpak=true`. Our own `flatpak-spawn --host` wrapper (which the VTE
+path genuinely needs) fails by construction there — Ghostty runs the
+command ON THE HOST, where flatpak-spawn has no portal: "Can't find
+bus", shell exits, pane answers `unavailable: Surface shell has exited`.
+Diagnosis that cracked it: dump the pane's own env (PATH=/app/bin, no
+DBUS, no HOME) and compare with a VTE pane in the SAME build (full env).
+So the flatpak has TWO working configurations: Ghostty panes (host
+shells via Ghostty's portal integration) and CMUX_TERM=vte panes (host
+shells via our wrapper). agent-resume matrix stayed 11/11 on both
+backends after the revert.

@@ -106,9 +106,18 @@ enum GhosttySurfaceFactory {
         // overrides cwd and runs its command instead of the user's shell.
         let respawn = SurfaceRegistry.shared.takePendingRespawn(for: leaf.surfaceId)
         let workingDirectory = respawn?.workingDirectory ?? leaf.workingDirectory
+        // NB: host shells in a flatpak are GHOSTTY's job, not ours. The
+        // shim is built with -Dflatpak=true, which enables Ghostty's
+        // FlatpakHostCommand path (src/termio/Exec.zig) — it spawns on
+        // the host through the portal itself. Wrapping the command in
+        // our own `flatpak-spawn --host` (as the VTE path must) puts
+        // flatpak-spawn on the HOST, where it has no portal to talk to:
+        // "Can't find bus", the shell exits instantly, and the pane
+        // reports `unavailable: Surface shell has exited` (2026-08-20).
+        let spawnCommand = respawn?.command
         let raw: UnsafeMutableRawPointer? = keys.withUnsafeMutableBufferPointer { k in
             values.withUnsafeMutableBufferPointer { v in
-                if let command = respawn?.command {
+                if let command = spawnCommand {
                     return command.withCString { cmd in
                         ghostty_embed_surface_new_with_command(
                             workingDirectory,

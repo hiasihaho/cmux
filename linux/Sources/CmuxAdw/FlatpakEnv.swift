@@ -57,6 +57,27 @@ enum FlatpakEnv {
         return out
     }
 
+    /// Single-string form for APIs that take a command LINE instead of an
+    /// argv — the Ghostty shim's `surface_new_with_command`. Ghostty panes
+    /// spawn through the shim, not through our VTE path, so without this
+    /// a Ghostty-backed flatpak would hand the user sandbox shells while
+    /// the VTE-backed one gives host shells (round 2). Returns nil when
+    /// host shells are off, i.e. the caller keeps its normal behaviour.
+    static func hostShellCommand(cwd: String?, extraEnv: [String: String]) -> String? {
+        guard hostShellEnabled else { return nil }
+        return spawnArgv(hostLoginShellArgv, cwd: cwd, extraEnv: extraEnv)
+            .map(shellQuote)
+            .joined(separator: " ")
+    }
+
+    /// POSIX single-quote quoting: the command line is parsed by a shell,
+    /// and pane cwds/env values carry spaces and quotes in the wild.
+    private static func shellQuote(_ value: String) -> String {
+        let safe = value.allSatisfy { $0.isLetter || $0.isNumber || "-_./=:,+@".contains($0) }
+        if safe && !value.isEmpty { return value }
+        return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
     /// Host-side login-shell argv for a pane. Two constraints meet here:
     /// the sandbox's $SHELL is the runtime's sh, so the user's real
     /// shell must resolve on the HOST (the portal forwards the host
