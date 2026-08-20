@@ -24,9 +24,12 @@ finish-args:
   # Swift runtime libs are bundled into /app/lib (the SDK extension is
   # build-time only; the Platform runtime ships no Swift).
   - --env=LD_LIBRARY_PATH=/app/lib
-  # DEV-ONLY breadth: round 1 runs shells inside the sandbox and reads
-  # the user's projects directly. Round 2 replaces this with
-  # flatpak-spawn --host shells + portals and narrows the filesystem.
+  # Round 2: pane shells run on the HOST via the org.freedesktop.Flatpak
+  # portal (flatpak-spawn --host). This is what makes panes a real dev
+  # environment; CMUX_FLATPAK_HOST_SHELL=0 falls back to sandbox shells.
+  - --talk-name=org.freedesktop.Flatpak
+  # DEV-ONLY breadth: narrowing is a round-3 item now that shells run on
+  # the host (the app itself needs far less than `home`).
   - --share=network
   - --filesystem=home
 
@@ -61,6 +64,32 @@ modules:
       # Debug configuration on purpose: it is the configuration every
       # host/VM deployment has validated. Release is a later round with
       # its own verification pass.
+      #
+      # Dependency git traffic is fully LOCAL: .flatpak-deps-cache holds
+      # bare-repo mirrors seeded from the host's linux/.build/repositories
+      # (driver `deps-cache` refreshes them), and set-mirror redirects
+      # every original URL to them — including the branch-update fetch
+      # SwiftPM insists on (aparoksha.dev 504s killed three builds on
+      # 2026-08-20). Mirrors ONLY — combining them with --cache-path made
+      # SwiftPM collide with itself ("already exists unexpectedly") and
+      # misread swift-crypto's tags. Both .git/non-.git URL spellings are
+      # registered since manifests and remotes disagree on the suffix.
+      # This is the round-3 offline story, landed early.
+      # Defensive: whatever the dir-source copy carried in (skip-list
+      # semantics proved unreliable — "already exists unexpectedly"
+      # collisions from inherited build state killed two resolves),
+      # the app build starts from clean SwiftPM state. The probe echo
+      # records whether the copy actually contained .build.
+      - 'cd linux && if [ -d .build ]; then echo "PROBE: copy HAS .build"; else echo "PROBE: copy has no .build"; fi && rm -rf .build .swiftpm'
+      - |
+        cd linux && for r in .flatpak-deps-cache/repositories/*/; do
+          url=$(git -C "$r" config remote.origin.url 2>/dev/null) || continue
+          swift package config set-mirror --original "$url" --mirror "file://$PWD/${r%/}"
+          case "$url" in
+            *.git) swift package config set-mirror --original "${url%.git}" --mirror "file://$PWD/${r%/}" ;;
+            *)     swift package config set-mirror --original "$url.git"    --mirror "file://$PWD/${r%/}" ;;
+          esac
+        done
       - cd linux && swift build --product cmux-adw
       - cd linux && swift build --product cmux
       - install -Dm755 linux/.build/debug/cmux-adw /app/bin/cmux-adw

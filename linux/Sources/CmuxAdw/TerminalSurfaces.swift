@@ -78,11 +78,15 @@ final class SurfaceRegistry {
         if let pid = childPids.removeValue(forKey: surfaceId) {
             kill(pid, SIGKILL)
         }
+        let cmuxEnv = [
+            "CMUX_WORKSPACE_ID": workspaceId.uuidString,
+            "CMUX_SURFACE_ID": surfaceId.uuidString,
+            "CMUX_SOCKET_PATH": ControlSocketServer.shared.path,
+        ]
         var environment = ProcessInfo.processInfo.environment
-        environment["CMUX_WORKSPACE_ID"] = workspaceId.uuidString
-        environment["CMUX_SURFACE_ID"] = surfaceId.uuidString
-        environment["CMUX_SOCKET_PATH"] = ControlSocketServer.shared.path
-        let argv = cmuxCStringArray(["/bin/sh", "-c", command])
+        environment.merge(cmuxEnv) { _, new in new }
+        let argv = cmuxCStringArray(FlatpakEnv.spawnArgv(
+            ["/bin/sh", "-c", command], cwd: workingDirectory, extraEnv: cmuxEnv))
         let envv = cmuxCStringArray(environment.map { "\($0.key)=\($0.value)" })
         defer {
             g_strfreev(argv)
@@ -799,12 +803,20 @@ struct TerminalStackWidget: AdwaitaWidget {
         tab: TerminalTab
     ) {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/bash"
+        let cmuxEnv = [
+            "CMUX_WORKSPACE_ID": tab.id.uuidString,
+            "CMUX_SURFACE_ID": leaf.surfaceId.uuidString,
+            "CMUX_SOCKET_PATH": ControlSocketServer.shared.path,
+        ]
         var environment = ProcessInfo.processInfo.environment
-        environment["CMUX_WORKSPACE_ID"] = tab.id.uuidString
-        environment["CMUX_SURFACE_ID"] = leaf.surfaceId.uuidString
-        environment["CMUX_SOCKET_PATH"] = ControlSocketServer.shared.path
+        environment.merge(cmuxEnv) { _, new in new }
 
-        let argv = cmuxCStringArray([shell])
+        // In-flatpak the sandbox $SHELL is the runtime's sh — resolve
+        // the user's real shell host-side instead.
+        let shellArgv = FlatpakEnv.hostShellEnabled
+            ? FlatpakEnv.hostLoginShellArgv : [shell]
+        let argv = cmuxCStringArray(FlatpakEnv.spawnArgv(
+            shellArgv, cwd: leaf.workingDirectory, extraEnv: cmuxEnv))
         let envv = cmuxCStringArray(environment.map { "\($0.key)=\($0.value)" })
         defer {
             g_strfreev(argv)

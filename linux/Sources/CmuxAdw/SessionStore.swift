@@ -126,7 +126,12 @@ enum SessionStore {
             base = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".local/share")
         }
-        return base.appendingPathComponent("cmux/session-linux.json")
+        // Own directory per install kind: the scrollback store lives in
+        // dirname(session) and is pruned on every save, so a flatpak
+        // instance must never share the host instance's session dir
+        // (feature 15 round 2; 2026-07-22 trap class).
+        let dirName = FlatpakEnv.isFlatpak ? "cmux-flatpak" : "cmux"
+        return base.appendingPathComponent("\(dirName)/session-linux.json")
     }
 
     private static var lastSaved: Data?

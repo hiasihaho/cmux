@@ -188,17 +188,21 @@ struct DockPanelWidget: AdwaitaWidget {
         // Non-interactive login shell runs the command; on exit an
         // interactive login shell takes over IN PLACE.
         let script = "\(control.command)\nexec \"\(shell)\" -l"
-        let argv = cmuxCStringArray([shell, "-l", "-c", script])
-        let envv = cmuxCStringArray(environment.map { "\($0.key)=\($0.value)" })
-        defer {
-            g_strfreev(argv)
-            g_strfreev(envv)
-        }
         let cwd = control.cwd.map { raw -> String in
             raw.hasPrefix("~")
                 ? FileManager.default.homeDirectoryForCurrentUser.path + raw.dropFirst()
                 : raw
         } ?? FileManager.default.homeDirectoryForCurrentUser.path
+        var dockEnv = control.env
+        dockEnv["CMUX_DOCK_CONTROL_ID"] = control.id
+        dockEnv["CMUX_DOCK_CONTROL_TITLE"] = control.title
+        let argv = cmuxCStringArray(FlatpakEnv.spawnArgv(
+            [shell, "-l", "-c", script], cwd: cwd, extraEnv: dockEnv))
+        let envv = cmuxCStringArray(environment.map { "\($0.key)=\($0.value)" })
+        defer {
+            g_strfreev(argv)
+            g_strfreev(envv)
+        }
         vte_terminal_spawn_async(
             terminal, VTE_PTY_DEFAULT, cwd, argv, envv,
             G_SPAWN_DEFAULT, nil, nil, nil, -1, nil, nil, nil

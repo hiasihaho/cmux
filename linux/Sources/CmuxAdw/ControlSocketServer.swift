@@ -35,6 +35,13 @@ final class ControlSocketServer {
             return override
         }
         if let runtimeDir = environment["XDG_RUNTIME_DIR"], !runtimeDir.isEmpty {
+            // Inside a flatpak the bare runtime dir is a private tmpfs;
+            // app/<id>/ is the one subpath the HOST also sees, so
+            // host-side CLI/hooks/agents can reach the socket
+            // (feature 15 round 2, probe-verified 2026-08-20).
+            if let appId = environment["FLATPAK_ID"], !appId.isEmpty {
+                return runtimeDir + "/app/" + appId + "/cmux.sock"
+            }
             return runtimeDir + "/cmux.sock"
         }
         return "/tmp/cmux-\(getuid()).sock"

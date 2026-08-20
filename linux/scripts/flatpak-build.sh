@@ -11,6 +11,13 @@
 #   flatpak-build.sh run       # launch the installed flatpak
 #   flatpak-build.sh verify    # smoke: binaries exist in the sandbox + CLI runs
 #
+# Extra args after build/install go to flatpak-builder verbatim. TRAP
+# (2026-08-20): the `type: dir` app module can be served from the
+# state-dir MODULE CACHE even with --force-clean — an edit-rebuild-test
+# loop then tests a stale binary. Pass --disable-cache when app sources
+# changed, and after installing VERIFY the change reached /app/bin
+# (grep a new symbol/string) before trusting any probe result.
+#
 # Exit: 0 ok, 1 step failed, 2 missing tooling.
 set -euo pipefail
 
@@ -52,21 +59,43 @@ build() {
 
 case "$cmd" in
     deps) deps ;;
-    build) build ;;
-    install) build --install ;;
+    deps-cache)
+        # Refresh the local SwiftPM bare-repo mirrors the manifest's
+        # set-mirror loop builds from. Source of truth: the host
+        # .build/repositories a normal `swift build` maintains. Cuts the
+        # build's dependency on aparoksha.dev uptime. Each mirror dir is
+        # named EXACTLY like the upstream repo (URL basename minus .git):
+        # SwiftPM derives package identity from the mirror URL basename,
+        # so fingerprint-suffixed names corrupt identities and resolution
+        # fails with nonsense tools-version errors (2026-08-20).
+        [ -d "$LINUX_DIR/.build/repositories" ] || die "run a host swift build first"
+        CACHE="$LINUX_DIR/.flatpak-deps-cache/repositories"
+        rm -rf "$CACHE"; mkdir -p "$CACHE"
+        for r in "$LINUX_DIR"/.build/repositories/*/; do
+            url=$(git -C "$r" config remote.origin.url 2>/dev/null) || continue
+            base=$(basename "$url" .git)
+            cp -a "$r" "$CACHE/$base"
+        done
+        ls "$CACHE"; du -sh "$LINUX_DIR/.flatpak-deps-cache" ;;
+    build) build "${@:2}" ;;
+    install) build --install "${@:2}" ;;
     run)
-        # Instance isolation is MANDATORY while the sandbox shares the
-        # real home (--filesystem=home): an unisolated launch would
-        # register the daily's GApplication id AND write the daily's
-        # session store — and dirname(session)/scrollback is pruned on
-        # every save (the 2026-07-22 trap). Own id, own session DIR, and
-        # a socket in XDG_RUNTIME_DIR/app/<id>/ — the one sandbox path
-        # the HOST can reach, so host-side CLI/agents can talk to it.
-        mkdir -p "$HOME/.local/state/cmux-flatpak"
-        flatpak run --user \
+        # Since round 2 the app's own in-flatpak defaults are safe
+        # (socket in XDG_RUNTIME_DIR/app/<id>/, session in its own
+        # cmux-flatpak dir). Only the GApplication id still needs an
+        # override on a host that also runs the daily cmux-adw — same
+        # session bus, same default id.
+        echo "socket: ${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/app/$APP_ID/cmux.sock"
+        # flatpak run FORWARDS the caller's ambient environment into the
+        # sandbox — launched from a cmux pane, the app would inherit that
+        # pane's CMUX_* identity (socket path included) and bind its
+        # socket on a private tmpfs path. Scrub first, same reason the
+        # test suites' cx() scrubs.
+        env -u CMUX_SOCKET_PATH -u CMUX_SOCKET_PASSWORD \
+            -u CMUX_WORKSPACE_ID -u CMUX_SURFACE_ID \
+            -u CMUX_TAB_ID -u CMUX_PANEL_ID -u CMUX_SESSION_PATH \
+            flatpak run --user \
             --env=CMUX_APP_ID=com.manaflow.cmux.flatpak \
-            --env=CMUX_SOCKET_PATH="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/app/$APP_ID/flatpak.sock" \
-            --env=CMUX_SESSION_PATH="$HOME/.local/state/cmux-flatpak/session.json" \
             "$APP_ID" ;;
     verify)
         flatpak info --user "$APP_ID" >/dev/null || die "$APP_ID not installed"

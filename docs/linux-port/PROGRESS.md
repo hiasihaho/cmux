@@ -4496,3 +4496,21 @@ id, own session DIR): with --filesystem=home an unisolated flatpak
 would prune the daily's scrollback store (2026-07-22 class). Full
 probe log + harness lessons (incl. the grep-for-error false-positive
 on our own "ERROR: …" string literals) in features/15.
+
+## 2026-08-20 (evening) — Flatpak round 2: host shells, offline deps
+
+Panes in the flatpak are real host dev terminals now: probe shows
+`hias@fedora-11:~$` — host bash, user PS1, driven closed-loop over the
+new default socket ($XDG_RUNTIME_DIR/app/<id>/cmux.sock). One shared
+spawn rewrite (FlatpakEnv.spawnArgv) serves shell/respawn/dock paths;
+session state self-isolates (cmux-flatpak dir); the user's shell
+resolves host-side; job control comes from util-linux `script` when
+the host has it (runtime-probed, graceful degradation). Dependency git
+traffic is fully local (bare-repo mirrors + SwiftPM set-mirror) after
+aparoksha.dev 504s killed three builds — the round-3 offline story
+landed a round early. Twelve builds, seven verified traps: the full
+failure catalog (module-cache staleness, ambient-env forwarding,
+mirror-name identity corruption, rofiles-fuse leftovers, self-matching
+monitors, restored-scrollback masquerade) is in features/15 — written
+as harness input, per hias's reproducibility requirement. Host build +
+feed-smoke stayed green throughout (spawn passthrough outside flatpak).

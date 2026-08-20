@@ -118,6 +118,81 @@ Open, with leading options; none are packaging mechanics:
 5. **Notifications** already flow through the portal for flatpaks —
    expected to just work, verify in round 2.
 
+## Round-2 evidence (2026-08-20 evening) — host shells land
+
+Probe: `hias@fedora-11:~$` inside a flatpak pane — real host bash, user
+PS1, host hostname, driven closed-loop over the socket. Shipped:
+
+- `FlatpakEnv.spawnArgv` — ONE spawn rewrite for all three pane paths
+  (shell, respawn, dock panel): `flatpak-spawn --host --watch-bus`,
+  explicit `--env` forwarding of pane identity + TERM/COLORTERM.
+  `CMUX_FLATPAK_HOST_SHELL=0` keeps sandbox shells.
+- In-flatpak defaults: socket `$XDG_RUNTIME_DIR/app/$FLATPAK_ID/cmux.sock`
+  (host-reachable, zero permissions), session state in its own
+  `cmux-flatpak` dir. Manifest adds `--talk-name=org.freedesktop.Flatpak`.
+- Shell resolution + job control: the user's real shell resolves
+  HOST-side (`${SHELL:-/bin/bash}` expanded by host sh — the sandbox's
+  $SHELL is the runtime's sh). Job control needs a fresh host pty
+  (the VTE pty's ctty slot belongs to the sandbox session; `setsid
+  --ctty` gets EPERM): util-linux `script` provides it, probed at
+  runtime — Fedora splits it into `util-linux-script`, so absence
+  degrades to a working shell with bash's job-control warnings.
+- Offline deps (round-3 item, landed early): `.flatpak-deps-cache`
+  bare-repo mirrors (driver `deps-cache`) + SwiftPM `set-mirror` for
+  both .git/non-.git spellings. Mirror dir names MUST equal the
+  upstream repo name — SwiftPM derives package identity from the
+  mirror URL basename; fingerprint-suffixed names break resolution
+  with misleading tools-version errors.
+
+Failure catalog from the build loop (harness-critical, each verified):
+
+1. Module-cache staleness: `type: dir` modules can be served from the
+   state-dir cache despite `--force-clean` — verify the change reached
+   `/app/bin` (grep a new string) before trusting any probe.
+2. `flatpak run` forwards ambient env — launched from a cmux pane the
+   sandbox inherits that pane's CMUX_* identity; scrub before run
+   (driver does).
+3. aparoksha.dev git 504s kill online resolves — hence the mirrors.
+4. Combining `--cache-path` WITH mirrors makes SwiftPM collide with
+   itself ("already exists unexpectedly") — mirrors only.
+5. Killing flatpak-builder leaves stale rofiles-fuse mounts; the next
+   run dies "Permission denied" — fusermount3 -u them first.
+6. Monitor hygiene: `pgrep -f` on the builder command line matches the
+   watching loop itself — use `pgrep -x flatpak-builder`; and grep for
+   `error:` false-fires on our own "ERROR: …" string literals echoed in
+   compiler diagnostics.
+7. Session restore also restores scrollback — probe FRESH workspaces,
+   or old probe output masquerades as current behavior.
+
+## Permission model (decided direction, hias + desk 2026-08-20)
+
+The question "ship `--filesystem=home` or narrower, maybe per-folder
+($pwd-style) mappings?" dissolves once host shells land: pane shells
+run on the HOST through the portal, so the user's full dev environment
+is available in every pane **regardless of the sandbox's filesystem
+grants**. The sandbox then only needs what the APP itself touches
+(session/scrollback state, its config, drag-drop via portal). That is
+the Ptyxis model, and it means narrow-by-default is nearly free.
+
+Mechanism facts a harness (and docs) should encode:
+
+- finish-args are only DEFAULTS. Users switch per-app without any
+  rebuild: `flatpak override --user com.manaflow.cmux
+  --nofilesystem=home --filesystem=~/dev` — exactly the "$pwd-scoped"
+  idea, native, per-user, reversible (`flatpak override --user --reset
+  com.manaflow.cmux`). Flatseal/GNOME Settings are the GUI faces.
+- An app can NOT widen its own permissions at runtime — by design.
+  "Directly switchable" from inside cmux is therefore out; what we CAN
+  ship is detection + guidance (app notices a blocked path/portal and
+  prints the exact override command or opens Settings).
+- So the deliverable is **advised permission profiles**, documented as
+  one-liners and encoded in the driver script:
+  `dev` (today's breadth: filesystem=home — zero friction),
+  `standard` (narrow: no home; host shells carry dev work; app state
+  in its own dirs), `paranoid` (standard minus network, sandbox-only
+  shells via CMUX_FLATPAK_HOST_SHELL=0). Manifest ships `standard`
+  once round-3 narrowing is verified; `dev` is one override away.
+
 ## Round map
 
 - **Round 1 (this): scoping.** VTE-only, debug config (the validated
