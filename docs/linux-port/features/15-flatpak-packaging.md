@@ -61,6 +61,38 @@ rediscovering the territory.
   Vulkan fences hang GTK teardown in VMs (PROGRESS 2026-08-20, two
   independent stacks). GL-on-virgl is solid; revisit only with evidence.
 
+Round-1 build evidence (same day):
+
+- **First `flatpak-build.sh install` succeeded on the first attempt**:
+  vte 0.82.3 module + full SwiftPM fetch + swift build of both products
+  under Swift 6.3.3, exported and installed as
+  `app/com.manaflow.cmux/x86_64/master` (~346 MB builder state;
+  runtimes + build cost ~4 GB of host disk total).
+- `verify` green: `/app/bin/cmux --help` runs in the sandbox — proof
+  the bundled Swift runtime in /app/lib resolves.
+- **Live probe**: `flatpak-build.sh run` (isolated ids) came up; the
+  HOST-side CLI reached the sandboxed control socket at
+  `$XDG_RUNTIME_DIR/app/com.manaflow.cmux/flatpak.sock` — `ping` →
+  PONG, `workspace list` → workspace:1. **Design decision 2 has a
+  proven answer**: that path is host-visible with zero extra
+  permissions; round 2 should make it the app's default socket path
+  when running inside flatpak (`$FLATPAK_ID` is set in-sandbox).
+  In-sandbox shell behavior was not captured in this probe (screen
+  read returned empty before shutdown) — verify with decision 1.
+- **Isolation is mandatory, encoded in the driver**: with
+  `--filesystem=home` an unisolated launch would register the daily's
+  GApplication id and write the daily's session store — and
+  dirname(session)/scrollback is pruned on every save (the 2026-07-22
+  trap). `flatpak-build.sh run` injects CMUX_APP_ID, a per-app socket,
+  and a session file in its OWN directory (`~/.local/state/cmux-flatpak/`).
+  A harness must never launch the flatpak without these.
+- **Harness lesson — log-watch false positive**: a naive
+  `grep -i error:` build watcher fires on Swift compiler diagnostics
+  that echo OUR source lines containing the string `"ERROR:` (e.g.
+  `return "ERROR: No focused terminal"`). Match `^Error:|error: ` and
+  exclude `"ERROR:`-quoted snippets, or gate on the builder's exit
+  status instead of log grep.
+
 ## Sandbox design decisions (round 2 — the real engineering)
 
 Open, with leading options; none are packaging mechanics:

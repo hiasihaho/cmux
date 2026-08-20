@@ -54,7 +54,20 @@ case "$cmd" in
     deps) deps ;;
     build) build ;;
     install) build --install ;;
-    run) flatpak run --user "$APP_ID" ;;
+    run)
+        # Instance isolation is MANDATORY while the sandbox shares the
+        # real home (--filesystem=home): an unisolated launch would
+        # register the daily's GApplication id AND write the daily's
+        # session store — and dirname(session)/scrollback is pruned on
+        # every save (the 2026-07-22 trap). Own id, own session DIR, and
+        # a socket in XDG_RUNTIME_DIR/app/<id>/ — the one sandbox path
+        # the HOST can reach, so host-side CLI/agents can talk to it.
+        mkdir -p "$HOME/.local/state/cmux-flatpak"
+        flatpak run --user \
+            --env=CMUX_APP_ID=com.manaflow.cmux.flatpak \
+            --env=CMUX_SOCKET_PATH="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/app/$APP_ID/flatpak.sock" \
+            --env=CMUX_SESSION_PATH="$HOME/.local/state/cmux-flatpak/session.json" \
+            "$APP_ID" ;;
     verify)
         flatpak info --user "$APP_ID" >/dev/null || die "$APP_ID not installed"
         flatpak run --user --command=sh "$APP_ID" -c \

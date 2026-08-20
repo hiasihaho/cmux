@@ -4480,3 +4480,19 @@ contexts, so pinning the GSK renderer alone still leaves Vulkan paths.
 Verified healthy: both vars in the live environ, main thread idle in
 ppoll. Lesson: verify env fixes against /proc/<pid>/environ of the
 running process, never against the .desktop file.
+
+## 2026-08-20 — Flatpak round 1: first build green, socket reachable from host
+
+Flatpak scoping increment (features/15): manifest + pinned driver
+(`linux/scripts/flatpak-build.sh`) + harness-contract feature doc.
+First `flatpak-builder` run succeeded on the FIRST attempt —
+org.freedesktop.Sdk.Extension.swift6//25.08 ships Swift 6.3.3, vte
+0.82.3 as a module, WebKitGTK already in org.gnome.Platform//49, Swift
+runtime bundled to /app/lib. Live probe: host CLI pinged the sandboxed
+instance through $XDG_RUNTIME_DIR/app/com.manaflow.cmux/flatpak.sock
+(zero extra permissions) — the round-2 socket-reachability question
+answered itself. Driver `run` hard-codes instance isolation (own app
+id, own session DIR): with --filesystem=home an unisolated flatpak
+would prune the daily's scrollback store (2026-07-22 class). Full
+probe log + harness lessons (incl. the grep-for-error false-positive
+on our own "ERROR: …" string literals) in features/15.
