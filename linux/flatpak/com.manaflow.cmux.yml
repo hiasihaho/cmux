@@ -165,14 +165,39 @@ modules:
       - install -Dm755 linux/.build/debug/cmux /app/bin/cmux
       - mkdir -p /app/lib && cp -a /usr/lib/sdk/swift6/lib/swift/linux/*.so* /app/lib/
       - install -Dm644 linux/flatpak/com.manaflow.cmux.flatpak.desktop /app/share/applications/com.manaflow.cmux.flatpak.desktop
+      # Ship the cmux skills so a flatpak-only install is self-contained
+      # (no repo checkout). Host-side agents reach them through the
+      # flatpak's own files dir; `install-user-skills.sh` links them.
+      - install -d /app/share/cmux && cp -a skills /app/share/cmux/skills
     sources:
+      # SCOPED on purpose. A whole-repo `type: dir` copied 551 MB into
+      # the build context every run — including ~29 MB of conversation
+      # exports (*.txt), .claude/settings.local.json, and the iOS/macOS
+      # app trees the Linux build never touches. None of it ever shipped
+      # (only /app is exported), but personal files have no business in a
+      # build context. These three subtrees are exactly what
+      # linux/Package.swift needs, plus the skills we install.
       - type: dir
-        path: ../..
+        path: ../../linux
+        dest: linux
         skip:
-          - .git
-          - ghostty
-          - linux/.build
-          - linux/.build-gnome50
-          - linux/.flatpak-build
-          - web
-          - node_modules
+          - .build
+          - .build-gnome50
+          - .flatpak-build
+      - type: dir
+        path: ../../Packages
+        dest: Packages
+      - type: dir
+        path: ../../skills
+        dest: skills
+      # linux/Sources/CmuxCLI is a nest of SYMLINKS into the repo root —
+      # CLI/ and Sources/ hold code shared with the macOS app (CLAUDE.md:
+      # "changes to shared sources must keep building on macOS"). Omit
+      # them and the copy has dangling links, which SwiftPM reports as
+      # the wonderfully indirect "target 'CmuxCLI' ... is empty".
+      - type: dir
+        path: ../../CLI
+        dest: CLI
+      - type: dir
+        path: ../../Sources
+        dest: Sources

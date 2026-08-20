@@ -203,6 +203,25 @@ exit without a word. Desktop id == GApplication id also lets GNOME route
 its notifications. Verified: `gtk-launch com.manaflow.cmux.flatpak`
 brings up the sandboxed instance while the daily keeps running.
 
+Build context + skills (2026-08-20):
+
+- Sources are SCOPED, not blacklisted: `linux/`, `Packages/`, `skills/`,
+  `CLI/`, `Sources/`. The old whole-repo `type: dir` pulled 551 MB into
+  every build, including ~29 MB of conversation exports and
+  `.claude/settings.local.json`. None of it ever SHIPPED — only /app is
+  exported, and /app holds no .txt/.md at all — but personal files do
+  not belong in a build context. Now ~110 MB.
+- `CLI/` and `Sources/` are NOT optional: `linux/Sources/CmuxCLI` is a
+  nest of symlinks into the repo root (code shared with the macOS app).
+  Omitting them leaves dangling links and SwiftPM says "target
+  'CmuxCLI' referenced in product 'cmux' is empty" — which sounds like
+  a package-manifest problem and is really a missing subtree.
+- The 21 cmux skills ship at `/app/share/cmux/skills`, so a
+  flatpak-only install (no checkout) is self-contained.
+  `install-user-skills.sh` resolves CMUX_SKILLS_DIR → checkout →
+  flatpak install, linking through `current/active` so the links follow
+  flatpak updates the way repo links follow a git pull.
+
 Round-3a traps (each cost a build):
 
 - **Do not "improve" the shim build recipe.** Adding
