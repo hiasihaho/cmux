@@ -164,6 +164,15 @@ every rebuild — a plain `swift build` silently reverts to VTE-only. The
 binary must always run via `toolbox run`; the bare host has no Swift
 runtime.
 
+**On a VM with virtio-GPU, pin the renderer.** GTK 4.20 prefers its
+Vulkan renderer; over Mesa's venus driver it hung forever in
+`vn_WaitForFences` during widget unrealize — the wedged instance kept
+the `com.manaflow.cmux` D-Bus name, so every later launch died ~25 s in
+with `Failed to register: timeout` (the journal's only symptom; the
+stale process is the actual cause). Install the desktop entry with an
+`env GSK_RENDERER=ngl toolbox run …` Exec so the app uses GL (virgl),
+which is solid in VMs.
+
 ## Layout
 
 ```

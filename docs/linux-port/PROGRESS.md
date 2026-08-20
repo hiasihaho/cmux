@@ -4453,3 +4453,17 @@ copies over safely (`terminalBackend: ghostty` is inert on VTE-only
 binaries — the whole ghostty path is `#if canImport(CGhosttyEmbed)`),
 and `~/.config/ghostty/` only takes effect in shim builds. Flatpak
 remains the real packaging answer; this run is its requirements list.
+
+Addendum, same day: the shim build "wouldn't start" on the VM — root
+cause was NOT the shim. The morning's VTE instance had hung at window
+teardown inside Mesa's venus (virtio-GPU Vulkan) driver
+(`gtk_popover_unrealize → gsk_gpu_renderer_unrealize →
+gdk_vulkan_context_wait_present → vn_WaitForFences`, main thread
+nanosleep-polling a fence that never signals) and kept owning
+`com.manaflow.cmux` on the session bus — every subsequent launch timed
+out with `Failed to register` after ~25 s. Diagnosis path worth
+remembering: journal shows only the registration timeout; `busctl
+--user list` names the squatting pid; `eu-stack -p` INSIDE the toolbox
+symbolizes where host gdb cannot. Fix: kill the wedged pid, reinstall
+the desktop entry with `env GSK_RENDERER=ngl` (GL/virgl instead of
+Vulkan/venus). README deployment section carries the workaround.
