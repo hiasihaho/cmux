@@ -274,6 +274,17 @@ private func finishBrowserJSCall(box: JSCallbackBox, result: OpaquePointer?) {
 
 // MARK: - snapshot (screenshot) C-callback plumbing
 
+/// One-shot claim shared by an async callback and its deadline: both may
+/// fire, exactly one may answer. Main-loop confined, so no locking.
+final class AtomicFlag {
+    private var taken = false
+    func claim() -> Bool {
+        if taken { return false }
+        taken = true
+        return true
+    }
+}
+
 private final class SnapshotCallbackBox {
     let webView: UnsafeMutablePointer<WebKitWebView>
     /// (png_base64, errorMessage) — exactly one is non-nil.
@@ -1446,7 +1457,20 @@ extension ControlCommandHandler {
                 data: ["surface_id": target.surfaceId.uuidString]
             ))
         }
+        // A capture that never comes back must not hang the caller forever.
+        // WebKitGTK's snapshot callback simply does not fire when the
+        // requested image exceeds what the renderer can allocate — a
+        // full-document capture of a long page on a GPU renderer is the
+        // way to hit that: GL_MAX_TEXTURE_SIZE is 16384 on typical
+        // hardware, and a 40k-CSS-px document on a 2x display asks for
+        // 80k device px (reported by a sibling session 2026-08-21;
+        // software rendering has no such ceiling, which is why suites
+        // under Xvfb capture 100k px happily). One-shot guard: whichever
+        // of callback and deadline arrives first owns the reply.
+        let answered = AtomicFlag()
+        let deadlineSeconds = 20
         let box = Unmanaged.passRetained(SnapshotCallbackBox(webView: target.webView) { png, errorMessage in
+            guard answered.claim() else { return }
             guard let png else {
                 respond(self.baError(
                     id: id, code: "internal_error",
@@ -1458,6 +1482,14 @@ extension ControlCommandHandler {
             payload["png_base64"] = png
             respond(self.baOk(id: id, result: payload))
         }).toOpaque()
+        scheduleOnMainLoop(afterMs: UInt32(deadlineSeconds * 1000)) {
+            guard answered.claim() else { return }
+            respond(self.baError(
+                id: id, code: "timeout",
+                message: "Snapshot did not complete within \(deadlineSeconds)s. Full-document captures of very long pages can exceed the renderer's maximum texture size (commonly 16384px); try without --full-page, or a shorter page.",
+                data: ["surface_id": target.surfaceId.uuidString, "full_page": boolParam(params, "full_page") == true]
+            ))
+        }
         // Default is the visible viewport (what the human sees, and what
         // macOS's WKSnapshotConfiguration does). `full_page` captures the
         // whole document instead — on a page laid out wider or taller than

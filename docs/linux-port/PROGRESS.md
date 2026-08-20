@@ -4604,3 +4604,22 @@ a BACKGROUND-workspace surface does not surface the server's
 visible pane. That is how the first measurement in this investigation
 came out wrong (identical dimensions for viewport and full-page), and it
 is a worse failure mode than an error. Mechanism not yet isolated.
+
+Same night, follow-on: a sibling session verified the --full-page fix and
+reported that full-page HANGS with no error on Wikipedia-scale documents
+(~40k CSS px). Bisected: synthetic pages captured fine at 40k, 100k, and
+3000x40000 (120 Mpx, ~480 MB raw) in seconds — but only because probes
+run under Xvfb SOFTWARE rendering. The daily runs GTK's GPU renderer,
+where `GL_MAX_TEXTURE_SIZE = 16384` (AMD Radeon 8060S); 40k CSS px at 2x
+is 80k device px, five times the ceiling, and WebKitGTK's snapshot
+callback then never fires. Our part of the bug: the screenshot path had
+NO server-side deadline, so the request waited forever. Added a one-shot
+guard (callback vs 20s deadline, exactly one answers) returning a
+`timeout` error that names the texture-size cause. The capture itself
+still cannot succeed above the ceiling — GAPS rows added for the real
+fix (tiling) and for the missing `browser.viewport.set`.
+
+Method note worth keeping: "cannot reproduce" was wrong-headed here until
+the renderer difference surfaced. A probe under Xvfb/llvmpipe is not a
+probe of the user's GPU path, and for anything that allocates large
+buffers that difference decides the outcome.
