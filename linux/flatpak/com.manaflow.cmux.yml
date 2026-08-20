@@ -24,6 +24,13 @@ finish-args:
   # Swift runtime libs are bundled into /app/lib (the SDK extension is
   # build-time only; the Platform runtime ships no Swift).
   - --env=LD_LIBRARY_PATH=/app/lib
+  # Own GApplication id, ALWAYS. The locally-built daily owns
+  # com.manaflow.cmux on the session bus; sharing it makes a flatpak
+  # launch forward activation to the daily and exit without a word (and
+  # it is what made the desktop entry useless before). Matches the
+  # exported com.manaflow.cmux.flatpak.desktop, so GNOME can route
+  # notifications to it.
+  - --env=CMUX_APP_ID=com.manaflow.cmux.flatpak
   # Ghostty shell-integration + themes (round 3): the app's self-locate
   # walks the repo tree, which does not exist inside the sandbox.
   - --env=GHOSTTY_RESOURCES_DIR=/app/share/ghostty
@@ -157,7 +164,7 @@ modules:
       - install -Dm755 linux/.build/debug/cmux-adw /app/bin/cmux-adw
       - install -Dm755 linux/.build/debug/cmux /app/bin/cmux
       - mkdir -p /app/lib && cp -a /usr/lib/sdk/swift6/lib/swift/linux/*.so* /app/lib/
-      - install -Dm644 linux/flatpak/com.manaflow.cmux.desktop /app/share/applications/com.manaflow.cmux.desktop
+      - install -Dm644 linux/flatpak/com.manaflow.cmux.flatpak.desktop /app/share/applications/com.manaflow.cmux.flatpak.desktop
     sources:
       - type: dir
         path: ../..

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+# Distinct from the locally-built cmux: both would otherwise export
+# com.manaflow.cmux.desktop, and ~/.local/share/applications shadows the
+# flatpak export — clicking "cmux" would silently start the local build.
+Name=cmux (Flatpak)
+Comment=Terminal for AI coding agents — sandboxed Flatpak build
+Exec=cmux-adw
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+StartupNotify=true

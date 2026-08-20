@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=cmux
-Comment=Terminal for AI coding agents (Linux port)
-Exec=cmux-adw
-Icon=utilities-terminal
-Terminal=false
-Categories=System;TerminalEmulator;
-StartupNotify=true

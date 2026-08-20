@@ -191,6 +191,18 @@ BUILT IN THE SANDBOX. Modules added, in order:
   app's self-locate walks the repo tree for that directory and there is
   no repo in the sandbox.
 
+Launcher (2026-08-20): the flatpak exports
+`com.manaflow.cmux.flatpak.desktop` ("cmux (Flatpak)"), NOT
+`com.manaflow.cmux.desktop` — the locally-built cmux installs that name
+into ~/.local/share/applications, which shadows flatpak exports, so the
+grid icon silently started the local build. The manifest also pins
+`--env=CMUX_APP_ID=com.manaflow.cmux.flatpak` in finish-args so the
+sandboxed app ALWAYS takes its own GApplication id: sharing the daily's
+id makes any launch (icon or CLI) forward activation to the daily and
+exit without a word. Desktop id == GApplication id also lets GNOME route
+its notifications. Verified: `gtk-launch com.manaflow.cmux.flatpak`
+brings up the sandboxed instance while the daily keeps running.
+
 Round-3a traps (each cost a build):
 
 - **Do not "improve" the shim build recipe.** Adding
