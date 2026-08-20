@@ -4467,3 +4467,16 @@ remembering: journal shows only the registration timeout; `busctl
 symbolizes where host gdb cannot. Fix: kill the wedged pid, reinstall
 the desktop entry with `env GSK_RENDERER=ngl` (GL/virgl instead of
 Vulkan/venus). README deployment section carries the workaround.
+
+Second addendum: the GSK_RENDERER=ngl fix was itself broken — `env
+GSK_RENDERER=ngl toolbox run …` never delivers the variable because
+`toolbox run` scrubs the caller's environment (verified empty in
+/proc/<pid>/environ; the relaunched app hung again in vn_WaitForFences,
+this time tearing down a tooltip's own Vulkan context). Working form
+puts env INSIDE the container — `toolbox run --container cmux env
+GDK_DISABLE=vulkan GSK_RENDERER=ngl <binary>` — and GDK_DISABLE=vulkan
+is the load-bearing half: popovers/tooltips get their own GDK draw
+contexts, so pinning the GSK renderer alone still leaves Vulkan paths.
+Verified healthy: both vars in the live environ, main thread idle in
+ppoll. Lesson: verify env fixes against /proc/<pid>/environ of the
+running process, never against the .desktop file.

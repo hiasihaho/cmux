@@ -164,14 +164,27 @@ every rebuild — a plain `swift build` silently reverts to VTE-only. The
 binary must always run via `toolbox run`; the bare host has no Swift
 runtime.
 
-**On a VM with virtio-GPU, pin the renderer.** GTK 4.20 prefers its
-Vulkan renderer; over Mesa's venus driver it hung forever in
-`vn_WaitForFences` during widget unrealize — the wedged instance kept
-the `com.manaflow.cmux` D-Bus name, so every later launch died ~25 s in
-with `Failed to register: timeout` (the journal's only symptom; the
-stale process is the actual cause). Install the desktop entry with an
-`env GSK_RENDERER=ngl toolbox run …` Exec so the app uses GL (virgl),
-which is solid in VMs.
+**On a VM with virtio-GPU, disable Vulkan — inside the container.**
+GTK 4.20 prefers its Vulkan renderer; over Mesa's venus driver it hung
+forever in `vn_WaitForFences` during widget unrealize (first a popover,
+then a mere tooltip) — the wedged instance kept the `com.manaflow.cmux`
+D-Bus name, so every later launch died ~25 s in with `Failed to
+register: timeout` (the journal's only symptom; the stale process is
+the actual cause). Two traps in one: `toolbox run` scrubs the caller's
+environment, so `env GSK_RENDERER=ngl toolbox run …` silently does
+nothing — the `env` must come AFTER `toolbox run`:
+
+```sh
+bash scripts/install-desktop-entry.sh \
+    "toolbox run --container cmux env GDK_DISABLE=vulkan GSK_RENDERER=ngl \
+     $HOME/dev/cmux/linux/.build/debug/cmux-adw"
+```
+
+`GDK_DISABLE=vulkan` blocks Vulkan context creation outright (tooltips
+and popovers get their own GDK contexts, so pinning the GSK renderer
+alone is not enough); GL lands on virgl, which is solid in VMs. Verify
+against the LIVE process, not the .desktop file:
+`tr '\0' '\n' < /proc/$(pgrep -x cmux-adw)/environ | grep GDK`.
 
 ## Layout
 
