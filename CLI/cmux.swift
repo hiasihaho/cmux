@@ -14364,10 +14364,19 @@ struct CMUXCLI {
             let (outPathOpt, _) = parseOption(subArgs, name: "--out")
             let localJSONOutput = hasFlag(subArgs, name: "--json")
             let outputAsJSON = effectiveJSONOutput || localJSONOutput
+            // --full-page was documented here and implemented server-side
+            // from the start, but never actually parsed — so it silently
+            // produced viewport captures that look entirely plausible
+            // (2026-08-21). Only sent when asked, so servers without the
+            // parameter keep their old behaviour.
+            var screenshotParams: [String: Any] = ["surface_id": sid]
+            if hasFlag(subArgs, name: "--full-page") {
+                screenshotParams["full_page"] = true
+            }
             // Leave room beyond the app's capture deadline for its liveness probe and recovery reply.
             var payload = try client.sendV2(
                 method: "browser.screenshot",
-                params: ["surface_id": sid],
+                params: screenshotParams,
                 responseTimeout: 25
             )
 
