@@ -138,6 +138,32 @@ toolbox enter cmux-gnome50
 sudo dnf install swift-lang gtk4-devel libadwaita-devel   # passwordless inside toolbox
 ```
 
+### Deploying to another machine (toolbox route)
+
+Proven 2026-08-20 against a Fedora 42 VM (whose dnf `swift-lang` 6.0.3 is
+too old for our `swift-tools-version: 6.1`). Until Flatpak packaging
+lands, build inside a Fedora 43 toolbox — no host OS change needed; the
+app opens on the machine's normal desktop (toolbox shares the Wayland
+session) and brings its own GTK/adwaita, so an older host GNOME is fine:
+
+```sh
+toolbox create --distro fedora --release 43 cmux
+toolbox run --container cmux sudo dnf install -y swift-lang gtk4-devel \
+    libadwaita-devel vte291-gtk4-devel webkitgtk6.0-devel
+# sync or clone the repo (ghostty checkout + .build dirs not needed), then:
+toolbox run --container cmux bash -c "cd ~/dev/cmux/linux && swift build"
+bash scripts/install-desktop-entry.sh \
+    "toolbox run --container cmux $HOME/dev/cmux/linux/.build/debug/cmux-adw"
+```
+
+For a shim (Ghostty) build, skip zig entirely: copy a same-Fedora host's
+`ghostty/zig-out/{include,share,lib/libghostty-gtk.so}` (~130 MB) into
+place, `dnf install gtk4-layer-shell` in the toolbox (the shim's one extra
+runtime dep), then `CMUX_GHOSTTY=1 swift build`. Remember the flag on
+every rebuild — a plain `swift build` silently reverts to VTE-only. The
+binary must always run via `toolbox run`; the bare host has no Swift
+runtime.
+
 ## Layout
 
 ```

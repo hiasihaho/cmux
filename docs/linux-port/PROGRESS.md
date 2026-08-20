@@ -4429,3 +4429,27 @@ the item's visible text becomes the raw escaped JSON. The malformed
 letter stayed in the workstream (append-only), superseded by a marked
 letter of record. Both cmux-feed skill forks now prescribe the object
 form and show it in the example push.
+
+## 2026-08-20 — first second-machine deployment (x12vm, toolbox route)
+
+The port now runs on a second machine: hias's Fedora 42 VM, via a
+Fedora 43 toolbox (F42's dnf swift-lang 6.0.3 predates our
+swift-tools-version 6.1; the VM stays untouched until its backup +
+upgrade). Full VTE build: 140 s / 1351 targets on 8 VM cores, zero
+unresolved libs. Ghostty shim WITHOUT zig: copying the host's
+`zig-out/{include,share,libghostty-gtk.so}` (~130 MB, Fedora 43 → 43
+toolbox ABI match) + `dnf install gtk4-layer-shell` + `CMUX_GHOSTTY=1
+swift build` (19.5 s) produced a fully linked shim binary — the entire
+zig toolchain, 20-min build, and 6 GB cache were unnecessary. Desktop
+entry via `install-desktop-entry.sh` with a `toolbox run` Exec prefix
+(validates clean; GNotification id match intact). Recipe now in
+linux/README.md "Deploying to another machine".
+
+Traps banked: (1) `install-desktop-entry.sh` had never been executable
+despite the README's `./` invocation — exec bit committed; (2) plain
+`swift build` on a shim deployment silently reverts to VTE-only — the
+flag is per-rebuild; (3) user configs: `~/.config/cmux/cmux.json`
+copies over safely (`terminalBackend: ghostty` is inert on VTE-only
+binaries — the whole ghostty path is `#if canImport(CGhosttyEmbed)`),
+and `~/.config/ghostty/` only takes effect in shim builds. Flatpak
+remains the real packaging answer; this run is its requirements list.
