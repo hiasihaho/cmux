@@ -268,6 +268,43 @@ Related host-side change worth knowing when reading this manifest:
 the Flatpak's VTE-only rounds must pass `CMUX_GHOSTTY=0` explicitly if
 they ever want the old behaviour back.
 
+## Shipping to another machine (bundle route) — proven 2026-08-21
+
+The toolbox route (round-1 notes below) is superseded for DEPLOYMENT by
+a single-file bundle. On x12vm (Fedora 42, EOL, virtio-GPU) this needed
+no Swift toolchain, no -devel packages, no container:
+
+```sh
+# on the build host
+flatpak build-bundle ~/.local/share/flatpak/repo cmux.flatpak com.manaflow.cmux master
+rsync -a cmux.flatpak target:~/                      # 49 MB
+# on the target (its own flathub remote supplies the runtime, ~1 GB once)
+flatpak install --user -y flathub org.gnome.Platform//49
+flatpak install --user -y --bundle ~/cmux.flatpak
+```
+
+Verified on the target: 21 skills at `/app/share/cmux/skills`, both
+binaries with the Ghostty shim linked, the `cmux (Flatpak)` launcher
+exported, socket answering PONG, and — the result that matters — panes
+are **HOST shells**: a probe printed `VMPANE=fedora os=42 tools=2`,
+i.e. the Fedora 42 host with git and rpm, not the GNOME 49 runtime.
+The portal path works on an EOL host.
+
+Also confirmed shipping inside the app rather than in hand-written
+launcher env: `GDK_DISABLE=vulkan` (the venus teardown-hang guard that
+bit this exact VM twice), `CMUX_APP_ID=com.manaflow.cmux.flatpak`,
+`GHOSTTY_RESOURCES_DIR=/app/share/ghostty`.
+
+Driving it from the target's shell: the sandboxed CLI defaults to a
+debug socket path, so pass the app's socket explicitly —
+`flatpak run --user --env=CMUX_SOCKET_PATH=$XDG_RUNTIME_DIR/app/com.manaflow.cmux/cmux.sock --command=cmux com.manaflow.cmux ping`.
+
+Harness note: `flatpak build-bundle` took ~20 min for this app (large
+Debug Ghostty shim) and writes its output progressively — do NOT judge
+progress by file growth, and do NOT `pgrep -f build-bundle` from a
+watcher whose own command line contains that string (self-match; third
+occurrence of that trap in this project).
+
 ## Permission model (decided direction, hias + desk 2026-08-20)
 
 The question "ship `--filesystem=home` or narrower, maybe per-folder
