@@ -268,6 +268,40 @@ Related host-side change worth knowing when reading this manifest:
 the Flatpak's VTE-only rounds must pass `CMUX_GHOSTTY=0` explicitly if
 they ever want the old behaviour back.
 
+## Provisioning a machine from the bundle alone (three commands)
+
+```sh
+flatpak install --user -y --bundle ~/cmux.flatpak
+flatpak run --user --command=install-host-cli.sh    com.manaflow.cmux   # `cmux` in host shells
+flatpak run --user --command=install-user-skills.sh com.manaflow.cmux   # 21 skills
+```
+
+**Why a host CLI installer exists at all:** pane shells run on the HOST
+through the portal, so `/app/bin/cmux` — the CLI shipped inside the
+flatpak — is invisible to exactly the shells that want it. A pane
+answered `cmux: Befehl nicht gefunden` on 2026-08-21 while the CLI sat
+in the sandbox. This is round-2 design decision 4 ("CLI distribution"),
+now answered.
+
+The wrapper (`~/.local/bin/cmux`) runs the flatpak's binary DIRECTLY on
+the host: the app's files live on the host filesystem, and the binary
+loads the runtime libraries shipped beside it —
+`LD_LIBRARY_PATH=<files>/lib <files>/bin/cmux`. Verified on Fedora 42
+(host glibc 2.41) against a runtime built on glibc 2.42.
+
+Deliberately NOT `flatpak run --command=cmux`: that spawns a sandbox per
+invocation and sanitizes the environment, dropping the pane identity
+(`CMUX_SURFACE_ID` / `CMUX_WORKSPACE_ID`) that bare `cmux` needs to
+target its own pane. The wrapper preserves the caller's environment,
+defaults the socket only when nothing inherited one, and resolves
+through `current/active` so it follows flatpak updates.
+
+Guards worth keeping: it refuses to overwrite a `~/.local/bin/cmux` it
+did not write (checkout builds, distro packages), `--remove` only
+deletes its own, and the PATH advice is host-aware — inside the sandbox
+`$PATH` is the runtime's, so an unconditional check warns every user
+about a host PATH it cannot see.
+
 ## Skills on a flatpak-only machine
 
 The 21 skills ship at `/app/share/cmux/skills`, and

@@ -175,6 +175,10 @@ modules:
       # It links ~/.claude/skills at the HOST-visible flatpak path (not
       # /app, which pane shells cannot see).
       - install -Dm755 linux/scripts/install-user-skills.sh /app/bin/install-user-skills.sh
+      # ...and the host-CLI installer: pane shells run on the HOST and
+      # cannot see /app/bin/cmux, so a flatpak-only machine has no `cmux`
+      # command until this writes the wrapper (2026-08-21).
+      - install -Dm755 linux/scripts/install-host-cli.sh /app/bin/install-host-cli.sh
     sources:
       # SCOPED on purpose. A whole-repo `type: dir` copied 551 MB into
       # the build context every run — including ~29 MB of conversation
