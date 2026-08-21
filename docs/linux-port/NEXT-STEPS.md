@@ -7,6 +7,22 @@ builds AND runs headless-driveable on the `ultmos` VM). This file is the
 "what should the next session do". Remove a row when it's done or when
 it graduates into GAPS-only tracking.
 
+## The browser-capture track (from the 2026-08-21 screenshot thread)
+
+Design, measurements and the reasoning behind this ordering live in
+[features/16-browser-capture-and-interaction.md](features/16-browser-capture-and-interaction.md).
+Rows 1-3 are small and each removes a whole class of wrong answers;
+row 4 is the actual capability.
+
+| # | Candidate | Effort | Payoff | Depends on |
+|---|---|---|---|---|
+| 1 | **Capture pre-flight guard** — measure `scrollWidth x scrollHeight x dpr`, refuse over the renderer ceiling with `invalid_params` + the max, instead of the 20s timeout backstop | S | Turns a 120s silent hang into an instant, specific error — and the same comparison becomes the "native capture or tile?" branch tiling needs, so it is not throwaway | nothing |
+| 2 | **CLI silent-fallback fix** — a screenshot request for a background-workspace surface returns a plausible PNG of a DIFFERENT visible pane instead of the server's `invalid_state` | S | Never answering a different question than the one asked; this trap produced a wrong measurement during the investigation itself | nothing |
+| 3 | **CSS/DPR fields in the screenshot payload** (`width_css`, `height_css`, `dpr`) | S | Device-vs-CSS pixel confusion burned two sessions in one night | nothing |
+| 4 | **Tiled full-page capture** — scroll + viewport captures + stitch | M | The only approach that works at any document length on any renderer; also fixes lazy-loaded images that a native single capture misses | 1 (its size check is the routing decision) |
+| 5 | **`browser.viewport.set`** — unimplemented here though macOS has it and agents advise it | S | Deterministic capture sizes; gives tiling a clean tile-size normalizer | nothing |
+| 6 | **Interaction recorder** (Part B of features/16) — DOM-level click/navigation/timing trace over the existing user-content-manager channel | M | The human<->AI collaboration case: "review the last 5 steps of this UX flow". Privacy posture is part of the design, not an afterthought | nothing technical; a product decision on opt-in UX |
+
 ## The macOS-VM track (from POC-0003)
 
 | # | Candidate | Effort | Payoff | Depends on |

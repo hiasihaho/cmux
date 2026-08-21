@@ -1,3 +1,12 @@
+---
+title: Flatpak packaging
+area: platform
+kind: infra
+mac: none
+linux: partial
+verbs:
+---
+
 # 15 — Flatpak packaging
 
 Goal: one-command install of the Linux port on any machine — the answer

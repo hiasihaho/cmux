@@ -1,5 +1,15 @@
 # Catch-up — start here (living document)
 
+**2026-08-21 addendum:** browser capture + interaction history are now
+written up in
+[features/16-browser-capture-and-interaction.md](features/16-browser-capture-and-interaction.md)
+— the full-page GPU texture ceiling (16384px; long Wikipedia articles
+cannot be captured in one image, and it does NOT reproduce headless),
+what is already fixed (`--full-page` plumbing, capture deadline), the
+options with a recommendation (tiling), and the design for a DOM-level
+interaction recorder. Curated pick-up order in
+[NEXT-STEPS.md](NEXT-STEPS.md) "browser-capture track".
+
 Last updated: **2026-08-19 late** (deep 2-way parity audit: one month of
 upstream drift — 4,067 commits, 0.64.20/21/22 — mined by three parallel
 source readers into **DRIFT-2026-08.md**; PARITY gained a baseline note,
