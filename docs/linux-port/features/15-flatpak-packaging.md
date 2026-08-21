@@ -268,6 +268,43 @@ Related host-side change worth knowing when reading this manifest:
 the Flatpak's VTE-only rounds must pass `CMUX_GHOSTTY=0` explicitly if
 they ever want the old behaviour back.
 
+## Skills on a flatpak-only machine
+
+The 21 skills ship at `/app/share/cmux/skills`, and
+`install-user-skills.sh` ships at `/app/bin/` so a machine with no
+checkout can wire them up:
+
+```sh
+flatpak run --user --command=install-user-skills.sh com.manaflow.cmux
+```
+
+Two constraints make that script's flatpak path non-obvious, both
+learned the hard way on 2026-08-21:
+
+1. **Links must target the HOST-visible path**, never `/app`. Pane
+   shells run on the host through the portal, so `/app` does not exist
+   for them — a link into it dangles for exactly the agents that need
+   it. The target is
+   `~/.local/share/flatpak/app/<id>/current/active/files/share/cmux/skills`,
+   which also follows flatpak updates via `current/active`.
+2. **That target is unreadable from inside the sandbox.** Flatpak masks
+   `~/.local/share/flatpak` even under `--filesystem=home` (apps must
+   not modify the flatpak installation). So the script ENUMERATES from
+   `/app/share/cmux/skills` and POINTS AT the host path — two different
+   directories with the same names. Also: inside a flatpak `$HOME` is
+   `<real-home>/.var/app/<id>`, so the real home is recovered by prefix
+   strip before either path is built.
+
+Migrating a machine from checkout-based links to flatpak-based ones is
+two steps by design — the installer only refreshes links into its OWN
+base, so a foreign base is skipped rather than silently repointed:
+
+```sh
+bash <checkout>/linux/scripts/install-user-skills.sh --remove
+CMUX_SKILLS_DIR=~/.local/share/flatpak/app/com.manaflow.cmux/current/active/files/share/cmux/skills \
+  bash <checkout>/linux/scripts/install-user-skills.sh
+```
+
 ## Shipping to another machine (bundle route) — proven 2026-08-21
 
 The toolbox route (round-1 notes below) is superseded for DEPLOYMENT by

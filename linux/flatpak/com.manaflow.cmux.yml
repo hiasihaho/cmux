@@ -169,6 +169,12 @@ modules:
       # (no repo checkout). Host-side agents reach them through the
       # flatpak's own files dir; `install-user-skills.sh` links them.
       - install -d /app/share/cmux && cp -a skills /app/share/cmux/skills
+      # Ship the linker too, or a flatpak-only machine gets skills with no
+      # supported way to wire them up:
+      #   flatpak run --command=install-user-skills.sh com.manaflow.cmux
+      # It links ~/.claude/skills at the HOST-visible flatpak path (not
+      # /app, which pane shells cannot see).
+      - install -Dm755 linux/scripts/install-user-skills.sh /app/bin/install-user-skills.sh
     sources:
       # SCOPED on purpose. A whole-repo `type: dir` copied 551 MB into
       # the build context every run — including ~29 MB of conversation
