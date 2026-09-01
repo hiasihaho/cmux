@@ -10,3 +10,4 @@
 tmp-local/
 .flatpak-build/
 .flatpak-deps-cache/
+flatpak/build-info.json
