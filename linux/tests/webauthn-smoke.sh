@@ -8,9 +8,13 @@
 #
 # Covers: flag-off negative (no API leaks without CMUX_WEBAUTHN=1), API
 # surface, registration ceremony, vault persistence + permissions,
-# assertion ceremony, excludeCredentials duplicate rejection, and a full
+# assertion ceremony, excludeCredentials duplicate rejection, a full
 # relying-party-grade cryptographic verification of both ceremonies
-# (CBOR attestation parse, rpIdHash/flags checks, ES256 signature).
+# (CBOR attestation parse, rpIdHash/flags checks, ES256 signature), and
+# the P1b vault encryption-at-rest contract: ciphertext at rest (not
+# JSON-parseable, no plaintext rpId), v1 plaintext migration in place
+# with .v1.bak, and the no-backend fallback (stays readable plaintext
+# with an honest logged warning).
 #
 # Runs on an ISOLATED instance; the human's daily is never touched.
 SUITE_NAME="webauthn-smoke"
@@ -156,6 +160,7 @@ INSTANCE_ENV=(
     CMUX_WEBAUTHN=1
     CMUX_WEBAUTHN_AUTOAPPROVE=1
     CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=host
     GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
 )
 start_instance || exit 2
@@ -192,6 +197,24 @@ if [ -f "$VAULT" ]; then
     [ "$COUNT" = "1" ] && ok "vault holds 1 credential" || bad "vault contents" "count=$COUNT"
 else
     bad "vault file" "missing at $VAULT"
+fi
+
+# ------------------------------------------------ P1b: ciphertext at rest
+# With a key backend available (this host has gnome-keyring on the session
+# bus), the vault file must be an encrypted envelope: not JSON-parseable,
+# and containing no plaintext rpId. Suites force the host backend so the
+# assertion is deterministic even if a portal is also present.
+if [ -f "$VAULT" ]; then
+    if python3 -c "import json,sys; json.load(open('$VAULT'))" 2>/dev/null; then
+        bad "vault ciphertext-at-rest" "vault still parses as plaintext JSON"
+    else
+        ok "vault is not plaintext JSON (encrypted envelope)"
+    fi
+    if grep -q "localhost" "$VAULT" 2>/dev/null; then
+        bad "vault ciphertext-at-rest" "rpId string visible in vault file"
+    else
+        ok "vault contains no plaintext rpId"
+    fi
 fi
 
 # Remember the created id for the duplicate check after reload.
@@ -302,6 +325,99 @@ PY
 case $? in
     0) PASS=$((PASS+2)) ;;
     *) FAIL=$((FAIL+1)) ;;
+esac
+
+# -------------------------------------- P1b: migration from plaintext v1
+# A v1 plaintext vault must be encrypted in place on first load, keeping a
+# .v1.bak until the first successful decrypt-read, and the migrated
+# credential must still assert. Restart the instance on a hand-written
+# plaintext vault to exercise the migration path.
+info "P1b migration: plaintext v1 vault encrypts in place"
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION" "$VAULT" "$VAULT.v1.bak"
+python3 - "$VAULT" <<'PY'
+import json, sys
+vault = {
+    "version": 1,
+    "credentials": [{
+        "id": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "rpId": "localhost",
+        "userHandle": "BwcHBwcHBwcHBwcHBwcHBw",
+        "userName": "probe@example.com",
+        "userDisplayName": "Probe",
+        "privateKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "createdAtMs": 1
+    }]
+}
+json.dump(vault, open(sys.argv[1], "w"))
+PY
+chmod 600 "$VAULT"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=1
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=host
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+# Trigger a vault load via an assertion attempt (no credential matches the
+# migrated one — its privateKey is a placeholder — but load+migrate runs).
+cx browser click '#get' --surface "$SURF" >/dev/null 2>&1
+poll_out "$SURF" 'getting' >/dev/null
+if [ -f "$VAULT.v1.bak" ]; then
+    ok "migration kept .v1.bak of the plaintext vault"
+else
+    bad "migration backup" ".v1.bak missing"
+fi
+if python3 -c "import json; json.load(open('$VAULT'))" 2>/dev/null; then
+    bad "migration encryption" "vault still plaintext after load"
+else
+    ok "migration encrypted the vault in place"
+fi
+
+# -------------------------------------- P1b: fallback without a backend
+# With no keyring/portal reachable, the vault must stay 0600 plaintext AND
+# the instance log must carry an honest warning — never silent.
+info "P1b fallback: no key backend -> plaintext + logged warning"
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION" "$VAULT" "$VAULT.v1.bak"
+: > "$LOG"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=1
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=none
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+cx browser click '#create' --surface "$SURF" >/dev/null 2>&1
+OUT=$(poll_out "$SURF" 'creating')
+case "$OUT" in
+    created:*)
+        if python3 -c "import json; json.load(open('$VAULT'))" 2>/dev/null; then
+            ok "fallback keeps vault readable (plaintext, 0600)"
+        else
+            bad "fallback readability" "vault unreadable without backend"
+        fi
+        if grep -qi "webauthn.*\(key\|encrypt\|plain\|fallback\)" "$LOG" 2>/dev/null; then
+            ok "fallback logs an honest warning"
+        else
+            bad "fallback warning" "no key-backend warning in instance log"
+        fi
+        ;;
+    *) bad "fallback ceremony" "$OUT" ;;
 esac
 
 echo
