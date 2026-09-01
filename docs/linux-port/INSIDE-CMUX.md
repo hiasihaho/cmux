@@ -27,6 +27,10 @@ hosting you is `linux/.build/debug/cmux-adw`.
   it on the new binary; session restore brings the layout and scrollback
   back, `claude --continue` resumes the session. `--slot dev2` exercises
   the same code path against a disposable instance.
+- **Never rebuild the Ghostty shim over `ghostty/zig-out/lib/`** while an
+  instance maps it — that SIGBUSes the daily. Build to a side prefix and
+  install with `linux/scripts/swap-shim.sh` (rename-not-overwrite,
+  verification, `--rollback`); `--dry-run` is safe from anywhere.
 
 ## The isolated dev instance
 

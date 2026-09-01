@@ -16,9 +16,12 @@
 
 **Open, in priority order:** (1) activation on THIS machine is still
 pending by choice — `.build` links the OLD shim via dlsym, so a promote is
-safe but ghostty pid attribution stays dark until the atomic swap
-(`mv ghostty/zig-out-dev/lib/libghostty-gtk.so ghostty/zig-out/lib/…`, a
-rename, so a running instance keeps its inode) plus a promote. (2) VM
+safe but ghostty pid attribution stays dark until the shim is swapped in
+and the daily restarts. Wrapped now, run it when sessions are at rest —
+from OUTSIDE the daily (plain terminal or dev pane), it refuses otherwise:
+`linux/scripts/swap-shim.sh --dry-run` to preview, then
+`linux/scripts/swap-shim.sh` to swap + verify + promote
+(`--no-promote` to defer the restart, `--rollback` to undo). (2) VM
 auto-resume needs one REAL claude session to run there now that hooks are
 installed. (3) features/16 browser-capture track (pre-flight guard →
 tiling) is scoped and untouched. (4) `surface.presence` two-block build is

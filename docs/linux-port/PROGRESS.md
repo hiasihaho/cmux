@@ -4725,3 +4725,42 @@ Safety note for the whole day: the daily was never disturbed. It has
 `zig-out-dev` (side prefix), cmux test builds used `--scratch-path`, and
 `scratch.sh` gained `CMUX_TEST_BUILD_DIR`. Canonical inode verified
 unchanged (17049392, July) at every step.
+
+### swap-shim.sh: the shim swap, wrapped (2026-09-01)
+
+The pending activation of the new shim was a hand-run `mv` in a doc — a
+recipe whose safety depends on the operator remembering WHY it is a
+rename. `linux/scripts/swap-shim.sh` is that recipe with its reasons
+enforced:
+
+    linux/scripts/swap-shim.sh --dry-run     # the plan, changes nothing
+    linux/scripts/swap-shim.sh               # swap + verify + promote
+    linux/scripts/swap-shim.sh --no-promote  # swap now, restart later
+    linux/scripts/swap-shim.sh --rollback    # put the previous shim back
+
+What it enforces, each guard paid for by something that has bitten:
+
+- **rename, never overwrite.** The installed file is moved aside to
+  `libghostty-gtk.so.pre-<utc>` before the new one is renamed in, so a
+  running instance keeps its inode and its mapping stays valid. (Writing
+  over a mapped `.so` SIGBUSes the process that maps it — the reason the
+  whole side-prefix dance exists.)
+- **self-hosting guard BEFORE any mutation.** promote.sh has its own, but
+  it would fire after the swap and leave the operator half-done.
+- **export-regression guard.** A shim missing a symbol the installed one
+  exports is a downgrade or a broken build; refused unless `--force`,
+  with the lost symbols named. Gained symbols are announced.
+- **dlopen verification** in a throwaway python3 process (RTLD_NOW, plus
+  a lookup of the symbols cmux resolves) — stricter than `ldd`, and
+  applied to the incoming file BEFORE it goes near the canonical path.
+  Repeated after installation, with an automatic rollback if it fails.
+- **staleness and filesystem checks**: an older side build, or prefixes on
+  different devices (where `mv` degrades to a copy), stop the run.
+- share/ghostty drift between the prefixes is reported, not swapped: the
+  shell-integration scripts and themes belong to the same build as the
+  `.so`, but a half-updated resources dir is its own confusion.
+
+Suite `swap-shim-smoke.sh`: 24/24 on fake libraries built with gcc — no
+instance, no display, and the real `zig-out` untouched. The load-bearing
+assertion is that the OLD inode is still found under the backup name
+after a swap; that is the property protecting a live daily.
