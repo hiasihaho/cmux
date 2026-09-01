@@ -1,7 +1,14 @@
 # Passkeys / WebAuthn for the Linux port — options analysis
 
-Status: **analysis / proposal — nothing implemented, nothing decided.**
-Date: 2026-09-01. Companion to GAPS.md (browser-pane parity) and PORTING.md.
+Status: **P1a SHIPPED 2026-09-01** — client layer + software
+authenticator behind `CMUX_WEBAUTHN=1`; webauthn.io register + sign-in
+verified live; suites `webauthn-smoke.sh` (10, offline gate) and
+`webauthn-live.sh` (real-RP proof). Implementation:
+`linux/Sources/CmuxAdw/BrowserWebAuthn.swift` (bridge/client) +
+`WebAuthnAuthenticator.swift` (authenticator/vault); evidence in
+PROGRESS.md 2026-09-01. Remaining increments tracked in GAPS.md "Next".
+Sections below are the original analysis (P0 verdicts folded in).
+Companion to GAPS.md (browser-pane parity) and PORTING.md.
 
 macOS cmux shipped passkey support in browser panes
 (https://cmux.com/blog/passkey-auth, v0.64): login flows with passkeys,

@@ -4789,3 +4789,67 @@ suite for the client layer (same fixture, our bridge instead of the
 driver's endpoints). Trap for the file: a probe whose negative outcome
 is a *finding* exits 0 with a VERDICT line, unlike gate suites — don't
 wire it into run-all as a pass/fail gate in its current form.
+
+## 2026-09-01 — passkeys P1a: cmux panes speak WebAuthn (webauthn.io verified)
+
+Same-day follow-up to the P0 refutation: the client layer + software
+authenticator landed behind `CMUX_WEBAUTHN=1`. A real relying party
+accepted us end-to-end — webauthn.io registered our credential and
+verified our assertion signature ("You're logged in!", transports
+`['internal']`, zero AAGUID, attestation `none` — exactly what we
+advertise). WebKitGTK browsers now have passkeys before Epiphany does.
+
+Shape (PASSKEYS.md §4 B+C): document-start user script (top frame,
+secure contexts) DEFINES `navigator.credentials`/`PublicKeyCredential`/
+response classes — on Linux there is nothing to patch, unlike macOS's
+relay which wraps a live WKWebView API — and bridges create/get over a
+reply-capable `cmuxWebAuthn` script-message handler (first use of
+`register_script_message_handler_with_reply` in the port; the
+`postMessage`-returns-a-Promise contract removes the macOS
+CustomEvent/acknowledge dance entirely). Swift owns origin truth
+(`webkit_web_view_get_uri`, never page data), rpId validation
+(host-or-dotted-suffix), consent (AdwAlertDialog per ceremony;
+`CMUX_WEBAUTHN_AUTOAPPROVE=1` for suites/dev), and the authenticator:
+P256/ES256 via swift-crypto, hand-rolled canonical CBOR (the four
+structures WebAuthn needs, nothing more), resident keys in a 0600 JSON
+vault (`CMUX_WEBAUTHN_VAULT` override; default beside the session
+file). signCount stays 0 (Apple's choice — a moving counter turns vault
+restores into RP clone-detection lockouts). One credential per
+(rpId, userHandle), replace-on-re-register, excludeCredentials →
+InvalidStateError.
+
+Suites: `webauthn-smoke.sh` (10 — flag-off negative, API surface,
+create/get, vault perms, duplicate rejection, and an in-suite Python
+RELYING PARTY that parses the CBOR attestation, checks
+rpIdHash/flags/credId, extracts the COSE key and verifies the ES256
+assertion signature — ceremony bugs cannot hide behind a happy DOM) and
+`webauthn-live.sh` (the webauthn.io drive as a repeatable proof script;
+network-dependent, so not a gate).
+
+Traps paid for this session:
+- **Port 8443 is a common HTTPS-alt port** and a daemon on the dev host
+  held it: every fixture `http.server` died EADDRINUSE and the pane
+  loaded the stranger's 400 page — `browser url` reported the fixture
+  URL, evals ran fine, only selector verbs failed ("not found or not
+  visible"), five assertions red for unrelated-looking reasons. The
+  suite now curls its own fixture for a marker before trusting the port.
+- **Session restore poisons `list-panes | tail -1` surface targeting**:
+  the restored copy of the fixture pane answers eval but fails
+  visibility-gated verbs. Take the ref from the `browser open` reply
+  itself, and `rm $SESSION` between same-suite instance restarts.
+- **corelibs-foundation's `replaceItemAt` wants an existing destination**
+  — first-ever vault save threw, surfaced as UnknownError at the page.
+  `rename(2)` is atomic and indifferent; ceremony errors now also log
+  to the instance stderr (generic toward the page, specific in the log).
+- **swift-crypto pulls libswiftObservation onto CmuxAdw's link line** →
+  the known Fedora `swift::threading::fatal` undefined-ref; CmuxCLI's
+  `--allow-shlib-undefined` now applies to both targets (hoisted into a
+  manifest constant — inlining the concatenation blew the manifest
+  type-checker's budget, a new failure mode for Package.swift edits).
+- `cx browser eval` cannot start with a bare top-level `await` — wrap in
+  an async IIFE (the implicit-async-function wrapper rejects it).
+
+Restored panes get the polyfill for free (verified — the factory funnel
+covers adoption/restore). Localization note: the consent dialog strings
+follow the port's current plain-literal precedent (the Linux port has no
+localization catalog yet — pre-existing gap, now with one more surface).

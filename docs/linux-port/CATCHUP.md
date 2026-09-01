@@ -1,17 +1,21 @@
 # Catch-up — start here (living document)
 
-**2026-09-01 (later): passkeys analysis.** macOS cmux shipped passkey
-support (blog: /blog/passkey-auth); the Linux possibility space is now
-mapped in [PASSKEYS.md](PASSKEYS.md) — decision pending. Headlines:
-WebKitGTK exposes no WebAuthn to pages, but Fedora's build compiles the
-machinery in (hidapi CTAP transport + W3C WebDriver virtual-authenticator
-endpoints); linux-id/passkeyd are authenticators and don't help panes;
-credentialsd (linux-credentials, FOSDEM 2026) is the emerging xdg-portal
-play; macOS `BrowserWebAuthnSupport.swift` is a largely reusable
-blueprint (page-world relay + isolated world + backend coordinator).
-Recommended: P0 half-day WebDriver virtual-authenticator probe, then
-polyfill client layer + pluggable backends (own vault via swift-crypto +
-Secret Service; credentialsd when present). Nothing implemented.
+**2026-09-01 (later): PASSKEYS SHIPPED (P1a).** Browser panes speak
+WebAuthn behind `CMUX_WEBAUTHN=1` — before Epiphany does. Full analysis
+in [PASSKEYS.md](PASSKEYS.md); P0 probe refuted the native/WebDriver
+path (WebKitGTK compiles WebAuthn in but exposes none of it), so cmux
+supplies both halves: document-start polyfill + reply-capable
+`cmuxWebAuthn` bridge (`BrowserWebAuthn.swift`, origin truth + consent
+dialog in Swift) and an ES256 software authenticator with a 0600 JSON
+vault (`WebAuthnAuthenticator.swift`, swift-crypto + hand-rolled
+canonical CBOR, attestation `none`, signCount 0). **webauthn.io
+verified live** (register + "You're logged in!"). Suites:
+`webauthn-smoke` (10, incl. in-suite Python RP verifying the ES256
+signature) + `webauthn-live` (repeatable real-RP proof). Next
+(GAPS.md "Next"): Secret Service vault encryption, `browser webauthn`
+verbs, credentialsd backend for real USB keys, CXF export, qmp P2P
+vault experiment. Traps of the day in PROGRESS.md (port 8443 squatter,
+session-restore surface targeting, replaceItemAt-needs-destination).
 
 **2026-09-01 handover.** Two arcs landed today, both VM/flatpak-facing:
 

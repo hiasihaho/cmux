@@ -168,6 +168,11 @@ enum BrowserSurfaceFactory {
         // Installed before any load so capture starts at page load.
         installBrowserConsoleCapture(webView, surfaceId: surfaceId)
 
+        // WebAuthn client layer (PASSKEYS.md option B). No-op unless
+        // CMUX_WEBAUTHN=1; must run before the first load so the
+        // document-start polyfill exists for every page.
+        installBrowserWebAuthn(webView)
+
         // Popup routing (roadmap/06 increment 5). The settings flag is the
         // load-bearing part: it defaults to FALSE, and while it is off
         // `create` never fires, so window.open silently does nothing.

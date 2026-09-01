@@ -40,6 +40,23 @@ let adwaitaSwift: Package.Dependency = gnome50
         revision: "664cadd3d242f504cbcdcdfed4e3af42d58a6b84"
     )
 
+// Hoisted: inlining this concatenation into the target list pushes the
+// manifest past the type-checker's budget ("unable to type-check this
+// expression in reasonable time").
+let cmuxAdwLinkerSettings: [LinkerSetting] = {
+    // Same Fedora quirk as CmuxCLI: swift-crypto pulls libswiftObservation
+    // onto the link line, which leaves swift::threading::fatal for
+    // runtime resolution; SwiftPM's stricter link must be told that's ok.
+    var settings: [LinkerSetting] = [.unsafeFlags(["-Xlinker", "--allow-shlib-undefined"])]
+    if ghosttyEmbed {
+        settings.append(.unsafeFlags([
+            "-L\(ghosttyOut)/lib",
+            "-Xlinker", "-rpath", "-Xlinker", "\(ghosttyOut)/lib",
+        ]))
+    }
+    return settings
+}()
+
 let package = Package(
     name: "cmux-linux",
     products: [
@@ -76,19 +93,16 @@ let package = Package(
                 "CWebKit",
                 .product(name: "Adwaita", package: "adwaita-swift"),
                 // Shared workstream (Feed) engine — same model the macOS app uses.
-                .product(name: "CMUXAgentLaunch", package: "CMUXAgentLaunch")
+                .product(name: "CMUXAgentLaunch", package: "CMUXAgentLaunch"),
+                // WebAuthn software authenticator (ES256 + vault).
+                .product(name: "Crypto", package: "swift-crypto")
             ] + (ghosttyEmbed ? ["CGhosttyEmbed"] : []),
             path: "Sources/CmuxAdw",
             swiftSettings: [.swiftLanguageMode(.v5)]
                 + (ghosttyEmbed
                     ? [.unsafeFlags(["-Xcc", "-I\(ghosttyOut)/include"])]
                     : []),
-            linkerSettings: ghosttyEmbed
-                ? [.unsafeFlags([
-                    "-L\(ghosttyOut)/lib",
-                    "-Xlinker", "-rpath", "-Xlinker", "\(ghosttyOut)/lib",
-                ])]
-                : []
+            linkerSettings: cmuxAdwLinkerSettings
         ),
         // Symlink to ../CLI — the CLI is shared, unmodified source with the
         // macOS app (Linux differences live behind #if inside CLI/cmux.swift).
