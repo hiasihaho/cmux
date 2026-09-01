@@ -4672,3 +4672,17 @@ instance keeps its old inode and cannot be hurt:
     zig build lib-gtk -Dapp-runtime=gtk -Dversion-string=1.3.0-dev --prefix ghostty/zig-out-dev
     mv ghostty/zig-out-dev/lib/libghostty-gtk.so ghostty/zig-out/lib/libghostty-gtk.so
     cp ghostty/include/ghostty_gtk_embed.h ghostty/zig-out/include/
+
+Follow-up the same day: the Flatpak limitation is fixed properly rather
+than documented. Ghostty's portal path always KNEW the child's pid
+("Process started with the given pid on the host") — the shim was
+discarding it. It now reports that pid, and cmux labels the payload
+`pid_namespace: host|local` and reads the HOST's /proc through
+`flatpak-spawn --host` (one spawn per snapshot, 2s TTL, 3s hard timeout,
+stat-only to keep the transfer small). No new permission: the portal
+talk-name is already how pane shells reach the host.
+
+The label is the load-bearing part. A pid crossing a namespace boundary
+unlabelled is exactly how plausible-but-wrong attribution is made: inside
+the sandbox those numbers resolve to unrelated processes. VTE panes in a
+Flatpak stay `local` — their pid is the in-sandbox flatpak-spawn wrapper.

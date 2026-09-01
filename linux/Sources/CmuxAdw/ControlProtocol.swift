@@ -829,7 +829,13 @@ struct ControlCommandHandler {
     /// "unknown", never a wrong attribution.
     private func systemTopResult(params: [String: Any]) -> [String: Any] {
         let includeProcesses = (params["include_processes"] as? Bool) ?? false
-        let table = SystemTop.snapshot()
+        // Inside a Flatpak, Ghostty spawns pane shells on the HOST through
+        // the portal, so the pids the shim reports live in the host's pid
+        // namespace and must be resolved against the HOST's /proc — the
+        // same numbers mean unrelated processes in the sandbox. VTE panes
+        // stay local (their pid is the in-sandbox flatpak-spawn wrapper).
+        let hostNamespace = FlatpakEnv.isFlatpak && LinuxSettings.terminalBackend == .ghostty
+        let table = SystemTop.snapshot(source: hostNamespace ? .host : .local)
         let children = SystemTop.childIndex(table)
         let registry = RefRegistry.shared
         let surfaceRegistry = SurfaceRegistry.shared
@@ -852,6 +858,10 @@ struct ControlCommandHandler {
                         "kind": surface.kind.typeName,
                         "title": surface.workingDirectory,
                         "top_level_pids": pids.map { Int($0) },
+                        // Which /proc these pids belong to. A pid crossing a
+                        // namespace boundary unlabelled is how "plausible but
+                        // wrong" attribution gets made.
+                        "pid_namespace": hostNamespace ? "host" : "local",
                         "cpu_percent": totals.cpu,
                         "memory_bytes": totals.memory,
                         "process_count": totals.count

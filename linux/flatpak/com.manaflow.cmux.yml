@@ -116,6 +116,11 @@ modules:
           - .git
           - .zig-cache
           - zig-out
+          # Side-prefix builds used to test a new shim WITHOUT touching the
+          # canonical zig-out that a running instance has mapped (2026-09-01).
+          # Never build inputs — skipping keeps the context lean and the
+          # sandbox build deterministic.
+          - zig-out-dev
 
   - name: cmux-adw
     buildsystem: simple
