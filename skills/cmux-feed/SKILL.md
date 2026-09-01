@@ -114,6 +114,11 @@ To inform or task another agent session (proven pattern, 2026-08-18):
    newline inside it). Wait for the turn to finish — screen-stability
    between two reads is a workable idle heuristic — then send Enter.
    Agents that exited can be revived first (their resume command).
+   **Idle is not enough: the input box must also be EMPTY.** A stable
+   screen can be holding the HUMAN's parked draft — your text would
+   append into it and your Enter would submit *their* prompt (near-miss
+   2026-09-01, passkey desk ringing the cmux desk). If the prompt line
+   shows text, skip the doorbell and rely on the durable letter.
 4. The target reads with its own hands (`cmux rpc feed.list`, filter its
    workstream) and replies the same way — or through the human when it
    has no socket access.
