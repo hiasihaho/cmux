@@ -4764,3 +4764,28 @@ Suite `swap-shim-smoke.sh`: 24/24 on fake libraries built with gcc — no
 instance, no display, and the real `zig-out` untouched. The load-bearing
 assertion is that the OLD inode is still found under the backup name
 after a swap; that is the property protecting a live daily.
+
+## 2026-09-01 — passkeys P0: the WebDriver virtual-authenticator path is dead
+
+Analysis landed in PASSKEYS.md; the P0 probe (`linux/tests/webauthn-probe.sh`,
+attach-mode against an isolated instance, same harness as webdriver-smoke)
+settled the one empirical question in half an hour:
+
+- `POST /session/<id>/webauthn/authenticator` → **`unknown command`**.
+  Forensics: `strings /usr/bin/WebKitWebDriver | grep -ci webauthn` → 0,
+  while `libwebkitgtk-6.0.so.4` carries 14 `VirtualAuthenticator` strings.
+  The W3C WebAuthn extension exists in the library's internal Automation
+  backend, but the REST→Automation mapping is not compiled into the GTK
+  driver front-end. Nothing to configure around.
+- Even inside a live automation session, pages see
+  `navigator.credentials: undefined` — the WebAuthn runtime feature is
+  off in this build regardless (no `WebAuthenticationEnabled` preference
+  string exists to flip).
+
+Two ends, both closed ⇒ the polyfill client layer (PASSKEYS.md option B)
+is the only viable path, and it must bring its own virtual-authenticator
+story for testing. The probe script stays: it becomes the regression
+suite for the client layer (same fixture, our bridge instead of the
+driver's endpoints). Trap for the file: a probe whose negative outcome
+is a *finding* exits 0 with a VERDICT line, unlike gate suites — don't
+wire it into run-all as a pass/fail gate in its current form.

@@ -115,17 +115,17 @@ still WebKit-release-cycle) contribution than "implement WebAuthn".
 Not schedulable as our plan of record; worth reporting our findings and
 prior art (B) on the bug either way.
 
-**F. WebDriver virtual authenticator — the near-free testing path.**
-This build implements the W3C virtual-authenticator automation
-endpoints, and the port already has the WebDriver opt-in wired
-(`CMUX_WEBDRIVER=1`, `BrowserWebDriver.swift` hands the driver real cmux
-panes). If the P0 probe confirms pages get a live `navigator.credentials`
-inside automation sessions, cmux gets a Chrome-DevTools-grade "test your
-app's passkey flow" story — agents registering and asserting passkeys
-against localhost apps — with near-zero code. This does NOT cover real
-logins on real sites (virtual keys only, automation session only), but
-it is the fastest possible win for the agents-testing-authed-apps use
-case the macOS blog post leads with.
+**F. WebDriver virtual authenticator — PROBED 2026-09-01: REFUTED.**
+`linux/tests/webauthn-probe.sh` (attach mode, isolated instance) found:
+(1) `POST /session/<id>/webauthn/authenticator` → `unknown command` —
+`/usr/bin/WebKitWebDriver` contains **zero** webauthn strings (the 14
+`VirtualAuthenticator` strings live in libwebkitgtk's internal
+automation backend; the REST→Automation mapping isn't compiled into the
+GTK driver front-end); (2) even inside a live automation session the
+page still sees `navigator.credentials: undefined`, so the runtime
+feature is off regardless. The native path is dead in this build on both
+ends. Consequence: **B is the only viable path**, and it should carry
+its own virtual-authenticator/testing story (option C's dev verbs).
 
 **B. Build the WebAuthn client inside cmux browser panes.** ⭐ load-bearing
 Inject `navigator.credentials` / `PublicKeyCredential` at document-start
@@ -250,12 +250,10 @@ Findings from a full sweep of `linux/Sources/` (2026-09-01):
 
 ## 7. Recommended path
 
-0. **Probe P0 — WebDriver virtual authenticator (half a day).** On a
-   scratch instance with `CMUX_WEBDRIVER=1`, drive a pane via
-   `/usr/bin/WebKitWebDriver`, call `addVirtualAuthenticator`, and check
-   whether the page now sees `navigator.credentials` and can complete a
-   webauthn.io ceremony. Confirms/kills option F and tells us exactly
-   what the compiled-in native path can do before we write the polyfill.
+0. **Probe P0 — DONE 2026-09-01, verdict REFUTED** (see option F).
+   Probe script kept at `linux/tests/webauthn-probe.sh`; it will be
+   repurposed as the regression suite for the P1 client layer (same
+   fixture, our polyfill instead of the driver's virtual authenticator).
 1. **Increment P1 — client layer + software authenticator** (B + C),
    behind a build/runtime flag. Exit criterion: register + sign in on
    webauthn.io and demo.yubico.com in a dogfood cycle; `cmux browser`
