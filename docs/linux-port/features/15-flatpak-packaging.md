@@ -268,7 +268,41 @@ Related host-side change worth knowing when reading this manifest:
 the Flatpak's VTE-only rounds must pass `CMUX_GHOSTTY=0` explicitly if
 they ever want the old behaviour back.
 
-## Provisioning a machine from the bundle alone (three commands)
+## Provisioning a machine from the bundle alone
+
+```sh
+flatpak install --user -y --bundle ~/cmux.flatpak
+flatpak run --user --command=install-host-cli.sh    com.manaflow.cmux   # `cmux` in host shells
+flatpak run --user --command=install-user-skills.sh com.manaflow.cmux   # 21 skills
+cmux hooks setup --yes                                                  # agent hooks (see below)
+```
+
+**Agent hooks are the fourth step, and they are what auto-resume runs
+on** (found 2026-09-01: auto-resume looked broken on the VM; it was
+working correctly with nothing to resume). The chain is:
+
+1. `SessionStart` writes the record in
+   `~/.cmuxterm/<agent>-hook-sessions.json` (surface id from the pane's
+   `CMUX_SURFACE_ID`, which the flatpak host-spawn forwards).
+2. `Stop` **with a transcript path** flips `isRestorable: true` — that
+   transcript is the durable evidence. A record without it is skipped by
+   design, which is why synthetic probes never resume.
+3. On restore cmux types the agent's own resume command.
+
+Two gaps a flatpak-only machine hits, both fixed by installing hooks
+explicitly rather than relying on the wrapper:
+
+- Claude's hooks are normally *injected by the cmux claude wrapper*, so a
+  directly-launched `claude` records nothing. Installing `SessionStart` +
+  `Stop` in `~/.claude/settings.json` makes both launch paths work. The
+  commands guard on `[ -z "$CMUX_SURFACE_ID" ] ||` and end in `|| true`,
+  so they are inert outside a pane and never fail a turn.
+- `cmux hooks setup` currently aborts partway on a flatpak-only machine:
+  the opencode step fails with "bundled opencode-plugin.js not found"
+  because that asset is not shipped in the flatpak (same packaging gap
+  class as the skills and the host CLI). Codex hooks do install.
+
+## Provisioning detail (superseded three-command form)
 
 ```sh
 flatpak install --user -y --bundle ~/cmux.flatpak
