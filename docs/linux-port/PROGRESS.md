@@ -4686,3 +4686,42 @@ The label is the load-bearing part. A pid crossing a namespace boundary
 unlabelled is exactly how plausible-but-wrong attribution is made: inside
 the sandbox those numbers resolve to unrelated processes. VTE panes in a
 Flatpak stay `local` — their pid is the in-sandbox flatpak-spawn wrapper.
+
+## 2026-09-01 — flatpak: lost cwd, build stamp, opencode plugin, hooks
+
+Chasing "auto-resume does not work in the VM flatpak" found THREE separate
+things, only one of which was auto-resume:
+
+1. **Lost working directories (the real bug).** Ghostty's `setupBash`
+   verified its integration script with `openFileAbsolute` before setting
+   `ENV`. Under Flatpak that check runs INSIDE the sandbox against the
+   HOST-visible resources path, which flatpak masks — so it failed for a
+   file the host shell reads fine, integration was silently disabled and
+   `ENV` removed. OSC 0 (title) kept working, OSC 7 (cwd) never fired, and
+   every restored workspace came back at $HOME. Fixed in the shim
+   (`c3c5c64a1`): under Flatpak trust the path instead of testing it from
+   the wrong side. VERIFIED on x12vm: a fresh pane's `cd /var/tmp` now
+   lands in the session file (was: 8/8 surfaces pinned at /home/hias).
+2. **Auto-resume had nothing to resume.** The VM had NO agent hooks at all
+   (`~/.claude/settings.json` empty of hooks) because claude's hooks are
+   normally injected by the cmux claude wrapper. Installed the same set the
+   daily uses; documented as the fourth provisioning step in features/15.
+   The chain: SessionStart writes the record, Stop WITH A TRANSCRIPT flips
+   `isRestorable`. Synthetic probes stay non-restorable by design — which
+   is why my first two probe records correctly did not resume.
+3. **`cmux hooks setup` aborted on flatpak-only machines** — the bundled
+   `opencode-plugin.js` was not shipped. Now installed at
+   `/app/share/cmux/`, and the CLI searches `../share/cmux` relative to its
+   binary.
+
+Also landed: **build stamps**. `system.build` + `BuildInfo` report git sha,
+ghostty sha, build time and an explicit uncommitted-file count, written by
+the driver and installed beside the binary; dev builds say `dev`. hias's
+idea, and it earned itself immediately — the first stamp read "+5
+uncommitted", so the build was redone from a committed tree.
+
+Safety note for the whole day: the daily was never disturbed. It has
+`ghostty/zig-out/lib/libghostty-gtk.so` MAPPED, so every shim build went to
+`zig-out-dev` (side prefix), cmux test builds used `--scratch-path`, and
+`scratch.sh` gained `CMUX_TEST_BUILD_DIR`. Canonical inode verified
+unchanged (17049392, July) at every step.

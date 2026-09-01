@@ -1,5 +1,29 @@
 # Catch-up — start here (living document)
 
+**2026-09-01 handover.** Two arcs landed today, both VM/flatpak-facing:
+
+- **`system.top` exists now** (was `unknown_method`). It matters beyond the
+  task manager: the CLI resolves "which surface owns this pid" from it to
+  override a stale `CMUX_SURFACE_ID`, a correction that could never fire on
+  Linux before. Ghostty panes gained a pid accessor in the shim; under
+  Flatpak it reports the HOST pid and cmux labels `pid_namespace` and reads
+  host /proc via `flatpak-spawn` (verified against the host's own `ps`).
+  Suite: `system-top-smoke.sh` 10/10.
+- **Flatpak fixes**: lost working directories (ghostty verified its shell
+  integration from inside the sandbox against a host path), the opencode
+  plugin now ships, and every build carries a stamp — ask any machine with
+  `cmux --json rpc system.build`.
+
+**Open, in priority order:** (1) activation on THIS machine is still
+pending by choice — `.build` links the OLD shim via dlsym, so a promote is
+safe but ghostty pid attribution stays dark until the atomic swap
+(`mv ghostty/zig-out-dev/lib/libghostty-gtk.so ghostty/zig-out/lib/…`, a
+rename, so a running instance keeps its inode) plus a promote. (2) VM
+auto-resume needs one REAL claude session to run there now that hooks are
+installed. (3) features/16 browser-capture track (pre-flight guard →
+tiling) is scoped and untouched. (4) `surface.presence` two-block build is
+green-lit and unstarted.
+
 **2026-08-21 addendum:** browser capture + interaction history are now
 written up in
 [features/16-browser-capture-and-interaction.md](features/16-browser-capture-and-interaction.md)
