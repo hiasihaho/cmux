@@ -184,6 +184,15 @@ modules:
       # cannot see /app/bin/cmux, so a flatpak-only machine has no `cmux`
       # command until this writes the wrapper (2026-08-21).
       - install -Dm755 linux/scripts/install-host-cli.sh /app/bin/install-host-cli.sh
+      # opencode's hook plugin: `cmux hooks setup` reads it to install the
+      # opencode integration, and aborted without it on a flatpak-only
+      # machine. Lives in share/cmux, which the CLI now searches relative
+      # to its own binary.
+      - install -Dm644 Resources/opencode-plugin.js /app/share/cmux/opencode-plugin.js
+      # Build stamp (written by the driver, which has git; the source copy
+      # skips .git). Served as `system.build` so any machine can say what
+      # it is running.
+      - install -Dm644 linux/flatpak/build-info.json /app/share/cmux/build-info.json
     sources:
       # SCOPED on purpose. A whole-repo `type: dir` copied 551 MB into
       # the build context every run — including ~29 MB of conversation
@@ -216,3 +225,8 @@ modules:
       - type: dir
         path: ../../Sources
         dest: Sources
+      # Just the one asset from Resources/ — the rest is the macOS app.
+      - type: file
+        path: ../../Resources/opencode-plugin.js
+        dest: Resources
+        dest-filename: opencode-plugin.js

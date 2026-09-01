@@ -511,6 +511,11 @@ struct ControlCommandHandler {
             ]]])
         case "workspace.list":
             return v2Ok(id: id, result: workspaceListResult())
+        case "system.build":
+            // Its own verb as well as a field: "which build is running?" is
+            // asked exactly when something looks wrong, and it has to be
+            // answerable in one call, from any machine.
+            return v2Ok(id: id, result: BuildInfo.payload)
         case "system.top":
             return v2Ok(id: id, result: systemTopResult(params: params))
         case "workspace.create":

@@ -34157,7 +34157,11 @@ export default CMUXSessionRestore;
 
         if let executableURL = resolvedExecutableURL() {
             let execDir = executableURL.deletingLastPathComponent().standardizedFileURL
-            for relativePath in ["opencode-plugin.js", "../opencode-plugin.js", "../../Resources/opencode-plugin.js", "../../../Contents/Resources/opencode-plugin.js"] {
+            // ../share/cmux/: the FHS spot for a Linux prefix install, and
+            // what the Flatpak uses (/app/bin/cmux -> /app/share/cmux/…).
+            // Without it a flatpak-only machine cannot install opencode
+            // hooks at all — `cmux hooks setup` aborted there (2026-09-01).
+            for relativePath in ["opencode-plugin.js", "../opencode-plugin.js", "../share/cmux/opencode-plugin.js", "../../Resources/opencode-plugin.js", "../../../Contents/Resources/opencode-plugin.js"] {
                 appendIfExisting(execDir.appendingPathComponent(relativePath, isDirectory: false).standardizedFileURL)
             }
 

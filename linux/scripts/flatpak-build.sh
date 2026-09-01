@@ -48,8 +48,37 @@ deps() {
         "$SWIFT_EXT//$SWIFT_EXT_BRANCH"
 }
 
+# Stamp the build so the shipped artifact can say what it is. The manifest
+# installs this next to the binary; the app serves it as `system.build`.
+# Written here because the source copy skips .git on purpose.
+stamp_build_info() {
+    local out="$LINUX_DIR/flatpak/build-info.json"
+    python3 - "$out" "$(git -C "$LINUX_DIR/.." rev-parse HEAD 2>/dev/null || echo unknown)" \
+        "$(git -C "$LINUX_DIR/.." rev-parse --short HEAD 2>/dev/null || echo unknown)" \
+        "$(git -C "$LINUX_DIR/../ghostty" rev-parse --short HEAD 2>/dev/null || echo unknown)" \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        "$(git -C "$LINUX_DIR/.." status --porcelain 2>/dev/null | grep -vc '^??' || echo 0)" <<'PYEOF'
+import json, sys
+out, sha, short, ghostty, built, dirty = sys.argv[1:7]
+# A stamp that hides uncommitted work is worse than none: it names a commit
+# the binary does not actually contain.
+modified = int(dirty or 0)
+json.dump({
+    "build": short + ("+dirty" if modified else ""),
+    "git_sha": sha,
+    "ghostty_sha": ghostty,
+    "built_at": built,
+    "uncommitted_files": modified,
+    "flavor": "flatpak",
+}, open(out, "w"), indent=1)
+print("  build stamp: %s%s (ghostty %s) at %s" % (
+    short, " +%d uncommitted" % modified if modified else "", ghostty, built))
+PYEOF
+}
+
 build() {
     local extra=("$@")
+    stamp_build_info
     mkdir -p "$(dirname "$BUILD_DIR")"
     flatpak-builder --user --force-clean \
         --state-dir="$STATE_DIR" \
