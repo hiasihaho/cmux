@@ -439,6 +439,42 @@ Mechanism facts a harness (and docs) should encode:
   shells via CMUX_FLATPAK_HOST_SHELL=0). Manifest ships `standard`
   once round-3 narrowing is verified; `dev` is one override away.
 
+## Sandbox environment traps (measured, not assumed)
+
+Both of these were found by running `flatpak run --command=sh` inside the
+INSTALLED app and printing the variables, after a sibling desk reasoned
+about them from the manifest and got one wrong (2026-09-01).
+
+    HOME=/home/hias                                   <- the REAL home
+    XDG_DATA_HOME=/home/hias/.var/app/com.manaflow.cmux/data
+    XDG_CONFIG_HOME=/home/hias/.var/app/com.manaflow.cmux/config
+
+- **`$HOME` stays the real home** under `--filesystem=home`, but the XDG
+  variables do NOT follow it — flatpak always points them at the per-app
+  dir. Reasoning "HOME is real, therefore ~/.config is what we read" is
+  wrong in exactly one step, and the step is invisible.
+- **The app reads a config file that does not exist.** `Settings.swift`
+  prefers `XDG_CONFIG_HOME`, so the flatpak looks in
+  `~/.var/app/com.manaflow.cmux/config/cmux/cmux.json` and runs on
+  DEFAULTS, while `~/.config/cmux/cmux.json` — readable from the sandbox
+  — is ignored. See the GAPS row: the flatpak and the host CLI disagree
+  today, because the host-CLI wrapper runs the binary OUTSIDE the sandbox
+  where `XDG_CONFIG_HOME` is unset.
+- **Env vars do not cross `flatpak run`.** A host `CMUX_X=1` is invisible
+  inside. The supported forms are
+  `flatpak override --user --env=CMUX_X=1 com.manaflow.cmux` or a
+  setting in the config file the app actually reads.
+- **Per-app data is the right default for secrets.** The WebAuthn vault
+  lands under `$XDG_DATA_HOME`, i.e. separate from the host instance's —
+  correct for credentials; sharing would be a product decision, not
+  something to inherit by accident.
+
+**Packaging rule (passkey desk, adopted):** a dev/test escape hatch that
+disables a consent prompt — `CMUX_WEBAUTHN_AUTOAPPROVE` is the current
+example — must NEVER appear in a manifest, an override recipe, or a
+desktop entry. The consent dialog IS the security boundary; suites and
+dev instances are the only places that may bypass it.
+
 ## Round map
 
 - **Round 1 (this): scoping.** VTE-only, debug config (the validated
