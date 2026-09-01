@@ -511,6 +511,8 @@ struct ControlCommandHandler {
             ]]])
         case "workspace.list":
             return v2Ok(id: id, result: workspaceListResult())
+        case "system.top":
+            return v2Ok(id: id, result: systemTopResult(params: params))
         case "workspace.create":
             return v2WorkspaceCreate(id: id, params: params)
         case "workspace.select":
@@ -812,6 +814,87 @@ struct ControlCommandHandler {
     }
 
     // MARK: v2 method implementations
+
+    /// `system.top` — the pane tree with CPU/memory attributed to it.
+    ///
+    /// Shape matches what the CLI consumes (windows → workspaces → panes →
+    /// surfaces, each carrying cpu_percent/memory_bytes/process_count, and
+    /// surfaces additionally `top_level_pids` + `processes`). The second
+    /// consumer matters more than the human view: the CLI resolves "which
+    /// surface owns this pid" from exactly these fields to override a stale
+    /// CMUX_SURFACE_ID.
+    ///
+    /// A surface whose pid is unknowable (Ghostty before spawn, after exit,
+    /// or under Flatpak host-spawn) reports EMPTY pids and zero aggregates —
+    /// "unknown", never a wrong attribution.
+    private func systemTopResult(params: [String: Any]) -> [String: Any] {
+        let includeProcesses = (params["include_processes"] as? Bool) ?? false
+        let table = SystemTop.snapshot()
+        let children = SystemTop.childIndex(table)
+        let registry = RefRegistry.shared
+        let surfaceRegistry = SurfaceRegistry.shared
+        let wanted = (params["workspace_id"] as? String).flatMap { resolveHandle($0) }
+
+        var windowCPU = 0.0, windowMemory = 0, windowCount = 0
+        var workspacePayloads: [[String: Any]] = []
+        for tab in tabs.wrappedValue where wanted == nil || tab.id == wanted {
+            var wsCPU = 0.0, wsMemory = 0, wsCount = 0
+            var panePayloads: [[String: Any]] = []
+            for pane in tab.panes {
+                var paneCPU = 0.0, paneMemory = 0, paneCount = 0
+                var surfacePayloads: [[String: Any]] = []
+                for surface in pane.surfaces {
+                    let pids = surfaceRegistry.childPid(for: surface.surfaceId).map { [$0] } ?? []
+                    let totals = SystemTop.aggregate(roots: pids, table: table, children: children)
+                    var entry: [String: Any] = [
+                        "id": surface.surfaceId.uuidString,
+                        "ref": registry.ref(kind: "surface", uuid: surface.surfaceId),
+                        "kind": surface.kind.typeName,
+                        "title": surface.workingDirectory,
+                        "top_level_pids": pids.map { Int($0) },
+                        "cpu_percent": totals.cpu,
+                        "memory_bytes": totals.memory,
+                        "process_count": totals.count
+                    ]
+                    if includeProcesses {
+                        entry["processes"] = pids.compactMap {
+                            SystemTop.processTree(root: $0, table: table, children: children)
+                        }
+                    }
+                    surfacePayloads.append(entry)
+                    paneCPU += totals.cpu; paneMemory += totals.memory; paneCount += totals.count
+                }
+                panePayloads.append([
+                    "id": pane.paneId.uuidString,
+                    "ref": registry.ref(kind: "pane", uuid: pane.paneId),
+                    "cpu_percent": paneCPU,
+                    "memory_bytes": paneMemory,
+                    "process_count": paneCount,
+                    "surfaces": surfacePayloads
+                ])
+                wsCPU += paneCPU; wsMemory += paneMemory; wsCount += paneCount
+            }
+            workspacePayloads.append([
+                "id": tab.id.uuidString,
+                "ref": registry.ref(kind: "workspace", uuid: tab.id),
+                "title": tab.title,
+                "cpu_percent": wsCPU,
+                "memory_bytes": wsMemory,
+                "process_count": wsCount,
+                "panes": panePayloads
+            ])
+            windowCPU += wsCPU; windowMemory += wsMemory; windowCount += wsCount
+        }
+        return ["windows": [[
+            "id": Self.windowId.uuidString,
+            "ref": registry.ref(kind: "window", uuid: Self.windowId),
+            "title": "cmux",
+            "cpu_percent": windowCPU,
+            "memory_bytes": windowMemory,
+            "process_count": windowCount,
+            "workspaces": workspacePayloads
+        ]]]
+    }
 
     private func workspaceListResult() -> [String: Any] {
         let registry = RefRegistry.shared

@@ -100,7 +100,7 @@ family · `canvas.*` (12) · `feed.*` (5) ·
 `auth.*` (4) · `layout.*` (5) · `events.stream` · `browser.trace/
 screencast/network-route` · `browser.import.*` · `browser.react_grab` ·
 `browser.focus_mode` · `file.open` / `project.open` / `markdown.open` ·
-`mobile.*` · `system.memory` / `system.top` · `settings` docs UIs beyond
+`mobile.*` · `system.memory` · `settings` docs UIs beyond
 `settings.open` · `agent.resolve_delivery_target`.
 
 ## Not planned

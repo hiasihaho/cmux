@@ -25,8 +25,13 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-APP="$ROOT/linux/.build/debug/cmux-adw"
-CLI="$ROOT/linux/.build/debug/cmux"
+# CMUX_TEST_BUILD_DIR points at a `swift build --scratch-path` output, so a
+# probe can run a binary built against an alternate shim WITHOUT rebuilding
+# .build — which the daily instance promotes from (2026-09-01: the shim had
+# to be built to a side prefix because the running daily has the canonical
+# libghostty-gtk.so MAPPED, and overwriting it can SIGBUS a live instance).
+APP="${CMUX_TEST_BUILD_DIR:-$ROOT/linux/.build}/debug/cmux-adw"
+CLI="${CMUX_TEST_BUILD_DIR:-$ROOT/linux/.build}/debug/cmux"
 
 cmd="${1:-help}"
 tag="${2:-}"

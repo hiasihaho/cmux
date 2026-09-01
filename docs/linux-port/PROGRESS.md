@@ -4623,3 +4623,52 @@ Method note worth keeping: "cannot reproduce" was wrong-headed here until
 the renderer difference surfaced. A probe under Xvfb/llvmpipe is not a
 probe of the user's GPU path, and for anything that allocates large
 buffers that difference decides the outcome.
+
+## 2026-09-01 — system.top + the shim's pid accessor (one increment)
+
+`cmux top` answered `unknown_method`, which GAPS had parked under "only
+if needed". A codex session needed it — and reading the CLI showed the
+verb has a SECOND consumer that matters more than the task-manager view:
+`resolveAgentProcessTerminalBinding` asks system.top "which surface owns
+this pid" to OVERRIDE a stale/leaked CMUX_SURFACE_ID (the "codex jumble
+class"). On Linux that correction could never fire.
+
+Shipped together, because the human half without the pid half would have
+left the useful half dark on the backend the daily actually runs:
+
+- ghostty shim: `ghostty_embed_surface_pid` (fork `hiasihaho/ghostty`,
+  branch `linux-gtk-embed`, commit 3b5017524) — walks
+  CoreSurface.io.backend.exec.subprocess.process.fork_exec.pid, and
+  returns -1 for every unknowable case (no core, unspawned, exited, or
+  Flatpak host-spawn in another pid namespace).
+- `SystemTop.swift`: /proc snapshot, ppid child index, subtree walk,
+  aggregates. CPU% is cumulative-over-lifetime (what `ps %CPU` reports),
+  NOT sampled — sampling would mean sleeping on the GTK main thread.
+- `system.top` in the protocol, shaped as the CLI consumes it
+  (windows → workspaces → panes → surfaces + top_level_pids/processes).
+- `SurfaceRegistry.childPid(for:)` unifies VTE (spawn callback) and
+  ghostty (shim) so both backends answer the same question.
+- Suite `system-top-smoke.sh`: 10/10, and it SKIPS attribution honestly
+  when the shim predates the accessor.
+
+SAFETY, the reason this took the shape it did: the running daily has
+`ghostty/zig-out/lib/libghostty-gtk.so` MAPPED (4 regions). Rebuilding it
+in place can SIGBUS a live instance. So the shim was built to a SIDE
+prefix (`zig-out-dev`), cmux was built with `--scratch-path` against it,
+`scratch.sh` gained `CMUX_TEST_BUILD_DIR`, and the canonical `.build` and
+`zig-out` were never touched (inode/mtime verified unchanged throughout).
+
+The Swift side resolves the accessor by **dlsym**, deliberately: a
+link-time reference would break `swift build` against any checkout whose
+zig-out predates the accessor — turning a capability upgrade into a build
+break and forcing a shim rebuild at a moment the operator did not choose.
+With dlsym an old shim yields nil = "pid unknown" (verified live: verb
+answers, pids `[]`, no crash), and attribution lights up by itself once
+the shim is rebuilt.
+
+ACTIVATION (operator's choice, not done): rebuild to the side prefix,
+then `mv` it over the canonical path — a rename is atomic, so a running
+instance keeps its old inode and cannot be hurt:
+    zig build lib-gtk -Dapp-runtime=gtk -Dversion-string=1.3.0-dev --prefix ghostty/zig-out-dev
+    mv ghostty/zig-out-dev/lib/libghostty-gtk.so ghostty/zig-out/lib/libghostty-gtk.so
+    cp ghostty/include/ghostty_gtk_embed.h ghostty/zig-out/include/

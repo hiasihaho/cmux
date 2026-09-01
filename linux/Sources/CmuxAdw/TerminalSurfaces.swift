@@ -64,6 +64,18 @@ final class SurfaceRegistry {
         if pid > 0 { childPids[surfaceId] = pid }
     }
 
+    /// The child pid behind a surface, for either backend — VTE reports it
+    /// through its spawn callback, Ghostty through the shim's
+    /// `ghostty_embed_surface_pid`. nil means "not knowable", never a
+    /// guess: no child yet, it exited, or (Ghostty under Flatpak) the
+    /// child lives on the host in another pid namespace. Callers that
+    /// attribute OS processes to panes must treat nil as unknown rather
+    /// than as "no processes".
+    func childPid(for surfaceId: UUID) -> pid_t? {
+        if let pid = childPids[surfaceId] { return pid }
+        return ghosttyChildPid(for: surfaceId)
+    }
+
     /// tmux `respawn-pane -k` semantics for a VTE pane: kill the current
     /// child and start `command` in the SAME VteTerminal — scrollback
     /// survives, the process does not. Ghostty panes are refused by the

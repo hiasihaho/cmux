@@ -334,6 +334,32 @@ extension SurfaceRegistry {
     /// (background workspace pane). The realize half happens in the sync
     /// (`realizeHiddenGhosttys`); this is the sizing half, in the shim.
     @discardableResult
+    /// Child pid of a Ghostty surface, or nil when the shim cannot say
+    /// (no core surface, not spawned, exited, or the Flatpak host-command
+    /// path where the child is in another namespace). The shim answers -1
+    /// for all of those; nil keeps "unknown" distinct from "none" for
+    /// callers that attribute processes to panes.
+    func ghosttyChildPid(for surfaceId: UUID) -> pid_t? {
+        guard let widget = ghosttys[surfaceId], let fn = Self.ghosttyPidSymbol else { return nil }
+        let raw = fn(UnsafeMutableRawPointer(widget))
+        return raw > 0 ? pid_t(raw) : nil
+    }
+
+    /// Resolved via dlsym rather than linked directly, ON PURPOSE: the
+    /// accessor is newer than the shim most checkouts have installed at
+    /// `ghostty/zig-out`, and a hard link-time reference would make a plain
+    /// `swift build` fail against an older libghostty-gtk.so — turning a
+    /// capability upgrade into a build break, and forcing a shim rebuild at
+    /// a moment the operator did not choose (the running daily has that
+    /// library MAPPED; overwriting it can SIGBUS a live instance). With
+    /// dlsym an old shim simply yields nil = "pid unknown", and the
+    /// capability lights up by itself once the shim is rebuilt.
+    private static let ghosttyPidSymbol: (@convention(c) (UnsafeMutableRawPointer?) -> Int64)? = {
+        guard let handle = dlopen(nil, RTLD_LAZY),
+              let symbol = dlsym(handle, "ghostty_embed_surface_pid") else { return nil }
+        return unsafeBitCast(symbol, to: (@convention(c) (UnsafeMutableRawPointer?) -> Int64).self)
+    }()
+
     func ghosttyEnsureStarted(for surfaceId: UUID) -> Bool {
         guard let pointer = ghostty(for: surfaceId) else { return false }
         let widget = UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: GtkWidget.self)
@@ -360,6 +386,7 @@ import Foundation
 extension SurfaceRegistry {
     func ghosttyIsMapped(for surfaceId: UUID) -> Bool { false }
     func ghosttyReadText(for surfaceId: UUID, includeScrollback: Bool) -> String? { nil }
+    func ghosttyChildPid(for surfaceId: UUID) -> pid_t? { nil }
     @discardableResult
     func ghosttyWriteDisplay(for surfaceId: UUID, text: String) -> Bool { false }
     func ghosttyChildExited(for surfaceId: UUID) -> Bool { false }
