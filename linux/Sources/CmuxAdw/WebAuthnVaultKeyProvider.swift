@@ -139,7 +139,12 @@ enum WebAuthnVaultKeyProvider {
 
         var secret = Data()
         var buf = [UInt8](repeating: 0, count: 4096)
+        // Bounded read: a portal that errors without closing its dup would
+        // otherwise hang the main thread here. poll() with a 5s ceiling.
         while true {
+            var pfd = pollfd(fd: readFD, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&pfd, 1, 5000)
+            if ready <= 0 { break }  // timeout or error — take what we have
             let n = read(readFD, &buf, buf.count)
             if n <= 0 { break }
             secret.append(contentsOf: buf[0..<n])

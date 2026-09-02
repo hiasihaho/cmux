@@ -475,6 +475,79 @@ case "$OUT" in
     *) bad "fallback ceremony" "$OUT" ;;
 esac
 
+# -------------------- P1b: undecryptable-vault overwrite guard (data loss)
+# A v2 envelope that cannot be decrypted (here: KEY_BACKEND=none against a
+# real encrypted vault) must NOT be overwritten by the next save — the
+# keyring may come back. The save must move it aside to a 0600
+# .undecryptable-<ts>.bak first. Build a fresh v2 envelope with the host
+# backend, then restart with no backend so it is undecryptable.
+info "P1b guard: undecryptable vault is preserved, not overwritten"
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+# Produce a real v2 envelope: host backend, one create(). The fallback leg
+# left the vault plaintext, so regenerate rather than reuse.
+rm -f "$SESSION" "$VAULT" "$VAULT.v1.bak" "$VAULT".undecryptable-*.bak
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=1
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=host
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+cx browser click '#create' --surface "$SURF" >/dev/null 2>&1
+poll_out "$SURF" 'creating' >/dev/null
+if python3 -c "import json,sys; d=json.load(open('$VAULT')); sys.exit(0 if d.get('version')==2 else 1)" 2>/dev/null; then
+    OLDCIPHER=$(python3 -c "import json; print(json.load(open('$VAULT'))['ciphertext'])" 2>/dev/null)
+else
+    bad "guard setup" "could not produce a v2 envelope with the host backend"
+    OLDCIPHER=""
+fi
+# Restart with NO backend so the envelope is undecryptable.
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION"
+: > "$LOG"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=1
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=none
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+# A create() triggers load() (undecryptable -> []) then save() (must move
+# the old envelope aside first).
+cx browser click '#create' --surface "$SURF" >/dev/null 2>&1
+poll_out "$SURF" 'creating' >/dev/null
+ASIDE=$(ls "$VAULT".undecryptable-*.bak 2>/dev/null | head -1)
+if [ -n "$ASIDE" ]; then
+    ok "undecryptable vault moved aside (.undecryptable-<ts>.bak)"
+    ASIDEPERMS=$(stat -c %a "$ASIDE" 2>/dev/null)
+    [ "$ASIDEPERMS" = "600" ] && ok "undecryptable backup mode 0600" || bad "undecryptable backup permissions" "$ASIDEPERMS"
+    if [ -n "$OLDCIPHER" ] && python3 -c "
+import json, sys
+d = json.load(open('$ASIDE'))
+sys.exit(0 if d.get('ciphertext') == '$OLDCIPHER' else 1)
+" 2>/dev/null; then
+        ok "undecryptable backup preserves the original ciphertext"
+    else
+        bad "undecryptable backup contents" "ciphertext did not survive"
+    fi
+else
+    bad "undecryptable guard" "no .undecryptable backup written; old envelope overwritten"
+fi
+
 echo
 echo "== webauthn-smoke: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
