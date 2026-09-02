@@ -21,6 +21,12 @@ final class SurfaceRegistry {
     private var lastKnownDirectories: [UUID: String] = [:]
     private var spawnTimes: [UUID: Date] = [:]
     private var lastBellTimes: [UUID: Date] = [:]
+    /// Diagnostic: how many times realizeHiddenGhosttys has walked a
+    /// surface's subtree. The wedge (INCIDENT-20260901-main-loop-livelock)
+    /// was this walk re-realizing an already-started GLArea on every sync;
+    /// the count makes the churn assertable by a suite. Cleared on
+    /// unregister. Exposed via doctorReport as "realize_walks".
+    private var realizeWalkCounts: [UUID: Int] = [:]
 
     /// The registry holds STRONG GObject refs on every stored widget:
     /// entries are queried from timers (15s session autosave → OSC 7 cwd)
@@ -169,6 +175,7 @@ final class SurfaceRegistry {
             // gtk_widget_realize is idempotent — a top-level realized
             // check would skip exactly the widget that needs it.
             realizeSubtree(w)
+            realizeWalkCounts[surfaceId, default: 0] += 1
             // The sizing half: GTK never allocates hidden stack children,
             // so realize alone leaves the shim's init waiting for a size
             // that never comes. ensure_started spawns at a stand-in grid;
@@ -243,6 +250,7 @@ final class SurfaceRegistry {
         release(containers.removeValue(forKey: surfaceId))
         spawnTimes.removeValue(forKey: surfaceId)
         lastKnownDirectories.removeValue(forKey: surfaceId)
+        realizeWalkCounts.removeValue(forKey: surfaceId)
         lastBellTimes.removeValue(forKey: surfaceId)
         BrowserElementRefs.shared.clear(for: surfaceId)
         BrowserFrameSelectors.shared.clear(for: surfaceId)
@@ -298,6 +306,9 @@ final class SurfaceRegistry {
             report["container"] = "unregistered"
         }
         report["readable"] = scrollbackText(for: surfaceId) != nil
+        if let walks = realizeWalkCounts[surfaceId] {
+            report["realize_walks"] = walks
+        }
         return report
     }
 
