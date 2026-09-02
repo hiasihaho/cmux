@@ -102,6 +102,45 @@ done
   input lights up your tab and can pop a desktop notification. That is the
   product working — no action needed.
 
+## Working with the other desks (you are not alone in this repo)
+
+Several agent sessions develop this port at once, in ONE checkout, inside
+the same running app. The rules below are what that cost to learn.
+
+- **`cmux notify` is for the HUMAN, never for another session.** It
+  appends to the notification store, badges a workspace tab and raises a
+  desktop notification — nothing delivers it to an agent and nothing
+  polls it. A desk that "informed" a sibling by notify has informed
+  hias only (2026-09-02). Cross-platform trap on top: with an explicit
+  `--workspace` and no `--surface`, the shared CLI also sends the
+  CALLER's surface id, and macOS's resolver (issue #7939) then lets the
+  surface outrank the workspace — the same command notifies the sender
+  there. Name the target surface, or use a letter.
+- **Session-to-session is a feed letter plus a pane doorbell**:
+  `feed.push` a `UserPromptSubmit` into a stable workstream
+  (`announce-<target>`), then `cmux send` a one-liner and `send-key
+  Enter` as SEPARATE sends. Text rides in `tool_input` as a JSON OBJECT.
+  Check the recipient is alive AND idle first (`read-screen` twice — a
+  nudge during an active turn becomes an unsubmitted draft). Full
+  protocol: `skills/cmux-feed/SKILL.md`.
+- **One writer per file, enforced by `git worktree add`, not etiquette.**
+  Two desks in one checkout is how a half-feature ends up uncommitted in
+  the tree a promote builds from (2026-09-01). A session doing
+  exploratory or parallel work takes a sibling worktree; the shared
+  checkout has one implementer at a time.
+- **Ownership belongs in the docs, not in a conversation.** Every active
+  track names its owning desk in its GAPS row, and hand-overs are
+  written into the feature doc — a letter dies with whoever read it.
+- **Review across desks, red-first.** A desk reading another's RED commit
+  before the green exists is the cheapest review there is: on
+  2026-09-02 that read caught an unpadded-base64 fixture whose strict
+  Foundation decode silently disabled a migration, which the implementer
+  had been chasing as a suite-timing bug.
+- **A correction is a contribution.** Three theories were disproven the
+  night the daily wedged, two of them by the desks that proposed them.
+  Record what a probe RULED OUT with its evidence, in the same place as
+  what it found.
+
 ## Closed-loop QA (standing user consent exists)
 
 `linux/scripts/dogfood.sh "focus instructions" [timeout-min, default 20]`

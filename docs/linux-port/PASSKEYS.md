@@ -18,6 +18,45 @@ this is nearly free — WKWebView inherits Apple's WebAuthn client and the
 iCloud Keychain platform authenticator. On Linux none of that exists. This
 document maps the possibility space and recommends a path.
 
+## 0. Who owns what (handover, 2026-09-02)
+
+Agreed between the desks and hias; superseded only by a later dated
+entry here.
+
+| Track | Owner | State |
+|---|---|---|
+| P1b vault encryption-at-rest | **pk3** (kimi, main implementer) | red landed (`da5f0f8e59`), green in a sibling **worktree** — never in the shared checkout |
+| Design / option space / spikes | **passkey desk** (codex) | P1a shipped; now wider research scope, output is documents with verdicts, not half-features |
+| Coordination, cmux-core blockers, discipline | **cmux desk** | see blockers below |
+
+**pk3's P1b contract**: v2 envelope (`{version, backend, nonce,
+ciphertext}`), key provider with two backends (gnome-keyring on the
+host, Secret portal under Flatpak), v1 migration with `.v1.bak`, honest
+plaintext fallback with a logged warning, suite ledger 16.
+
+**Review state**: the passkey desk reviewed the RED commit before the
+green existed and found three things, all confirmed by pk3 —
+(1) the suite asserted the vault "must NOT parse as JSON" while the
+correct v2 envelope IS valid JSON (assert structurally instead:
+`version:2` + `ciphertext`, no `credentials`/`privateKey`);
+(2) `.v1.bak` asserted for existence only, needs 0600 and retirement
+after the first successful decrypt-read; (3) the hand-written v1 fixture
+uses UNPADDED base64, which Foundation's strict Data strategy refuses —
+so migration never ran and the leg stayed red after a correct green.
+That third one had been under investigation as a suite-timing bug.
+
+**Blockers owned by the cmux desk — ask, do not work around**:
+- Flatpak config resolution (GAPS, `adce6eedc8`): the flag flip for
+  `CMUX_WEBAUTHN` would land in `~/.var/app/<id>/config/cmux/cmux.json`,
+  not `~/.config/cmux/cmux.json`, because flatpak redirects
+  `XDG_CONFIG_HOME` even though `$HOME` stays real.
+- The Secret portal finish-arg decision:
+  `--talk-name=org.freedesktop.secrets` (whole keyring) vs
+  `org.freedesktop.impl.portal.Secret` (per-app secret, better
+  architecture, activatable on this host).
+P1b lands behind `CMUX_WEBAUTHN=1` regardless, so neither blocks the key
+provider itself.
+
 ## 1. Ground truth (verified on this host, 2026-09-01)
 
 - **WebKitGTK exposes no WebAuthn to pages.** Probed a live cmux browser
