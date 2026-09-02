@@ -192,23 +192,37 @@ esac
 
 if [ -f "$VAULT" ]; then
     PERMS=$(stat -c %a "$VAULT")
-    COUNT=$(python3 -c "import json;print(len(json.load(open('$VAULT'))['credentials']))" 2>/dev/null)
     [ "$PERMS" = "600" ] && ok "vault mode 0600" || bad "vault permissions" "$PERMS"
-    [ "$COUNT" = "1" ] && ok "vault holds 1 credential" || bad "vault contents" "count=$COUNT"
+    # Count is only readable on a plaintext (v1 / fallback) vault; the
+    # encrypted envelope's contents are verified functionally below (the
+    # post-reload assertion ceremony only passes if the credential
+    # decrypted and signed).
+    if python3 -c "import json,sys; d=json.load(open('$VAULT')); sys.exit(0 if 'credentials' in d else 1)" 2>/dev/null; then
+        COUNT=$(python3 -c "import json;print(len(json.load(open('$VAULT'))['credentials']))" 2>/dev/null)
+        [ "$COUNT" = "1" ] && ok "vault holds 1 credential" || bad "vault contents" "count=$COUNT"
+    else
+        ok "vault holds the credential (encrypted; proven by the assertion below)"
+    fi
 else
     bad "vault file" "missing at $VAULT"
 fi
 
 # ------------------------------------------------ P1b: ciphertext at rest
 # With a key backend available (this host has gnome-keyring on the session
-# bus), the vault file must be an encrypted envelope: not JSON-parseable,
-# and containing no plaintext rpId. Suites force the host backend so the
-# assertion is deterministic even if a portal is also present.
+# bus), the vault file must be the v2 encrypted envelope: a JSON object
+# with version 2 + nonce + ciphertext and NO readable credentials key
+# (the envelope is JSON by design; the plaintext is not recoverable from
+# it). Suites force the host backend so the assertion is deterministic
+# even if a portal is also present.
 if [ -f "$VAULT" ]; then
-    if python3 -c "import json,sys; json.load(open('$VAULT'))" 2>/dev/null; then
-        bad "vault ciphertext-at-rest" "vault still parses as plaintext JSON"
+    if python3 -c "
+import json, sys
+d = json.load(open('$VAULT'))
+sys.exit(0 if (d.get('version') == 2 and 'ciphertext' in d and 'credentials' not in d) else 1)
+" 2>/dev/null; then
+        ok "vault is the v2 encrypted envelope (no readable credentials)"
     else
-        ok "vault is not plaintext JSON (encrypted envelope)"
+        bad "vault ciphertext-at-rest" "vault is not the v2 envelope"
     fi
     if grep -q "localhost" "$VAULT" 2>/dev/null; then
         bad "vault ciphertext-at-rest" "rpId string visible in vault file"
@@ -341,15 +355,21 @@ sleep 1
 rm -f "$SESSION" "$VAULT" "$VAULT.v1.bak"
 python3 - "$VAULT" <<'PY'
 import json, sys
+# NOTE: the base64 strings must be PADDED. Foundation's JSONDecoder Data
+# strategy is strict and refuses unpadded base64 — an unpadded fixture
+# decodes to nil, the File decode fails, and migration never runs, so the
+# leg stays red looking like a product bug (it cost hours chasing this as
+# a suite-timing bug; the passkey desk named it from a read of the red
+# commit). Pad to a multiple of 4.
 vault = {
     "version": 1,
     "credentials": [{
-        "id": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "id": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
         "rpId": "localhost",
-        "userHandle": "BwcHBwcHBwcHBwcHBwcHBw",
+        "userHandle": "BwcHBwcHBwcHBwcHBwcHBw==",
         "userName": "probe@example.com",
         "userDisplayName": "Probe",
-        "privateKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "privateKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
         "createdAtMs": 1
     }]
 }
@@ -368,23 +388,58 @@ sleep 1
 SURF=$(open_pane)
 # Trigger a vault load via an assertion attempt (no credential matches the
 # migrated one — its privateKey is a placeholder — but load+migrate runs).
-cx browser click '#get' --surface "$SURF" >/dev/null 2>&1
-poll_out "$SURF" 'getting' >/dev/null
+# Drive it with eval, not a click: eval is not visibility-gated, and the
+# ceremony's load()+migrate runs regardless of the NotAllowedError outcome.
+cx browser eval --script 'navigator.credentials.get({publicKey:{challenge:new Uint8Array(32),rpId:"localhost"}}).then(r=>"ok").catch(e=>"err:"+e.name)' --surface "$SURF" >/dev/null 2>&1
+# Poll for the migration to land (backup + encrypted vault), not a fixed
+# sleep — the ceremony and file write are async.
+MIGRATED=0
+for _ in $(seq 1 20); do
+    if [ -f "$VAULT.v1.bak" ] && python3 -c "
+import json, sys
+d = json.load(open('$VAULT'))
+sys.exit(0 if (d.get('version') == 2 and 'ciphertext' in d and 'credentials' not in d) else 1)
+" 2>/dev/null; then
+        MIGRATED=1; break
+    fi
+    sleep 1
+done
 if [ -f "$VAULT.v1.bak" ]; then
     ok "migration kept .v1.bak of the plaintext vault"
+    # The backup holds private keys — it must be 0600, not just present.
+    BAKPERMS=$(stat -c %a "$VAULT.v1.bak" 2>/dev/null)
+    [ "$BAKPERMS" = "600" ] && ok "migration .v1.bak mode 0600" || bad "migration .v1.bak permissions" "$BAKPERMS"
 else
     bad "migration backup" ".v1.bak missing"
+    bad "migration .v1.bak permissions" "no backup to check"
 fi
-if python3 -c "import json; json.load(open('$VAULT'))" 2>/dev/null; then
-    bad "migration encryption" "vault still plaintext after load"
-else
+if [ "$MIGRATED" = "1" ]; then
     ok "migration encrypted the vault in place"
+else
+    bad "migration encryption" "vault still plaintext after load"
 fi
+
+# The backup is retired on the first successful DECRYPT-read. Drive a
+# second ceremony against the now-encrypted vault: a successful load
+# (decrypt) removes .v1.bak. The migrated credential's privateKey is a
+# placeholder, so the assertion itself is NotAllowedError — but the load
+# that precedes it is what retires the backup.
+cx browser eval --script 'navigator.credentials.get({publicKey:{challenge:new Uint8Array(32).fill(2),rpId:"localhost"}}).then(r=>"ok").catch(e=>"err:"+e.name)' --surface "$SURF" >/dev/null 2>&1
+RETIRED=0
+for _ in $(seq 1 15); do
+    [ ! -f "$VAULT.v1.bak" ] && { RETIRED=1; break; }
+    sleep 1
+done
+[ "$RETIRED" = "1" ] && ok "migration retires .v1.bak after first decrypt-read" \
+    || bad "migration .v1.bak retirement" "backup still present after decrypt-read"
 
 # -------------------------------------- P1b: fallback without a backend
 # With no keyring/portal reachable, the vault must stay 0600 plaintext AND
-# the instance log must carry an honest warning — never silent.
+# the instance log must carry an honest warning — never silent. The log is
+# snapshotted per phase because start_instance truncates it on each
+# restart.
 info "P1b fallback: no key backend -> plaintext + logged warning"
+cp "$LOG" "$WORK/log-phase2.log" 2>/dev/null
 for pid in $(pgrep -x cmux-adw 2>/dev/null); do
     app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
     [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
@@ -406,7 +461,7 @@ cx browser click '#create' --surface "$SURF" >/dev/null 2>&1
 OUT=$(poll_out "$SURF" 'creating')
 case "$OUT" in
     created:*)
-        if python3 -c "import json; json.load(open('$VAULT'))" 2>/dev/null; then
+        if python3 -c "import json,sys; d=json.load(open('$VAULT')); sys.exit(0 if 'credentials' in d else 1)" 2>/dev/null; then
             ok "fallback keeps vault readable (plaintext, 0600)"
         else
             bad "fallback readability" "vault unreadable without backend"
@@ -419,6 +474,79 @@ case "$OUT" in
         ;;
     *) bad "fallback ceremony" "$OUT" ;;
 esac
+
+# -------------------- P1b: undecryptable-vault overwrite guard (data loss)
+# A v2 envelope that cannot be decrypted (here: KEY_BACKEND=none against a
+# real encrypted vault) must NOT be overwritten by the next save — the
+# keyring may come back. The save must move it aside to a 0600
+# .undecryptable-<ts>.bak first. Build a fresh v2 envelope with the host
+# backend, then restart with no backend so it is undecryptable.
+info "P1b guard: undecryptable vault is preserved, not overwritten"
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+# Produce a real v2 envelope: host backend, one create(). The fallback leg
+# left the vault plaintext, so regenerate rather than reuse.
+rm -f "$SESSION" "$VAULT" "$VAULT.v1.bak" "$VAULT".undecryptable-*.bak
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=1
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=host
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+cx browser click '#create' --surface "$SURF" >/dev/null 2>&1
+poll_out "$SURF" 'creating' >/dev/null
+if python3 -c "import json,sys; d=json.load(open('$VAULT')); sys.exit(0 if d.get('version')==2 else 1)" 2>/dev/null; then
+    OLDCIPHER=$(python3 -c "import json; print(json.load(open('$VAULT'))['ciphertext'])" 2>/dev/null)
+else
+    bad "guard setup" "could not produce a v2 envelope with the host backend"
+    OLDCIPHER=""
+fi
+# Restart with NO backend so the envelope is undecryptable.
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION"
+: > "$LOG"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=1
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=none
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+# A create() triggers load() (undecryptable -> []) then save() (must move
+# the old envelope aside first).
+cx browser click '#create' --surface "$SURF" >/dev/null 2>&1
+poll_out "$SURF" 'creating' >/dev/null
+ASIDE=$(ls "$VAULT".undecryptable-*.bak 2>/dev/null | head -1)
+if [ -n "$ASIDE" ]; then
+    ok "undecryptable vault moved aside (.undecryptable-<ts>.bak)"
+    ASIDEPERMS=$(stat -c %a "$ASIDE" 2>/dev/null)
+    [ "$ASIDEPERMS" = "600" ] && ok "undecryptable backup mode 0600" || bad "undecryptable backup permissions" "$ASIDEPERMS"
+    if [ -n "$OLDCIPHER" ] && python3 -c "
+import json, sys
+d = json.load(open('$ASIDE'))
+sys.exit(0 if d.get('ciphertext') == '$OLDCIPHER' else 1)
+" 2>/dev/null; then
+        ok "undecryptable backup preserves the original ciphertext"
+    else
+        bad "undecryptable backup contents" "ciphertext did not survive"
+    fi
+else
+    bad "undecryptable guard" "no .undecryptable backup written; old envelope overwritten"
+fi
 
 echo
 echo "== webauthn-smoke: $PASS passed, $FAIL failed"

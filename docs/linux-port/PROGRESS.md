@@ -4997,3 +4997,35 @@ produced it, an unrealized GLArea at save time, which needs the wedge
 itself. The last-known-good cache is therefore reasoned-and-reviewed,
 not covered by a test; k3's latch repro is the place that state will
 become reachable on purpose.
+
+## 2026-09-02 — passkeys P1b green: vault encryption-at-rest (webauthn-smoke 18/18)
+
+P1b landed in a sibling worktree (`git worktree add`, never the shared
+checkout — the cross-desk protocol's one-writer-per-file rule, enforced
+by worktrees after the 2026-09-01 promote-prep scare). The resident-
+credential vault is now encrypted at rest: AES-GCM with a key from
+`WebAuthnVaultKeyProvider` (gnome-keyring via `secret-tool` on the host,
+the Secret portal under flatpak), on-disk a v2 JSON envelope
+`{version:2, backend, nonce, ciphertext}`. `WebAuthnVault.load`/`save`
+is the only seam. A v1 plaintext vault migrates in place on first load
+(`.v1.bak`, 0600, retired on the first successful decrypt-read); no
+backend → honest logged 0600 plaintext fallback, never silent. Behind
+`CMUX_WEBAUTHN=1`; not folded into any promote.
+
+Suite 16 → 18 (ledger in the same commit): ciphertext-at-rest is a
+STRUCTURAL assertion (v2 envelope has `ciphertext`, no readable
+`credentials`/`privateKey`) — the red commit's "must NOT parse as JSON"
+was wrong, the envelope is valid JSON by design (passkey desk red-review
+finding 1). Migration leg asserts `.v1.bak` existence AND 0600 AND
+retirement after the first decrypt-read (finding 2).
+
+**The trap worth recording** (finding 3, and the reason this entry
+exists): the migration leg stayed red for hours under investigation as a
+suite-TIMING bug (eval-vs-click, poll timing, instance-restart races).
+The real cause was the hand-written v1 fixture's UNPADDED base64 —
+Foundation's `JSONDecoder` Data strategy is strict and refuses unpadded
+input, so the `File` decode failed, migration never ran, and the leg
+read as a product bug. Padding the three fixture strings turned the leg
+green with no product change. The passkey desk named it from a read of
+the red commit before the green existed. A fixture that produces a wrong
+diagnosis for hours is worth more recorded than the fix.
