@@ -502,4 +502,79 @@ else
     skip "exit-save assertions" "needs Xvfb + xdotool + cc/libX11 (see DEPENDENCIES.md)"
 fi
 
+# ------------------------------------------------- empty-cwd hardening
+# A session record whose working directory is EMPTY makes restore spawn
+# the pane wherever the app happens to be — $HOME — and an agent then
+# cannot find its transcript, because `claude --resume` derives the
+# project folder from the cwd. That is what the 2026-09-02 wedge cost:
+# ~10 hand-recovered sessions, and NOTHING in the logs said it had
+# happened. Two guarantees are asserted here: the document never carries
+# an empty directory, and a substitution at restore leaves a trace.
+info "empty working directories are never persisted, and substitutions are visible"
+kill_instance
+rm -f "$SESSION"
+start_instance || exit 2
+cx new-workspace --cwd /var/tmp --background >/dev/null
+sleep 2
+force_save
+
+empties=$(python3 -c "
+import json
+d=json.load(open('$SESSION'))
+n=0
+def walk(o):
+    global n
+    if isinstance(o,dict):
+        if o.get('type')=='terminal' and o.get('workingDirectory','')=='': n+=1
+        for v in o.values(): walk(v)
+    elif isinstance(o,list):
+        for v in o: walk(v)
+walk(d); print(n)" 2>/dev/null)
+[ "${empties:-1}" = "0" ] \
+    && ok "no terminal surface is persisted with an empty working directory" \
+    || bad "empty cwd persisted" "$empties surface(s) recorded \"\""
+
+# Now force the bad state the wedge produced — a recorded empty — and
+# restart: the app must substitute AND say so.
+blanked=$(python3 -c "
+import json
+d=json.load(open('$SESSION'))
+hit=[0]
+def walk(o):
+    if isinstance(o,dict):
+        if o.get('type')=='terminal' and not hit[0]:
+            o['workingDirectory']=''; hit[0]=1
+        for v in o.values(): walk(v)
+    elif isinstance(o,list):
+        for v in o: walk(v)
+walk(d)
+json.dump(d, open('$SESSION','w'))
+print(hit[0])" 2>/dev/null)
+if [ "${blanked:-0}" = "1" ]; then
+    kill_instance
+    start_instance || exit 2
+    sleep 2
+    grep -q "session restore: surface .* had no recorded working directory" "$LOG" \
+        && ok "restore announces a substituted working directory" \
+        || bad "silent substitution" "no breadcrumb in $LOG"
+    force_save
+    still=$(python3 -c "
+import json
+d=json.load(open('$SESSION'))
+n=0
+def walk(o):
+    global n
+    if isinstance(o,dict):
+        if o.get('type')=='terminal' and o.get('workingDirectory','')=='': n+=1
+        for v in o.values(): walk(v)
+    elif isinstance(o,list):
+        for v in o: walk(v)
+walk(d); print(n)" 2>/dev/null)
+    [ "${still:-1}" = "0" ] \
+        && ok "an empty record does not survive the next save" \
+        || bad "empty cwd round-trips" "$still surface(s) still empty"
+else
+    skip "empty-cwd assertions" "no terminal surface in the document to blank"
+fi
+
 finish

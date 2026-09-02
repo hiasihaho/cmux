@@ -9,7 +9,7 @@ browser-navigation-smoke	14	Navigation barrier: goto/back/forward/reload never l
 browser-popup-smoke	12	Popup routing: window.open and target=_blank land in panes, window.opener survives, burst budget holds
 pane-search-smoke	11	cmux search across panes: both pane kinds, --kind/--regex/--case-sensitive, innerText semantics, JSON refs
 browser-find-smoke	11	Find-in-page: counts, next/previous wrap, case sensitivity, no-match recovery
-session-persistence-smoke	25	Session schema v3 round-trip: tabs, selection, browser URLs/history, scrollback replay, background workspaces across restart
+session-persistence-smoke	28	Session schema v3 round-trip: tabs, selection, browser URLs/history, scrollback replay, background workspaces across restart; empty-cwd hardening (never persisted, substitution announced)
 pane-zoom-smoke	7	Pane zoom: geometry, toggle, switching panes, not persisted
 browser-urlbar-smoke	5	Address bar via xdotool: typed loopback/domain/search resolution mirrors navigation
 browser-profile-smoke	14	Browser profiles: per-profile cookie/storage isolation verbs
