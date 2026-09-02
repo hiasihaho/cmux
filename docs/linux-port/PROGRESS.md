@@ -5029,3 +5029,36 @@ read as a product bug. Padding the three fixture strings turned the leg
 green with no product change. The passkey desk named it from a read of
 the red commit before the green existed. A fixture that produces a wrong
 diagnosis for hours is worth more recorded than the fix.
+
+## 2026-09-02 — the wedge fix: a latch on realizeHiddenGhosttys (ghostty-eager-spawn-latch 2/2)
+
+The 2026-09-01 main-loop live-lock (INCIDENT-20260901-main-loop-livelock)
+is fixed. The driver was `realizeHiddenGhosttys` walking every unmapped
+Ghostty surface's subtree on EVERY sync — under AdwTabView page churn +
+popovers that re-realizes an already-started GLArea each cycle, and each
+realize/unrealize is a Mesa/Vulkan context setup+teardown.
+
+The latch (`startedGhosttys`): once the shim reports a surface STARTED via
+`ghosttyEnsureStarted`, the walk skips it. Keyed on the shim's started
+report, NOT `gtk_widget_get_realized` — the bin can read realized while the
+GLArea inside is not (tab churn), so the widget check would latch early and
+strand the shell. Cleared on respawn (`takePendingRespawn`) and
+`unregister`, so a respawned/removed surface is walked again.
+
+Red-first (regression policy): the spin took 12 days to manifest and cannot
+be forced, so the repro targets the STATE. A diagnostic counter
+(`realizeWalkCounts`, exposed as `debug.surfaces` `realize_walks`) counts
+subtree walks per surface; the suite asserts an already-started background
+surface is walked ONCE across workspace-switch churn. Red without the fix
+(5 -> 41 across 6 cycles), green with it (1 -> 1) — the pair proven by
+stashing the fix and re-running. The regression guard (eager background
+spawn still starts the shell — break it and agents get `unavailable` again)
+passes. Standalone suite (needs the ghostty shim; run-all's gate is
+VTE-only). Regression suites green: session-persistence 28/28,
+vte-scrollback 8/8, ui-commands 49/49.
+
+The bonus the cmux desk asked for (a save-while-unrealized assertion to
+convert the cwd last-good cache from reasoned to tested) does NOT fall out
+of this repro: the latch keeps the background surface REALIZED, which is
+the opposite of the unrealized state the cwd bug needs. Not forced; the
+cache stays reasoned-and-reviewed, and PROGRESS already says so.

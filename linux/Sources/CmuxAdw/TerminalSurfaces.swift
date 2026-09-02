@@ -27,6 +27,18 @@ final class SurfaceRegistry {
     /// the count makes the churn assertable by a suite. Cleared on
     /// unregister. Exposed via doctorReport as "realize_walks".
     private var realizeWalkCounts: [UUID: Int] = [:]
+    /// The eager-spawn latch. realizeHiddenGhosttys walks every unmapped
+    /// Ghostty surface's subtree on EVERY sync; under AdwTabView page churn
+    /// + popovers that re-realizes an already-started GLArea each time, and
+    /// each realize/unrealize cycle is a Mesa/Vulkan context setup+teardown
+    /// — the 2026-09-01 main-loop live-lock (INCIDENT-…-livelock). Latch a
+    /// surface once the shim reports it STARTED (ghosttyEnsureStarted), and
+    /// skip the walk thereafter. Keyed on the shim's started report, NOT
+    /// gtk_widget_get_realized — the bin can read realized while the GLArea
+    /// inside is not (tab churn), so the widget check would latch early and
+    /// strand the shell. Cleared on respawn (takePendingRespawn) and
+    /// unregister, so a respawned/removed surface is walked again.
+    private var startedGhosttys: Set<UUID> = []
 
     /// The registry holds STRONG GObject refs on every stored widget:
     /// entries are queried from timers (15s session autosave → OSC 7 cwd)
@@ -155,7 +167,11 @@ final class SurfaceRegistry {
     }
 
     func takePendingRespawn(for surfaceId: UUID) -> (command: String, workingDirectory: String?)? {
-        pendingGhosttyRespawns.removeValue(forKey: surfaceId)
+        // A respawn tears the old widget down and mounts a replacement that
+        // must be realized + started again — clear the latch so the walk
+        // picks it up.
+        startedGhosttys.remove(surfaceId)
+        return pendingGhosttyRespawns.removeValue(forKey: surfaceId)
     }
 
     /// Eager background spawn: the shim starts a surface's shell when its
@@ -165,9 +181,15 @@ final class SurfaceRegistry {
     /// Realizing an anchored hidden widget is legal (GTK realizes the
     /// ancestor chain first) and does NOT map it: the shell starts, the
     /// renderer stays dormant until the workspace is shown. Idempotent;
-    /// runs at the end of every sync.
+    /// runs at the end of every sync. Latched: a surface the shim reports
+    /// STARTED is skipped — re-realizing it every sync is the live-lock
+    /// churn (see startedGhosttys).
     func realizeHiddenGhosttys() {
         for (surfaceId, widget) in ghosttys {
+            // The latch: once started, a surface needs no further eager
+            // realize. Skip BEFORE the widget walk — the walk is the
+            // expensive GL realize/unrealize cycle we are latching against.
+            if startedGhosttys.contains(surfaceId) { continue }
             let w = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkWidget.self)
             guard gtk_widget_get_mapped(w) == 0, gtk_widget_get_root(w) != nil else { continue }
             // Always walk the SUBTREE: the bin can be realized while the
@@ -180,7 +202,11 @@ final class SurfaceRegistry {
             // so realize alone leaves the shim's init waiting for a size
             // that never comes. ensure_started spawns at a stand-in grid;
             // the real resize corrects it on first map. Idempotent.
-            ghosttyEnsureStarted(for: surfaceId)
+            // Latch on the shim's started report — not on the widget's
+            // realized flag, which lies under tab churn.
+            if ghosttyEnsureStarted(for: surfaceId) {
+                startedGhosttys.insert(surfaceId)
+            }
         }
     }
 
@@ -251,6 +277,7 @@ final class SurfaceRegistry {
         spawnTimes.removeValue(forKey: surfaceId)
         lastKnownDirectories.removeValue(forKey: surfaceId)
         realizeWalkCounts.removeValue(forKey: surfaceId)
+        startedGhosttys.remove(surfaceId)
         lastBellTimes.removeValue(forKey: surfaceId)
         BrowserElementRefs.shared.clear(for: surfaceId)
         BrowserFrameSelectors.shared.clear(for: surfaceId)

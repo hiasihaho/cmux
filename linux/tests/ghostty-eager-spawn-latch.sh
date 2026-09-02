@@ -56,18 +56,29 @@ BGSURF=$(cx list-pane-surfaces --workspace "$BG" --json 2>/dev/null \
     | python3 -c 'import json,sys; d=json.load(sys.stdin); print(" ".join(s["ref"] for p in d.get("panes",[]) for s in p.get("surfaces",[])))' 2>/dev/null | awk '{print $1}')
 info "background surface: $BGSURF"
 
-walks() {  # read realize_walks for the background surface via debug.surfaces
+walks() {  # read realize_walks for the UNMAPPED (background) ghostty surface
     v2 '{"id":1,"method":"debug.surfaces"}' 2>/dev/null | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
+# The background surface is the ghostty one that is NOT mapped; the
+# foreground workspace's pane is mapped and not the eager-spawn case.
 for s in d.get('result',{}).get('surfaces',[]):
-    if s.get('backend')=='ghostty':
+    if s.get('backend')=='ghostty' and s.get('mapped') is False:
         print(s.get('realize_walks', 0)); break
 " 2>/dev/null
 }
 
-W0=$(walks)
-info "realize_walks after initial eager spawn: ${W0:-none}"
+# Let the eager spawn SETTLE first: the surface is walked (and started)
+# once, then latched. Read the post-settle baseline — the invariant is that
+# churn adds ZERO walks to a started surface, so baseline must be read after
+# the spawn, not before.
+W0=""
+for _ in $(seq 1 15); do
+    W0=$(walks)
+    [ -n "$W0" ] && [ "$W0" -ge 1 ] && break
+    sleep 1
+done
+info "realize_walks after initial eager spawn settled: ${W0:-none}"
 
 # Force sync churn: switch to the background workspace and back repeatedly.
 # Each selection triggers a sync; realizeHiddenGhosttys runs at the end of
@@ -81,12 +92,13 @@ sleep 2
 W1=$(walks)
 info "realize_walks after 6 workspace-switch cycles: ${W1:-none}"
 
-# RED: the walk count must stay bounded. Without the latch it climbs with
-# every sync; with the latch it stays at its post-spawn value.
-if [ -n "$W0" ] && [ -n "$W1" ] && [ "$W1" -le "$W0" ]; then
+# The invariant: churn adds ZERO walks to an already-started surface.
+# Without the latch the count climbs with every sync (red: 0 -> 18); with
+# the latch it holds at the post-spawn baseline (green).
+if [ -n "$W0" ] && [ -n "$W1" ] && [ "$W0" -ge 1 ] && [ "$W1" -eq "$W0" ]; then
     ok "already-started background surface is not re-walked across sync churn (latched)"
 else
-    bad "eager-spawn latch" "realize_walks climbed from ${W0:-?} to ${W1:-?} across sync churn — the GLArea is being re-realized every sync"
+    bad "eager-spawn latch" "realize_walks moved from ${W0:-?} to ${W1:-?} across sync churn — the GLArea is being re-realized every sync"
 fi
 
 # Regression guard: the background surface's shell must have started (eager
