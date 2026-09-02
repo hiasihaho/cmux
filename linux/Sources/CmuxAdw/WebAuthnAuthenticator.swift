@@ -17,9 +17,13 @@ import Glibc
 //  - signCount stays 0 forever, matching Apple's platform authenticator;
 //    a moving counter turns vault restores into RP clone-detection
 //    lockouts.
-//  - Vault: JSON file, 0600, atomic replace. Encryption-at-rest via
-//    Secret Service is the next increment (PASSKEYS.md P1b) — the store
-//    is isolated behind `WebAuthnVault` so only `load`/`save` change.
+//  - Vault: 0600, atomic replace, encrypted at rest (P1b): AES-GCM with
+//    a key from WebAuthnVaultKeyProvider (gnome-keyring on host, Secret
+//    portal under flatpak). On-disk envelope is JSON
+//    {version:2, backend, nonce, ciphertext} — never plaintext when a
+//    key backend answers. A v1 plaintext vault migrates in place on
+//    first load, keeping a .v1.bak until the first successful
+//    decrypt-read. No backend → honest logged 0600 plaintext fallback.
 
 /// One resident credential. Codable == vault schema (version 1).
 struct WebAuthnCredential: Codable {
@@ -46,13 +50,36 @@ struct WebAuthnCeremonyError: Error {
 
 // MARK: - vault
 
-/// Resident-credential store. Single file, versioned, 0600, written via
-/// temp-file + rename so a crash never truncates the vault.
+/// Resident-credential store. Single file, 0600, written via temp-file +
+/// rename so a crash never truncates the vault. Encryption-at-rest (P1b):
+/// when WebAuthnVaultKeyProvider resolves a key, the file is a v2
+/// AES-GCM envelope; otherwise it stays v1 plaintext with one logged
+/// warning per process. The key is resolved once per process — a keyring
+/// lookup per ceremony would be needless latency.
 enum WebAuthnVault {
     private struct File: Codable {
         var version: Int
         var credentials: [WebAuthnCredential]
     }
+
+    /// On-disk v2 envelope. `backend` records which provider encrypted
+    /// (host/portal) so diagnostics can tell vaults apart; the key itself
+    /// is re-resolved from the CURRENT backend at load.
+    private struct Envelope: Codable {
+        var version: Int
+        var backend: String
+        var nonce: String      // base64
+        var ciphertext: String // base64, AES-GCM sealed box
+    }
+
+    private static let resolvedKey: WebAuthnVaultKeyProvider.VaultKey? = {
+        let key = WebAuthnVaultKeyProvider.resolve()
+        if key == nil {
+            FileHandle.standardError.write(Data(
+                "cmux: webauthn vault: no key backend available — credentials stored as 0600 plaintext (set up gnome-keyring or run under flatpak for encryption-at-rest)\n".utf8))
+        }
+        return key
+    }()
 
     static var fileURL: URL {
         if let override = ProcessInfo.processInfo.environment["CMUX_WEBAUTHN_VAULT"],
@@ -64,10 +91,45 @@ enum WebAuthnVault {
             .appendingPathComponent("webauthn-credentials.json")
     }
 
+    private static var backupURL: URL {
+        URL(fileURLWithPath: fileURL.path + ".v1.bak")
+    }
+
     static func load() -> [WebAuthnCredential] {
-        guard let data = try? Data(contentsOf: fileURL),
-              let file = try? JSONDecoder().decode(File.self, from: data),
+        guard let data = try? Data(contentsOf: fileURL) else { return [] }
+        // v2 envelope first: decrypt with the current backend's key.
+        if let envelope = try? JSONDecoder().decode(Envelope.self, from: data),
+           envelope.version == 2 {
+            guard let vaultKey = resolvedKey,
+                  let plaintext = try? decrypt(envelope, key: vaultKey.key),
+                  let file = try? JSONDecoder().decode(File.self, from: plaintext),
+                  file.version == 1 else {
+                FileHandle.standardError.write(Data(
+                    "cmux: webauthn vault: encrypted vault could not be decrypted (key backend changed or vault corrupt) — starting empty\n".utf8))
+                return []
+            }
+            // First successful decrypt-read after a migration retires the
+            // plaintext backup.
+            try? FileManager.default.removeItem(at: backupURL)
+            return file.credentials
+        }
+        // v1 plaintext: read, then migrate in place when a key backend
+        // answers. The plaintext bytes are backed up to .v1.bak BEFORE
+        // the encrypted save, and the backup is retired on the first
+        // successful decrypt-read (above).
+        guard let file = try? JSONDecoder().decode(File.self, from: data),
               file.version == 1 else { return [] }
+        if resolvedKey != nil {
+            do {
+                try data.write(to: backupURL)
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: 0o600], ofItemAtPath: backupURL.path)
+                try save(file.credentials)
+            } catch {
+                FileHandle.standardError.write(Data(
+                    "cmux: webauthn vault: migration to encrypted vault failed (\(error)) — continuing on plaintext\n".utf8))
+            }
+        }
         return file.credentials
     }
 
@@ -76,7 +138,15 @@ enum WebAuthnVault {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(File(version: 1, credentials: credentials))
+        let plaintext = try encoder.encode(File(version: 1, credentials: credentials))
+
+        let data: Data
+        if let vaultKey = resolvedKey {
+            data = try encrypt(plaintext, key: vaultKey.key, backend: vaultKey.backend)
+        } else {
+            data = plaintext
+        }
+
         let tmp = dir.appendingPathComponent(".webauthn-credentials.\(UUID().uuidString).tmp")
         try data.write(to: tmp)
         try FileManager.default.setAttributes(
@@ -87,6 +157,40 @@ enum WebAuthnVault {
             try? FileManager.default.removeItem(at: tmp)
             throw WebAuthnCeremonyError.notAllowed("The credential store is not writable.")
         }
+    }
+
+    // MARK: - AES-GCM envelope
+
+    private static func encrypt(_ plaintext: Data, key: SymmetricKey,
+                                backend: WebAuthnVaultKeyProvider.Backend) throws -> Data {
+        let sealed = try AES.GCM.seal(plaintext, using: key)
+        guard let combined = sealed.combined else {
+            throw WebAuthnCeremonyError.notAllowed("The credential store could not be encrypted.")
+        }
+        // combined = nonce(12) || ciphertext || tag(16); store nonce
+        // separately for envelope readability.
+        let nonce = combined.prefix(12)
+        let ciphertext = combined.suffix(from: 12)
+        let envelope = Envelope(
+            version: 2,
+            backend: backend.rawValue,
+            nonce: Data(nonce).base64EncodedString(),
+            ciphertext: Data(ciphertext).base64EncodedString()
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(envelope)
+    }
+
+    private static func decrypt(_ envelope: Envelope, key: SymmetricKey) throws -> Data {
+        guard let nonceData = Data(base64Encoded: envelope.nonce),
+              let ciphertext = Data(base64Encoded: envelope.ciphertext) else {
+            throw WebAuthnCeremonyError.notAllowed("The credential store is malformed.")
+        }
+        let nonce = try AES.GCM.Nonce(data: nonceData)
+        let box = try AES.GCM.SealedBox(nonce: nonce, ciphertext: ciphertext.dropLast(16),
+                                        tag: ciphertext.suffix(16))
+        return try AES.GCM.open(box, using: key)
     }
 }
 
