@@ -7,6 +7,10 @@ if `$CMUX_SURFACE_ID` is set, your terminal is a VTE pane of the running
 port, the `cmux` CLI targets *your own pane* by default, and the process
 hosting you is `linux/.build/debug/cmux-adw`.
 
+**New here?** [ONBOARDING.md](ONBOARDING.md) is the ten-minute entry
+point — the desks, the channel ladder, what an agent pane actually
+contains, and how work lands. This file is the host-survival half.
+
 ## Prime directive: don't kill your host
 
 - **Never** `pkill`/`kill`/restart `cmux-adw` while running inside it — you
