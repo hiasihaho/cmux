@@ -27,6 +27,15 @@ hosting you is `linux/.build/debug/cmux-adw`.
   it on the new binary; session restore brings the layout and scrollback
   back, `claude --continue` resumes the session. `--slot dev2` exercises
   the same code path against a disposable instance.
+- **A WEDGED daily is recoverable with SIGTERM alone** (2026-09-02): the
+  app installs no SIGTERM handler and neither does GLib — the only exit
+  hook is `SessionExitSave` on GTK `close-request` — so SIGTERM takes the
+  kernel-default disposition and terminates even a spinning process. No
+  `kill -9`. The cost is skipping the close-request exit-save, which is
+  why `promote.sh` forces `session.save` over the socket FIRST; that save
+  may itself time out on the wedged loop, which promote tolerates. Do
+  NOT combine a recovery restart with any other change — see PROGRESS
+  2026-09-01/02 for what that discipline cost and bought.
 - **Never rebuild the Ghostty shim over `ghostty/zig-out/lib/`** while an
   instance maps it — that SIGBUSes the daily. Build to a side prefix and
   install with `linux/scripts/swap-shim.sh` (rename-not-overwrite,

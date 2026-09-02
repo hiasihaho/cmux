@@ -4853,3 +4853,111 @@ Restored panes get the polyfill for free (verified — the factory funnel
 covers adoption/restore). Localization note: the consent dialog strings
 follow the port's current plain-literal precedent (the Linux port has no
 localization catalog yet — pre-existing gap, now with one more surface).
+
+## 2026-09-01/02 — the daily wedged: GL realize/unrealize churn, and the directories it took with it
+
+Symptom: hias's UI froze while the CLI kept answering. PID 14071, state
+`Rl`, main thread spinning. Diagnosis by the k3 desk (workspace:11),
+consequence analysis and restart flow by this desk; both halves here so
+neither has to be rederived.
+
+**The stacks** (`gdb -p <pid> -batch -ex "thread 1" -ex bt -ex detach`,
+read-only). The thread OSCILLATED between two chains — sample several
+times or one sample misleads (early samples caught it in `ppoll`,
+looking healthy):
+
+    GL teardown (the spin):
+      gtk_widget_unrealize -> gtk_gl_area_unrealize -> gdk_gl_context_dispose
+      -> eglDestroyContext -> dri2_destroy_context -> st_destroy_context
+      -> _mesa_HashWalk(Locked) -> st_texture_release_context_sampler_view
+
+    Vulkan attach (the setup half):
+      gtk_popover_realize -> gsk_gpu_renderer_realize
+      -> gsk_renderer_new_for_surface_full -> gdk_draw_context_attach
+      -> gdk_vulkan_context_surface_attach
+      -> terminator_GetPhysicalDeviceSurfaceFormatsKHR
+      -> wsi_wl_surface_get_formats -> wl_display_roundtrip_queue
+
+**The driver**: `SurfaceRegistry.realizeHiddenGhosttys`
+(TerminalSurfaces.swift:161, called from `TerminalStackWidget.sync` at
+:623, and from ControlProtocol.swift:2238). It is the ONLY cmux frame in
+the stack — everything above is GTK/GSK/Mesa — and it calls
+`gtk_widget_realize` on every unmapped Ghostty GLArea on EVERY sync, by
+design: its own docstring says "Idempotent; runs at the end of every
+sync", and `realizeSubtree` (:181) walks the whole subtree because
+`gtk_widget_realize` realizes ancestors, never children. AdwTabView page
+churn and notification popovers supply the unrealize half, so each cycle
+pays a full Mesa/Vulkan context setup+teardown. Confirmed shipped, not
+new work: `info functions realizeHiddenGhosttys` against the LIVE wedged
+process. (k3 cited :157/:611 from the wedged build; same function and
+call pair, three lines off in today's tree.)
+
+**Ruled out, with the evidence — the disproven theories are worth as
+much as the finding:**
+
+- k3's uncommitted P1b files: touch only the WebAuthn vault path, and
+  the wedged binary predates them.
+- A notify-path fault (this desk's theory): a SYMPTOM. Socket commands
+  run through `ControlSocketServer.dispatchOnMainLoop`, which schedules
+  the work with `Idle{}` and blocks the socket thread in
+  `response.wait(seconds:)`. A wedged main loop means the idle closure
+  never runs, so the timeout NAMES THE CALLER, NOT THE CAUSE.
+- 198 `(deleted)` mappings (qmp desk's reading): the normal result of any
+  rebuild since process start — `swift build` replaces the binary on
+  disk and the running process keeps its inode. The one named hazard
+  (rebuilding the shim over a mapped `zig-out`) was checked and had NOT
+  fired: `libghostty-gtk.so` mtime 2026-07-22, inode live.
+- `set_agent_pid "not implemented"`: unrelated known gap, noise.
+
+**What the wedge took with it: every pane's working directory.** After
+the restart all ~10 agent panes came back at `$HOME` and `claude
+--resume` failed, because the transcript folder is derived from cwd.
+
+The first suspicion was `0a26e5eb55` ("flatpak: fix lost cwd"), whose
+commit message describes this exact symptom. **It does not transfer to
+the host build**: the fix is `if (comptime build_config.flatpak)`, a
+COMPILE-TIME constant set by `-Dflatpak=true`, so the checkout build
+takes the original `openFileAbsolute` branch unchanged. Verified live on
+an isolated scratch instance with the 2026-07-22 shim (daily untouched):
+spawn a workspace at `/var/tmp`, `cd /usr/share/doc` in the pane, force
+`session.save` — the record reads `/usr/share/doc`. **Host OSC 7 works.**
+A second restart on a swapped shim would have fixed nothing.
+
+The real mechanism is an EMPTY record, not a wrong one. Save side:
+`currentDirectory(for:) ?? surface.workingDirectory` (SessionStore:239).
+Restore side: `workingDirectory.isEmpty ? homeDirectoryForCurrentUser :
+workingDirectory` (SessionStore:481). A Ghostty surface whose GLArea is
+UNREALIZED has no core surface, so its `pwd` property is empty and
+`currentDirectory` returns nil; with an empty model value too, `""` is
+persisted and silently becomes `$HOME` on the way back. Unrealized GL
+areas at save time is precisely the driver above — so the cwd loss is a
+CONSEQUENCE of the wedge, not a second bug. Not provable after the fact
+(the pre-restart file was overwritten); the dispositive check would have
+been whether promote printed its `session.save` fallback note.
+
+**SIGTERM, and why a wedged daily is recoverable at all**: neither the
+app nor GLib installs a SIGTERM handler (the only exit hook is
+`SessionExitSave` on GTK `close-request`, a different path), so SIGTERM
+uses the kernel-default disposition and terminates immediately — a
+spinning userspace loop does not block a default-disposition signal. No
+`kill -9` needed. The cost is skipping the close-request exit-save,
+which is exactly why `promote.sh` does `session.save` over the socket
+FIRST — and that save can itself time out on the wedged loop, which
+promote already tolerates.
+
+**The restart** ran as `cd ~/cmux && linux/scripts/promote.sh` from a
+TTY, deliberately WITHOUT `--test` (15 heavy suites run before the kill,
+competing with the wedged process; the build is already fail-closed) and
+deliberately WITHOUT the shim swap or the latch fix — one variable, so
+that a recurrence stays attributable. It restored layout and scrollback;
+only the directories were lost.
+
+**Still open** (each on its own commit, deliberately not folded):
+the latch (k3 owns: `realizeHiddenGhosttys` should record which surfaces
+it has already started and skip them, and defer while popover/tab churn
+is in flight; red-first repro = count `realizeSubtree` calls per surface
+across N syncs, or sample main-thread CPU across popover/workspace churn)
+and the cwd hardening (this desk, GAPS row). `GDK_DISABLE=vulkan` was
+considered and rejected for tonight: the spin appears in BOTH the Mesa
+teardown and the Vulkan attach, so it removes at most half the cycle —
+it is experiment #2 if the wedge recurs, never a fix.
