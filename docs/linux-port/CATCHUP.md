@@ -1,5 +1,17 @@
 # Catch-up — start here (living document)
 
+**2026-09-02: P1b vault encryption MERGED** (`0ed7db78e1`): pk3's
+two-backend key provider (gnome-keyring via secret-tool / Secret portal
+via gdbus fd-passing), AES-GCM v2 envelope, v1 migration with retired
+`.v1.bak`, honest plaintext fallback, and the review-required
+undecryptable-vault overwrite guard (transient keyring outage no longer
+destroys stored passkeys). `webauthn-smoke` 21/21, independently
+re-verified by the passkey desk in a sibling worktree. Open items: the
+Secret-portal path is written but NOT in-sandbox verified (flatpak
+round); settings flip still blocked on the flatpak config-resolution
+row; async key resolve before the flag flips. Next lanes: pk3 CXF-core,
+passkey desk `browser webauthn` verbs.
+
 **2026-09-01 (later): PASSKEYS SHIPPED (P1a).** Browser panes speak
 WebAuthn behind `CMUX_WEBAUTHN=1` — before Epiphany does. Full analysis
 in [PASSKEYS.md](PASSKEYS.md); P0 probe refuted the native/WebDriver
