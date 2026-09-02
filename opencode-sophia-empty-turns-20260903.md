@@ -51,6 +51,40 @@ responses. Set to `16384` on 2026-09-03 (backup:
 `opencode.json.bak-sophialimit-20260903-001652`). `context` deliberately left
 at 1048576: with no usage reported, lowering it buys no trigger.
 
+## ROOT CAUSE FOUND, 01:45 — HTTP 429, not context (amends the above)
+
+A minimal, hand-made request to the endpoint returned **HTTP 429 Too Many
+Requests**; a second, seconds later, returned 200. The endpoint
+rate-limits intermittently, and opencode records a rate-limited stream as
+a **contentless step** — `{"reason":"unknown", tokens all zero}` — and
+retries immediately. That is the exact signature of every "empty turn"
+counted below, and it is self-sustaining: the retries generate the load
+that keeps the limit tripped.
+
+Decisive evidence that context was NOT the driver: a BRAND-NEW session
+(`ses_f9b7c6240ffe…`, 4K tokens, 0.0 MB) produced **64 contentless turns
+out of 64** within a minute of starting. Nothing that small is near any
+context window. The context-exhaustion reading below is therefore
+WRONG as a cause, and is kept only because the size numbers remain true
+and the no-usage finding stands on its own.
+
+It also explains the spread: 84% contentless in the session that ran
+alongside other sessions and a runaway fork, 1.2% in one that ran while
+the endpoint was quiet.
+
+Practical consequences:
+- **Stop retry loops first.** They are the load. A runaway fork reached
+  1,425 assistant turns despite `max_member_turns: 500` — that cap did
+  not hold it.
+- **Probe before starting an agent**: one hand-made `chat/completions`
+  request. 429 means wait; 200 means go.
+- Ask the provider for the quota (requests/min, tokens/min) and whether
+  429s carry `Retry-After` — the ones observed carried no rate-limit
+  headers at all, so a client cannot back off intelligently.
+- opencode treating a 429 as an empty step rather than an error is worth
+  reporting upstream: it turns a recoverable, well-defined HTTP status
+  into an invisible infinite loop.
+
 ## What this does NOT explain
 
 - Why `fa19` (2.7 MB, same provider) shows 1.2% and `fa18` (2.9 MB) shows
