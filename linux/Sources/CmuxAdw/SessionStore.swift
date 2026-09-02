@@ -235,9 +235,9 @@ enum SessionStore {
             case .inspector:
                 continue
             case .terminal:
-                // Live cwd via OSC 7 beats the spawn-time directory.
-                let cwd = SurfaceRegistry.shared.currentDirectory(for: surface.surfaceId)
-                    ?? surface.workingDirectory
+                // Live cwd via OSC 7 beats the spawn-time directory —
+                // and an EMPTY value never wins, see resolvedDirectory.
+                let cwd = Self.resolvedDirectory(for: surface)
                 // Scrollback goes to its own file, not into this document:
                 // the session JSON is rewritten on every model change, so
                 // inline text made every line of output rewrite everything.
@@ -378,8 +378,11 @@ enum SessionStore {
                 }
                 byId[entry.id] = PaneSurface(
                     surfaceId: id, kind: kind,
-                    workingDirectory: entry.workingDirectory.isEmpty
-                        ? workspace.workingDirectory : entry.workingDirectory
+                    workingDirectory: restoredDirectory(
+                        recorded: entry.workingDirectory,
+                        fallback: workspace.workingDirectory,
+                        surfaceId: entry.id
+                    )
                 )
             }
             var tab = TerminalTab(title: workspace.title, workingDirectory: workspace.workingDirectory)
@@ -422,6 +425,44 @@ enum SessionStore {
         }
         let selected = tabs[safe: snapshot.selectedIndex] ?? tabs[0]
         return (tabs, selected.id, max(snapshot.tabCounter, tabs.count), groups)
+    }
+
+    /// The directory to persist for a surface. Never empty: restore
+    /// spawns the shell in whatever is recorded, so "" silently becomes
+    /// $HOME and every agent loses its transcript folder with it
+    /// (`claude --resume` derives the folder from the cwd — the
+    /// 2026-09-02 wedge cost ~10 hand-recovered sessions this way).
+    ///
+    /// Live value, else the surface's own, else home — and the last case
+    /// is announced on stderr, because when this happened for real
+    /// nothing recorded it and the origin could not be settled
+    /// afterwards. A breadcrumb costs one line and buys the next
+    /// post-mortem its evidence.
+    static func resolvedDirectory(for surface: PaneSurface) -> String {
+        if let live = SurfaceRegistry.shared.currentDirectory(for: surface.surfaceId),
+           !live.isEmpty {
+            return live
+        }
+        if !surface.workingDirectory.isEmpty { return surface.workingDirectory }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        FileHandle.standardError.write(Data(
+            "cmux: session save: surface \(surface.surfaceId) has no working directory, recording \(home)\n".utf8))
+        return home
+    }
+
+    /// A recorded directory, restored. An empty one is substituted —
+    /// as it always was — but no longer SILENTLY: the substitution is
+    /// the moment a pane stops coming back where it belongs, and it used
+    /// to leave no trace at all.
+    static func restoredDirectory(
+        recorded: String, fallback: String, surfaceId: String
+    ) -> String {
+        guard recorded.isEmpty else { return recorded }
+        let substitute = fallback.isEmpty
+            ? FileManager.default.homeDirectoryForCurrentUser.path : fallback
+        FileHandle.standardError.write(Data(
+            "cmux: session restore: surface \(surfaceId) had no recorded working directory, using \(substitute)\n".utf8))
+        return substitute
     }
 
     private static func layoutNode(
@@ -478,9 +519,9 @@ enum SessionStore {
             if kind == "browser" {
                 return .leaf(PaneLeaf(kind: .browser(initialURL: url)))
             }
-            let cwd = workingDirectory.isEmpty
-                ? FileManager.default.homeDirectoryForCurrentUser.path
-                : workingDirectory
+            let cwd = restoredDirectory(
+                recorded: workingDirectory, fallback: "", surfaceId: "v2-leaf"
+            )
             return .leaf(PaneLeaf(workingDirectory: cwd))
         case .split(let orientation, let first, let second):
             return .split(

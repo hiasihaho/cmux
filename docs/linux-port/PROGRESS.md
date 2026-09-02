@@ -4961,3 +4961,39 @@ and the cwd hardening (this desk, GAPS row). `GDK_DISABLE=vulkan` was
 considered and rejected for tonight: the spin appears in BOTH the Mesa
 teardown and the Vulkan attach, so it removes at most half the cycle —
 it is experiment #2 if the wedge recurs, never a fix.
+
+### cwd hardening: never persist "unknown" as a fact (2026-09-02)
+
+The wedge post-mortem above left one actionable row; this closes it.
+Two changes, both small, both aimed at the same failure shape — a
+TRANSIENT "cannot answer right now" being written down as a PERMANENT
+fact:
+
+- `SurfaceRegistry.currentDirectory` now remembers the last non-empty
+  directory per surface and returns it when the widget cannot answer.
+  The live read moved to a private `liveDirectory`; eviction rides on
+  `unregister`. All eight callers benefit (session save, split
+  inheritance, pane search, tab titles) because a stale-but-real
+  directory beats an empty one everywhere.
+- `SessionStore` gains `resolvedDirectory` (save) and
+  `restoredDirectory` (both restore paths). Save never writes an empty
+  string; when nothing at all is known it records home AND says so on
+  stderr. Restore still substitutes, but announces it. The v3 path had
+  been substituting `workspace.workingDirectory` silently since it was
+  written.
+
+The breadcrumbs are the load-bearing part, not the substitution. When
+this fired for real, no log line existed, so the origin could not be
+settled even with the process still running.
+
+`session-persistence-smoke` 25 → 28. Red-first, verified both ways: with
+the fix stashed the breadcrumb leg fails (27/1), with it restored the
+suite is 28/0.
+
+HONEST COVERAGE LIMIT: the legs assert the invariants (no empty in the
+document, substitution announced, an empty record does not survive a
+save) by BLANKING a record — they do not reproduce the condition that
+produced it, an unrealized GLArea at save time, which needs the wedge
+itself. The last-known-good cache is therefore reasoned-and-reviewed,
+not covered by a test; k3's latch repro is the place that state will
+become reachable on purpose.

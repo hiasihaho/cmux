@@ -17,6 +17,8 @@ final class SurfaceRegistry {
     /// mode) — GhosttySurface GtkWidgets held opaquely like browsers.
     private(set) var ghosttys: [UUID: OpaquePointer] = [:]
     private(set) var containers: [UUID: OpaquePointer] = [:]
+    /// Last non-empty cwd seen per surface — see `currentDirectory`.
+    private var lastKnownDirectories: [UUID: String] = [:]
     private var spawnTimes: [UUID: Date] = [:]
     private var lastBellTimes: [UUID: Date] = [:]
 
@@ -240,6 +242,7 @@ final class SurfaceRegistry {
         release(ghosttys.removeValue(forKey: surfaceId))
         release(containers.removeValue(forKey: surfaceId))
         spawnTimes.removeValue(forKey: surfaceId)
+        lastKnownDirectories.removeValue(forKey: surfaceId)
         lastBellTimes.removeValue(forKey: surfaceId)
         BrowserElementRefs.shared.clear(for: surfaceId)
         BrowserFrameSelectors.shared.clear(for: surfaceId)
@@ -403,8 +406,11 @@ final class SurfaceRegistry {
         return ghosttyWriteDisplay(for: surfaceId, text: text)
     }
 
-    /// Shell working directory reported via OSC 7 (vte.sh), if any.
-    func currentDirectory(for surfaceId: UUID) -> String? {
+    /// Shell working directory reported via OSC 7, live from the widget.
+    /// Nil whenever the terminal cannot answer — including the case that
+    /// matters most: a Ghostty surface whose GLArea is UNREALIZED has no
+    /// core surface, so its `pwd` property is empty.
+    private func liveDirectory(for surfaceId: UUID) -> String? {
         #if canImport(CGhosttyEmbed)
         if ghosttys[surfaceId] != nil {
             return currentGhosttyDirectory(for: surfaceId)
@@ -415,6 +421,25 @@ final class SurfaceRegistry {
               let path = g_filename_from_uri(uri, nil, nil) else { return nil }
         defer { g_free(path) }
         return String(cString: path)
+    }
+
+    /// The surface's working directory: live if the terminal can answer,
+    /// otherwise the last one it reported.
+    ///
+    /// The remembering half exists because "cannot answer right now" is
+    /// a TRANSIENT state that used to be persisted as a permanent fact.
+    /// On 2026-09-02 the daily wedged in GL realize/unrealize churn; the
+    /// surfaces were unrealized when the session was saved, so every cwd
+    /// went out empty, restore spawned every pane in $HOME, and ~10 agent
+    /// sessions had to be hand-recovered because `claude --resume`
+    /// derives its transcript folder from the cwd (PROGRESS 2026-09-01/02).
+    /// A stale-but-real directory beats an empty one in every case.
+    func currentDirectory(for surfaceId: UUID) -> String? {
+        if let live = liveDirectory(for: surfaceId), !live.isEmpty {
+            lastKnownDirectories[surfaceId] = live
+            return live
+        }
+        return lastKnownDirectories[surfaceId]
     }
 }
 
