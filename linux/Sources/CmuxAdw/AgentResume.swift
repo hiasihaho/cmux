@@ -54,7 +54,13 @@ enum AgentResume {
         // The FLAG, never the subcommand: `hermes resume` (no dashes) lifts
         // the emergency stop set by `hermes pause` — a dangerous confusable
         // (verified against hermes --help, 2026-08-18).
-        case "hermes-agent": return "hermes --resume \(sessionId)"
+        case "hermes-agent":
+            // …and the PROFILE, when the session belongs to one: see
+            // hermesProfile(forSessionId:).
+            if let profile = hermesProfile(forSessionId: sessionId) {
+                return "hermes -p \(profile) --resume \(sessionId)"
+            }
+            return "hermes --resume \(sessionId)"
         case "grok": return "grok -r \(sessionId)"
         case "pi": return "pi --session \(sessionId)"
         case "codebuddy": return "codebuddy --resume \(sessionId)"
@@ -66,6 +72,76 @@ enum AgentResume {
         case "kimi": return "kimi --session \(sessionId)"
         default: return nil
         }
+    }
+
+    /// Which hermes PROFILE owns this session id, if not the default.
+    ///
+    /// Hermes keeps one session store per profile — `~/.hermes/sessions`
+    /// for the default, `~/.hermes/profiles/<name>/sessions` for the rest
+    /// — so `hermes --resume <id>` run under the wrong profile does not
+    /// find the session at all; it reports "session not found", which
+    /// reads like data loss and is not. macOS never hits this because its
+    /// CLI rebuilds the resume command from the running process's argv,
+    /// where `-p <profile>` survives. This port uses a fixed command
+    /// table (see the header), so it has to recover the profile itself.
+    ///
+    /// Matching is on CONTENT, not filename: the id lives inside the file
+    /// as `"session_id"`, while the name carries a different timestamp
+    /// (`hermes_conversation_20260531_203236.json` holds session
+    /// `20260531_201509_0ccf4f`). Head bytes only, newest first, capped —
+    /// this runs on the restore path, once per surface.
+    ///
+    /// Returns nil for the default profile, an unknown id, or anything
+    /// whose name is not shell-safe: the caller types the result into a
+    /// live shell, so an unrecognised profile degrades to the plain
+    /// command rather than widening what gets typed.
+    static func hermesProfile(forSessionId sessionId: String) -> String? {
+        let env = ProcessInfo.processInfo.environment
+        let hermesHome: URL
+        if let explicit = env["HERMES_HOME"], !explicit.isEmpty {
+            hermesHome = URL(fileURLWithPath: explicit)
+        } else {
+            // HOME from the environment, not homeDirectoryForCurrentUser:
+            // the suites run an instance under a stub HOME, and a lookup
+            // that ignored it would read the developer's real profiles.
+            let home = env["HOME"].flatMap { $0.isEmpty ? nil : $0 }
+                ?? FileManager.default.homeDirectoryForCurrentUser.path
+            hermesHome = URL(fileURLWithPath: home).appendingPathComponent(".hermes")
+        }
+        let fm = FileManager.default
+        guard let profiles = try? fm.contentsOfDirectory(
+            at: hermesHome.appendingPathComponent("profiles"),
+            includingPropertiesForKeys: nil
+        ) else { return nil }
+
+        let needles = ["\"session_id\": \"\(sessionId)\"", "\"session_id\":\"\(sessionId)\""]
+        for profile in profiles.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let name = profile.lastPathComponent
+            guard name.range(of: "^[A-Za-z0-9._-]+$", options: .regularExpression) != nil else {
+                continue
+            }
+            guard let walker = fm.enumerator(
+                at: profile.appendingPathComponent("sessions"),
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+            var files: [(URL, Date)] = []
+            for case let url as URL in walker {
+                guard url.pathExtension == "json" else { continue }
+                let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                    .contentModificationDate ?? .distantPast
+                files.append((url, modified))
+                if files.count >= 600 { break }
+            }
+            for (url, _) in files.sorted(by: { $0.1 > $1.1 }).prefix(300) {
+                guard let handle = try? FileHandle(forReadingFrom: url) else { continue }
+                defer { try? handle.close() }
+                guard let head = try? handle.read(upToCount: 4096),
+                      let text = String(data: head, encoding: .utf8) else { continue }
+                if needles.contains(where: { text.contains($0) }) { return name }
+            }
+        }
+        return nil
     }
 
     /// Resolves the resume command for a restored surface: newest

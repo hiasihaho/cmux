@@ -5062,3 +5062,60 @@ convert the cwd last-good cache from reasoned to tested) does NOT fall out
 of this repro: the latch keeps the background surface REALIZED, which is
 the opposite of the unrealized state the cwd bug needs. Not forced; the
 cache stays reasoned-and-reviewed, and PROGRESS already says so.
+
+### Auto-resume learns about hermes profiles (2026-09-03)
+
+Built a lean hermes profile for desk work (`cmuxdesk`: sophia/kimi-k3
+primary, a LOCAL model as fallback so a 429 degrades instead of stalling,
+six toolsets, browser off because cmux has real browser panes) and then
+checked whether cmux could actually bring it back. Two gaps, one in
+hermes' config layout and one in this port:
+
+1. **A new profile has no cmux hooks.** The default profile carries 24
+   (installed 2026-08-18), but a profile gets its own `config.yaml`, so
+   `cmuxdesk hooks list` said "no shell hooks configured" — no session
+   record, no attention, nothing for auto-resume to restore. Fixed by
+   copying the hooks block verbatim (cmux's begin/end markers included,
+   so `cmux hooks hermes-agent uninstall` still recognises it). They
+   arrive `not allowlisted`: hermes asks for consent per profile on first
+   fire, which is the security model working.
+
+2. **The resume command was profile-blind** — `AgentResume` emitted
+   `hermes --resume <id>` for every hermes record. Hermes keeps one
+   session store per profile, so that command run under the default
+   profile does not find a profile session: it says "session not found",
+   which reads like data loss and is not. macOS is immune because its CLI
+   rebuilds the command from the running process's argv, where `-p`
+   survives; this port's table is fixed.
+
+`AgentResume.hermesProfile(forSessionId:)` recovers it by scanning
+`~/.hermes/profiles/*/sessions/` for the session file that CLAIMS the id.
+Matching is on CONTENT: the id lives inside the JSON while the filename
+carries a different timestamp (`hermes_conversation_20260531_203236.json`
+holds session `20260531_201509_0ccf4f`). Head bytes only, newest first,
+capped — it runs once per surface on the restore path. The profile name
+is charset-gated before it reaches a shell, and anything unrecognised
+degrades to today's plain command rather than widening what gets typed.
+`HERMES_HOME`/`HOME` are read from the environment so a suite's stub HOME
+is honoured instead of the developer's real profiles.
+
+`agent-resume-smoke` 11 → 13, red-first: with the fix stashed the profile
+leg fails with the exact wrong command (`hermes --resume <id>`), and the
+negative leg — an id no profile claims must NOT acquire a `-p` — passes
+in both states, which is what makes it a guard rather than a mirror.
+
+TRAP, mine, worth the line: the first version of those legs failed with
+"marker never appeared" because I appended them AFTER the phase that
+deliberately sets `CMUX_AUTO_RESUME=0`, so they inherited a disabled
+resume. A new leg in a suite with phase-scoped env must re-establish the
+env it needs; the suite was telling the truth and I misread it as a code
+failure.
+
+Also found while testing hermes in a pane (NOT a cmux bug, recorded so
+the next reader does not re-derive it): hermes requests the kitty
+keyboard protocol when `TERM_PROGRAM=ghostty`, then fails to match keys
+whose modifier bitmask carries a LOCK bit — with NumLock on, Ctrl+C
+arrives as `ESC[99;133u` (132 = 128 num_lock + 4 ctrl) instead of
+`ESC[99;5u`, and lands as literal text. Their table knows `5u` (they
+fixed that case). Workarounds: NumLock off, or start it with
+`TERM_PROGRAM` unset. Upstream fix: mask lock bits before matching.
