@@ -90,8 +90,13 @@ below is the rest of the answer.
   `CMUX_HOOK_SESSIONS_DIR`.
 - Never `send` / `send-key` into another desk's pane without a
   `read-screen` idle check first — a nudge during an active turn becomes
-  an unsubmitted draft, and text typed into a composer the human is using
-  concatenates with what they wrote.
+  an unsubmitted draft. **Reading a non-empty composer** (hias's
+  convention, 2026-09-04): text starting with `*hias` is the HUMAN
+  speaking — `*` is their counterpart to `@`, meaning "from". Anything
+  else sitting in a composer is Claude Code's own automatic prompt
+  SUGGESTION and is safe to overwrite. Treating a suggestion as a person
+  costs coordination time: this desk held a message back from another
+  desk for exactly that reason.
 - Avoid focus-stealing verbs on the daily (`select-workspace`,
   `focus-pane`). Background workspaces (`--background`) for scratch work,
   and clean them up.
