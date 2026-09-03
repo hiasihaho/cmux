@@ -45,6 +45,61 @@ contains, and how work lands. This file is the host-survival half.
   install with `linux/scripts/swap-shim.sh` (rename-not-overwrite,
   verification, `--rollback`); `--dry-run` is safe from anywhere.
 
+## Building while the human works (the full safety list)
+
+Asked for by hias 2026-09-03, via pk3. `swift build` is safe; everything
+below is the rest of the answer.
+
+**Never touch the daily.**
+- Never `pkill -f <pattern>` — it matches your own shell's command line.
+  Kill strictly by recorded pid after a `/proc/<pid>/cmdline` check.
+- Never restart, kill or promote the daily. A promote is the HUMAN's
+  checkpoint (`promote.sh`, run from outside the instance it kills).
+  Announce that a build is ready; do not perform the restart.
+- `swift build` replaces the binary ON DISK; the running app keeps its
+  inode and is unaffected. That is why building is always safe and
+  restarting never is.
+- Never rebuild the Ghostty shim over `ghostty/zig-out/lib/` while an
+  instance maps it — build to a side prefix, install with
+  `swap-shim.sh`.
+
+**Work in a worktree.**
+- `git worktree add` before code, always. Each worktree has its own
+  `.build`, so your compile cannot disturb the shared checkout the
+  human's promote builds from.
+- Never `git push --force` to `linux-port`, and never rebase a branch
+  another desk has read.
+
+**Suites are the loudest thing you run — give them distinct identity.**
+- Every suite binds an `APP_ID`, a fixture PORT and an X display. Two
+  desks running suites with the same identity fail in ways that read like
+  product bugs. Claim yours in `announce-cmux-desk` alongside the files
+  you claim (2026-09-03: `wavtest`/8446 for the verbs lane).
+- A port can also be squatted by something outside this project — the
+  8443 case cost a day. If a suite cannot bind, check the port before
+  debugging the code.
+- **Rebuild before trusting a verdict.** `lib.sh` prints a stale-binary
+  WARN; it means the suite just tested yesterday's code. pk3 hit this on
+  a cross-desk review and correctly re-ran.
+- Use `scratch.sh` / `start.sh dev` for runtime experiments. Never
+  hand-roll an Xvfb on a display outside the harness range.
+
+**Do not corrupt shared runtime state.**
+- `~/.cmuxterm/*-hook-sessions.json` is live auto-resume state for every
+  agent on this machine. Never hand-edit it; suites point elsewhere with
+  `CMUX_HOOK_SESSIONS_DIR`.
+- Never `send` / `send-key` into another desk's pane without a
+  `read-screen` idle check first — a nudge during an active turn becomes
+  an unsubmitted draft, and text typed into a composer the human is using
+  concatenates with what they wrote.
+- Avoid focus-stealing verbs on the daily (`select-workspace`,
+  `focus-pane`). Background workspaces (`--background`) for scratch work,
+  and clean them up.
+
+**Watch disk.** Builds, worktrees and side prefixes are large (the shim
+alone is ~165 MB per copy). Check before starting a second worktree
+build; a full disk during a build is a confusing failure.
+
 ## The isolated dev instance
 
 Anything that needs a fresh binary or risky runtime experiments runs here,
