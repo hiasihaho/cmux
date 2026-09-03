@@ -353,3 +353,8 @@ rate-limit headers, so a client cannot back off intelligently.
 
 **Ask the operator for:** streaming restored (or an honest error instead
 of an empty stream), and rate-limit headers on 429.
+
+**Meanwhile:** `linux/scripts/unstream-proxy.py` re-emits the (working)
+non-streamed answer as SSE, so every harness can use the endpoint again;
+it runs as the systemd user unit `cmux-unstream-proxy`. Retire both the
+moment this report is resolved — see features/17.

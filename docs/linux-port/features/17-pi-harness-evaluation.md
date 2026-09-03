@@ -249,6 +249,39 @@ It fixes the provider for EVERY harness at once (pi, opencode, hermes)
 rather than one, needs no change to any of them, and is meant to be
 deleted when the operator restores streaming.
 
+### Running it as a service
+
+[`linux/scripts/cmux-unstream-proxy.service`](../../../linux/scripts/cmux-unstream-proxy.service)
+is a systemd **user** unit (no root anywhere):
+
+    mkdir -p ~/.config/systemd/user
+    cp linux/scripts/cmux-unstream-proxy.service ~/.config/systemd/user/
+    systemctl --user daemon-reload
+    systemctl --user enable --now cmux-unstream-proxy
+
+Installed and verified on this host 2026-09-03: `active (running)`,
+`enabled`, survives `systemctl --user restart` (HTTP 200 immediately
+after), and `pi` through it answers in **7.73 s**. `Linger=yes` is
+already set for this user, so it comes up after a reboot without waiting
+for a login.
+
+Operating it:
+
+| task | command |
+|---|---|
+| state / logs | `systemctl --user status cmux-unstream-proxy` · `journalctl --user -u cmux-unstream-proxy` |
+| different upstream or port | `systemctl --user edit cmux-unstream-proxy` (drop-in overriding `ExecStart`) |
+| **retire it** (upstream fixed) | `systemctl --user disable --now cmux-unstream-proxy` |
+
+The unit hardens what it can — `NoNewPrivileges`, `ProtectSystem=strict`,
+`ProtectHome=read-only`, `PrivateTmp`, address families restricted to
+inet/unix — and it needs no secrets of its own: the client's
+`Authorization` header is forwarded and nothing is written to disk.
+
+**Retire it deliberately.** A shim that outlives its cause becomes a
+mystery hop in someone's request path; the disable line above is the
+whole cleanup.
+
 ## Harness comparison, on the axes this project actually pays for
 
 | | opencode | hermes | Pi |
