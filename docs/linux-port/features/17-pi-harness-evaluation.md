@@ -153,6 +153,49 @@ single-threaded one wedges on a half-read connection and then ACCEPTS
 but never answers — indistinguishable from the client hanging, and it
 sent me chasing the extension for three rounds.
 
+## Hooks and auto-resume in a real pane (2026-09-03, dev instance)
+
+`cmux hooks pi install` writes a 572-line TypeScript extension to
+`~/.pi/agent/extensions/cmux-session.ts` hooking six lifecycle events
+(`session_start`, `before_agent_start`, `agent_end`,
+`tool_execution_start/end`, `session_shutdown`) — a real integration, not
+shell-hook glue.
+
+**It warns on startup, and the warning is ours:**
+
+    {"source":"cmux-pi-extension","level":"warning",
+     "message":"failed to set Pi resume binding","status":1}
+
+The extension calls `cmux --json surface resume set …`, and this port
+answers `unknown_method` for **`surface.resume.set` / `.get` / `.clear`**
+— macOS's newer per-surface resume binding, not implemented here (GAPS
+row added).
+
+**Auto-resume works anyway**, through the older path: the extension also
+writes `~/.cmuxterm/pi-hook-sessions.json`, and `AgentResume`'s
+record-only fallback (built for kimi's writer, which fills the record
+before the index) resolves it. `debug.resume_plan` showed
+`pi --session 01a06504-…` for the pane before any restart.
+
+**End-to-end, on the isolated dev instance — never the daily:**
+
+1. `pi` started in a pane, told to remember the word *pineapple*, replied.
+2. `start.sh stop-dev` + `start.sh dev` — a genuine restore cycle.
+3. The restored pane ran `pi --session 01a06504-…` by itself, and the
+   conversation came back.
+4. Asked what word it was told to remember: **"pineapple."**
+
+**One caveat found by getting it wrong first.** The initial attempt
+failed with `No session found matching '01a06504-…'` because that session
+had ZERO turns — Pi does not persist an empty session, so a pane where
+the agent was started but never used resumes into an error message. Not a
+cmux bug, but it is what an operator will see.
+
+**And a correction to criterion 2 above:** Pi's context meter is not
+broken. Against step35 (which does return `usage`) the pane showed
+`↑19k ↓104 14.3%/66k` — live tokens against the configured window. The
+zeros in criterion 2 were the provider's silence, not Pi's accounting.
+
 ## Harness comparison, on the axes this project actually pays for
 
 | | opencode | hermes | Pi |
