@@ -90,6 +90,7 @@ anything, then promote to Now.
 | Multi-window (`window.create/close`, v1 `new_window`/`close_window`) | a phase of its own | L |
 | Flatpak packaging | CATCHUP milestone | L |
 | Ghostty-embed hardening | roadmap/05 — fast-churn resource leak | L |
+| CXF slice 2a: vault-seam EXPORT (pk3 lane, one row per lane) | Green-lit 2026-09-03 with one blocking correction folded in: the envelope KDF is **scrypt** (`_CryptoExtras`, Package.swift product addition announced), NOT HKDF (extract-and-expand is for high-entropy input; a passphrase is low-entropy). Sharpenings: typed completion states (exported/denied/expired/failed) via the notification store; 0600 + refuse-existing-path unless `--force`; consent dialog and CLI name the format ("cmux-encrypted CXF — only cmux can read this" vs "CXF — portable, plaintext"). Security rules (PASSKEYS.md §0): no page-bridge reachability (grep-leg in the suite), async native consent (socket verbs answer inside `response.wait` — never block on a human), encrypted-by-default envelope (params recorded IN the envelope), separate `CMUX_WEBAUTHN_EXPORT_AUTOAPPROVE` hatch (rule 4: no ceremony grant implies an export grant — reusing the ceremony hatch would violate it). Slice 2b (import) gets the long-form-DER interop item | cmux desk green-light 2026-09-03 | M |
 
 ## Later / only if needed — honest macOS-only feature families
 
