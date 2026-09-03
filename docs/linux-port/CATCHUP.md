@@ -1,5 +1,10 @@
 # Catch-up — start here (living document)
 
+**Upstream queue:** [UPSTREAM.md](UPSTREAM.md) collects every report this
+project could send elsewhere — manaflow (§1–4) and third-party harnesses
+and providers (§5: pi, opencode, hermes, regio-ai). Nothing has been sent;
+a dedicated session will do that.
+
 **2026-09-02: P1b vault encryption MERGED** (`0ed7db78e1`): pk3's
 two-backend key provider (gnome-keyring via secret-tool / Secret portal
 via gdbus fd-passing), AES-GCM v2 envelope, v1 migration with retired

@@ -1,7 +1,18 @@
-# Prepared upstream suggestions (manaflow-ai)
+# Prepared upstream reports
 
-Material ready to send to the manaflow folks — the human decides when
-and what. Prepared 2026-07-17 after the resize-freeze fix.
+The collection point for everything this project could usefully send
+somewhere else. **Nothing here has been sent.** hias decides what and
+when, and a dedicated session will do the sending; until then this file
+is the queue.
+
+Sections 1–4 are **manaflow-ai** (cmux + ghostty), prepared 2026-07-17
+onward. Section 5 is **third-party projects** — the agent harnesses and
+providers this machine runs.
+
+Each entry aims to be report-ready: what happens, a reproducer someone
+else can run, the evidence, what was ruled out, and the versions it was
+seen on. An entry that cannot be reproduced by a stranger is not ready
+to send.
 
 ## 1. Renderer fix PR — **OBSOLETE, do not open** (2026-07-24)
 
@@ -163,3 +174,146 @@ probing). Shared-CLI code — macOS has the same terminate path. Fix wants
 SIGTERM→wait→SIGKILL escalation and/or process-group signaling (killpg).
 Not fixed here (shared CLI, unverifiable on macOS from this host); flag for
 the next upstream PR touching codex-teams.
+
+## 5. Third-party projects (not manaflow)
+
+Found while making the Linux port's desks work; all measured on Fedora
+43, 2026-09-02/03. Details and raw numbers:
+[features/17-pi-harness-evaluation.md](features/17-pi-harness-evaluation.md)
+and `opencode-sophia-empty-turns-20260903.md` at the repo root.
+
+### 5a. pi — a silent HTTP endpoint hangs the agent for ever (no request timeout)
+
+**Project:** `@earendil-works/pi-coding-agent` (github.com/earendil-works/pi), MIT
+**Version:** 0.84.4 · **Node:** v22.21.1 · Linux
+
+**What happens.** A provider whose server ACCEPTS the TCP connection and
+then never responds makes pi wait indefinitely. There is no request
+deadline: a 90-second window was exhausted with no output, no error and
+no retry. A provider that is merely DOWN (connection refused) is handled
+fine — the difference is silence, not unreachability.
+
+**Reproducer** (six lines, no dependencies):
+
+```python
+import socket
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", 9955)); s.listen(8)
+while True:
+    c, _ = s.accept()   # accept, then never answer
+```
+
+Then in `~/.pi/agent/models.json`:
+
+```json
+{ "providers": { "blackhole": {
+    "baseUrl": "http://127.0.0.1:9955/v1", "api": "openai-completions",
+    "apiKey": "x", "models": [{ "id": "m" }] } } }
+```
+
+```sh
+pi --offline --provider blackhole --model m --api-key x -p "hi"   # never returns
+```
+
+**Measurements** (same machine, `pi -p "hi"`):
+
+| configured providers | wall time |
+|---|---|
+| 0, 1, 2 unreachable (connection refused) | ~4 s |
+| 3 unreachable | 10 s |
+| ONE silent server | hangs; 90 s window exhausted |
+
+**What does NOT fix it.** `retry.provider.timeoutMs` (documented as
+"Provider/SDK request timeout in milliseconds") has no effect on this
+path: set to 5000 with `retry.maxRetries: 1`, the hang persisted for a
+full 100 s window. The settings file IS being read — changing
+`retry.maxRetries` from its default 3 to 1 changed the observed attempt
+count against a 429 endpoint from 4 to 2 — so this looks like the
+timeout not being wired into the custom `openai-completions` client
+rather than a config mistake.
+
+**Why it matters.** A hung endpoint is indistinguishable from a hung
+agent, and the natural suspects are all wrong: this cost four wrong
+diagnoses on our side (an extension's imports, `node:child_process`,
+TypeScript transpilation, the provider list) before the silent-server
+shape was isolated.
+
+**Suggested fix.** A default request deadline on the custom-provider
+path, and/or honour `retry.provider.timeoutMs` there. Failing fast with
+"provider did not respond within Ns" would have made this a five-second
+diagnosis.
+
+**Credit where due, in the same report:** against a 429 endpoint pi does
+exactly the right thing — 4 attempts at 2s/4s/8s, then the provider's own
+error text and a non-zero exit.
+
+### 5b. opencode — an HTTP 429 becomes a contentless turn and an unbounded retry loop
+
+**Project:** opencode · **Version:** 1.18.26–1.18.27 · Linux
+
+**What happens.** When the provider answers a streamed request with HTTP
+429, opencode records the turn as a step with no content
+(`step-start`/`step-finish` only, `reason: "unknown"`, all token counts
+zero) and immediately retries. Nothing surfaces the status code. The
+retries become the load that sustains the rate limit, so the session
+spins until a human interrupts it.
+
+**Evidence** (from `~/.local/share/opencode/opencode.db`):
+
+- one session: **2,785 contentless assistant turns out of 3,314**;
+  a healthy session on another provider: **1 of 551**;
+- the log shows `process` → `stream` → `loop` repeating at ~0.8 s for two
+  hours, ending only at the user's `cancel` (`error=Aborted`);
+- a BRAND-NEW session (4K tokens) produced **64 contentless turns out of
+  64** — so it is not context exhaustion;
+- a hand-made request to the same endpoint returned **429**, a second
+  seconds later returned 200.
+
+**Suggested fix.** Treat a rate-limited stream as a typed error with
+backoff (the way pi does), surface the status code, and do not persist a
+contentless turn as if the model had answered.
+
+**Related, same project:** when a provider returns no `usage` object,
+the context meter reads zero for ever and auto-compaction never fires —
+no warning before the context wall. opencode does request usage
+(`stream_options: {include_usage: true}`), so this is about the missing
+fallback, not the request.
+
+### 5c. hermes — CSI-u key matching ignores lock modifiers (NumLock breaks Ctrl+C and Enter)
+
+**Project:** Hermes Agent · **Version:** v0.20.4 (2026.8.18)
+
+**What happens.** Hermes enables the kitty keyboard protocol when
+`TERM_PROGRAM` is one of its allowlist (ghostty included). With **NumLock
+on**, the terminal reports the lock bit in the modifier bitmask, and the
+key table does not match — the sequences arrive as literal text in the
+composer, so Ctrl+C, Enter and Escape stop working.
+
+**Observed sequences** (NumLock on, GTK/Ghostty terminal):
+
+- `ESC[99;133u` — codepoint 99 (`c`), modifier 133 → 132 = 128 (num_lock) + 4 (ctrl) = **Ctrl+C**
+- `ESC[27;129u` — Escape with 128 (num_lock)
+
+A comment at `cli.py:4143` records the same bug class without the lock
+bit (`ESC[99;5u`), which was fixed.
+
+**Suggested fix.** Mask lock modifiers (num_lock 128, caps_lock 64)
+before matching, so `99;133u` folds to `99;5u`.
+
+**Workarounds meanwhile:** turn NumLock off, or start hermes with
+`TERM_PROGRAM` unset so it never enables the extended mode.
+
+### 5d. regio-ai gateway (`chat.s.regio-ai.eu`) — operator report, not open source
+
+Two things a client cannot work around:
+
+1. **No `usage` object in streamed responses.** Every other provider on
+   this machine reports it (anthropic 18.9M input tokens recorded,
+   joyai, devstral, lmxomni…); this endpoint reports none across 3,314
+   assistant messages. Clients ask for it correctly
+   (`stream_options: {include_usage: true}`), so every context meter and
+   every auto-compaction trigger is dead against this endpoint.
+2. **429s carry no `Retry-After` and no rate-limit headers**, so a client
+   cannot back off intelligently — only guess.
+
+Also observed: streams ending without a `finish_reason`.
