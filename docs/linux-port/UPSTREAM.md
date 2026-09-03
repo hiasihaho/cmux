@@ -273,6 +273,12 @@ spins until a human interrupts it.
 backoff (the way pi does), surface the status code, and do not persist a
 contentless turn as if the model had answered.
 
+**Note added 2026-09-03:** the provider in question also returns
+genuinely EMPTY streams (§5d), so opencode faces two triggers with one
+symptom. That strengthens rather than weakens the report: an empty
+stream and a 429 are both well-defined events, and neither should become
+an unbounded silent retry.
+
 **Related, same project:** when a provider returns no `usage` object,
 the context meter reads zero for ever and auto-compaction never fires —
 no warning before the context wall. opencode does request usage
@@ -305,15 +311,45 @@ before matching, so `99;133u` folds to `99;5u`.
 
 ### 5d. regio-ai gateway (`chat.s.regio-ai.eu`) — operator report, not open source
 
-Two things a client cannot work around:
+**THE STREAMING ENDPOINT RETURNS AN EMPTY STREAM.** Measured 2026-09-03,
+all four advertised models:
 
-1. **No `usage` object in streamed responses.** Every other provider on
-   this machine reports it (anthropic 18.9M input tokens recorded,
-   joyai, devstral, lmxomni…); this endpoint reports none across 3,314
-   assistant messages. Clients ask for it correctly
-   (`stream_options: {include_usage: true}`), so every context meter and
-   every auto-compaction trigger is dead against this endpoint.
-2. **429s carry no `Retry-After` and no rate-limit headers**, so a client
-   cannot back off intelligently — only guess.
+    model                stream:true → bytes received
+    sophia               0
+    kimi-k3              0
+    deepseek-v4-flash    0
+    qwen3-coder          0
 
-Also observed: streams ending without a `finish_reason`.
+The connection is accepted and closed cleanly with **no SSE data at
+all** — no chunks, no `[DONE]`, no error. Request shape makes no
+difference: with and without `stream_options`, with and without
+`max_tokens`, same result.
+
+**Non-streaming works perfectly on the same key, model and minute**:
+
+    POST /api/v1/chat/completions  {"model":"sophia", …}  (no stream)
+    → 200, content "ping", usage present, "model":"kimi-k3"
+
+(That last field is worth noting on its own: `sophia` is an
+auto-router — it accepts the alias and reports which concrete model
+served the request.)
+
+**This single fault explains everything previously filed against this
+provider**, and supersedes the earlier "no usage object" framing:
+
+- usage is missing because there is **no stream body at all**, not
+  because the usage chunk is omitted;
+- opencode's contentless turns (2,785 of 3,314) are empty streams
+  recorded as turns;
+- pi's `Stream ended without finish_reason` is the same event, reported
+  honestly;
+- the 429s are the retry storms those empty streams provoke.
+
+So agent CLIs are unusable against this endpoint today — they all
+stream — while a plain non-streamed request is healthy.
+
+**Also observed:** 429 responses carry no `Retry-After` and no
+rate-limit headers, so a client cannot back off intelligently.
+
+**Ask the operator for:** streaming restored (or an honest error instead
+of an empty stream), and rate-limit headers on 429.
