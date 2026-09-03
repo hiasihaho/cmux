@@ -163,6 +163,60 @@ ST3=$(cx --json browser webauthn status 2>/dev/null)
     && ok "status: vault_backend host" \
     || bad "status backend" "got '$ST3'"
 
+# ------------------- phase D: undecryptable is its own typed answer
+# (verbs-review finding, pk3 2026-09-03): an encrypted vault whose key
+# backend is unavailable must NOT masquerade as empty — status carries
+# vault_undecryptable, list/rm answer a typed error, and nothing mutates.
+info "phase D: undecryptable vault answers as undecryptable, not empty"
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_KEY_BACKEND=none
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+)
+start_instance || exit 2
+sleep 1
+
+ST_D=$(cx --json browser webauthn status 2>/dev/null)
+[ "$(echo "$ST_D" | jget vault_undecryptable 2>/dev/null)" = "True" ] \
+    && ok "status: vault_undecryptable true when the key backend is gone" \
+    || bad "status undecryptable" "got '$ST_D'"
+LIST_D=$(cx --json browser webauthn list 2>&1)
+echo "$LIST_D" | grep -q 'vault_undecryptable' \
+    && ok "list: typed vault_undecryptable error, not an empty list" \
+    || bad "list undecryptable" "got '$LIST_D'"
+RM_D=$(cx --json browser webauthn rm --id AAAA 2>&1)
+echo "$RM_D" | grep -q 'vault_undecryptable' \
+    && ok "rm: refuses with vault_undecryptable, not not_found" \
+    || bad "rm undecryptable" "got '$RM_D'"
+
+# Recovery: the key backend returns, everything reads normally again.
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+)
+start_instance || exit 2
+sleep 1
+ST_R=$(cx --json browser webauthn status 2>/dev/null)
+[ "$(echo "$ST_R" | jget vault_undecryptable 2>/dev/null)" = "False" ] \
+    && ok "recovery: vault_undecryptable false with the backend back" \
+    || bad "recovery flag" "got '$ST_R'"
+[ "$(echo "$ST_R" | jget credential_count 2>/dev/null)" = "1" ] \
+    && ok "recovery: the credential is readable again (nothing was lost)" \
+    || bad "recovery count" "got '$ST_R'"
+
 echo
 echo "== webauthn-verbs-smoke: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -40,11 +40,20 @@ extension ControlCommandHandler {
             "vault_backend": backend,
             "vault_path": WebAuthnVault.fileURL.path,
             "credential_count": count,
+            // Typed answer (verbs-review finding): count 0 with this set
+            // means "your passkeys exist but the key backend cannot open
+            // them right now" — NOT an empty vault.
+            "vault_undecryptable": WebAuthnVault.vaultIsUndecryptable,
         ])
     }
 
     func v2BrowserWebAuthnList(id: Any?) -> String {
-        let credentials = WebAuthnVault.load().map { credential -> [String: Any] in
+        let loaded = WebAuthnVault.load()
+        if WebAuthnVault.vaultIsUndecryptable {
+            return v2Error(id: id, code: "vault_undecryptable",
+                           message: "The passkey vault exists but cannot be decrypted (key backend unavailable or changed) — not an empty vault")
+        }
+        let credentials = loaded.map { credential -> [String: Any] in
             [
                 "id": webAuthnB64url(credential.id),
                 "rp_id": credential.rpId,
@@ -64,6 +73,12 @@ extension ControlCommandHandler {
                            message: "webauthn rm requires a base64url credential_id")
         }
         var vault = WebAuthnVault.load()
+        if WebAuthnVault.vaultIsUndecryptable {
+            // Refuse before any mutation: a save here would trigger the
+            // P1b move-aside on a vault the operator only meant to edit.
+            return v2Error(id: id, code: "vault_undecryptable",
+                           message: "The passkey vault cannot be decrypted (key backend unavailable or changed) — refusing to modify it")
+        }
         let before = vault.count
         vault.removeAll { $0.id == credentialId }
         let removed = before - vault.count
