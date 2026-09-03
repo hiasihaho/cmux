@@ -228,7 +228,7 @@ def scalar_of(der):
     tag, ec, _ = tlv(priv, 0)
     assert tag == 0x30
     tag, _, pos = tlv(ec, 0)              # version INTEGER
-    tag, scalar, pos = tlv(ec, 0)         # scalar OCTET STRING
+    tag, scalar, pos = tlv(ec, pos)       # scalar OCTET STRING
     assert tag == 0x04
     return scalar
 

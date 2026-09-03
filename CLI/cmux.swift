@@ -13667,8 +13667,40 @@ struct CMUXCLI {
                 } else {
                     print("Removed \(payload["removed"] as? Int ?? 0) passkey(s)")
                 }
+            case "export":
+                // CXF slice 2a (PASSKEYS.md §0): vault -> CXF file behind
+                // native consent. The verb answers synchronously
+                // (consent_pending or a typed error); the completion
+                // lands in the notification store.
+                let (outOpt, exportArgs) = parseOption(verbArgs, name: "--out")
+                let destination = outOpt ?? nonFlagArgs(exportArgs).first
+                guard let destination, !destination.isEmpty else {
+                    throw CLIError(message: "browser webauthn export requires --out <path>")
+                }
+                var params: [String: Any] = ["destination": destination]
+                if hasFlag(verbArgs, name: "--plaintext") { params["plaintext"] = true }
+                if hasFlag(verbArgs, name: "--force") { params["force"] = true }
+                if hasFlag(verbArgs, name: "--passphrase-stdin") {
+                    // Never an argv value (visible in ps); stdin only.
+                    let data = FileHandle.standardInput.readDataToEndOfFile()
+                    let passphrase = (String(data: data, encoding: .utf8) ?? "")
+                        .trimmingCharacters(in: .newlines)
+                    if !passphrase.isEmpty { params["passphrase"] = passphrase }
+                }
+                let payload = try client.sendV2(method: "browser.webauthn.export", params: params)
+                if effectiveJSONOutput {
+                    print(jsonString(payload))
+                } else {
+                    let count = payload["credential_count"] as? Int ?? 0
+                    let dest = payload["destination"] as? String ?? destination
+                    let plaintext = (payload["format"] as? String) == "cxf-plaintext"
+                    let formatText = plaintext
+                        ? "CXF (portable, plaintext)"
+                        : "cmux-encrypted CXF (only cmux can read this)"
+                    print("Export of \(count) passkey(s) pending consent → \(dest) — \(formatText)")
+                }
             default:
-                throw CLIError(message: "browser webauthn supports: status, list, rm --id <credential-id>")
+                throw CLIError(message: "browser webauthn supports: status, list, rm --id <credential-id>, export --out <path> [--plaintext] [--force] [--passphrase-stdin]")
             }
             return
         }
@@ -17404,6 +17436,10 @@ struct CMUXCLI {
                 open the Web Inspector (DevTools) for this surface in a split
               webauthn status | webauthn list | webauthn rm --id <credential-id>
                 inspect/manage the passkey vault (Linux port; needs no surface)
+              webauthn export --out <path> [--plaintext] [--force] [--passphrase-stdin]
+                export passkeys to a CXF file behind native consent (Linux port);
+                encrypted cmux-only envelope by default, portable plaintext with
+                --plaintext; passphrase via stdin, never an argument
               screenshot [--out <path>] [--full-page]
                 without --out the PNG is discarded; --full-page captures the whole
                 document instead of just the visible viewport
