@@ -13290,7 +13290,7 @@ struct CMUXCLI {
             idFormat = try resolvedIDFormat(jsonOutput: jsonOutput, raw: idFormatRaw)
         }
 
-        let verbsWithoutSurface: Set<String> = ["open", "open-split", "new", "identify", "import", "profile", "profiles", "react-grab", "reactgrab", "devtools", "dev-tools", "focus-mode", "zoom", "history"]
+        let verbsWithoutSurface: Set<String> = ["open", "open-split", "new", "identify", "import", "profile", "profiles", "react-grab", "reactgrab", "devtools", "dev-tools", "focus-mode", "zoom", "history", "webauthn"]
         if surfaceRaw == nil, let first = args.first {
             // Only consume the optional positional surface when it actually
             // looks like a handle (UUID, ref like surface:3, or an index) —
@@ -13613,6 +13613,63 @@ struct CMUXCLI {
             let surfaceText = formatHandle(payload, kind: "surface", idFormat: idFormat) ?? "unknown"
             let paneText = formatHandle(payload, kind: "pane", idFormat: idFormat) ?? "unknown"
             output(payload, fallback: "OK surface=\(surfaceText) pane=\(paneText)")
+            return
+        }
+
+        // Passkey vault verbs (Linux port; PASSKEYS.md §0). Vault-level, so
+        // no surface handle — macOS answers with its normal unknown-method
+        // error until it grows a counterpart.
+        if subcommand == "webauthn" {
+            let verb = subArgs.first?.lowercased() ?? "status"
+            let verbArgs = subArgs.first != nil ? Array(subArgs.dropFirst()) : []
+            switch verb {
+            case "status":
+                let payload = try client.sendV2(method: "browser.webauthn.status")
+                if effectiveJSONOutput {
+                    print(jsonString(payload))
+                } else {
+                    let enabled = (payload["enabled"] as? Bool) == true
+                    let count = payload["credential_count"] as? Int ?? 0
+                    let encrypted = (payload["vault_encrypted"] as? Bool) == true
+                    let backend = payload["vault_backend"] as? String ?? "none"
+                    let vaultText = encrypted ? "encrypted (\(backend))" : "plaintext"
+                    let enabledText = enabled ? "enabled" : "disabled (set CMUX_WEBAUTHN=1)"
+                    print("WebAuthn: \(enabledText) · \(count) passkey(s) · vault \(vaultText)")
+                }
+            case "list", "ls":
+                let payload = try client.sendV2(method: "browser.webauthn.list")
+                if effectiveJSONOutput {
+                    print(jsonString(payload))
+                } else {
+                    let credentials = payload["credentials"] as? [[String: Any]] ?? []
+                    if credentials.isEmpty {
+                        print("No passkeys in the vault")
+                    }
+                    for credential in credentials {
+                        let rp = credential["rp_id"] as? String ?? "?"
+                        let user = credential["user_name"] as? String ?? "?"
+                        let id = credential["id"] as? String ?? "?"
+                        print("\(rp)\t\(user)\t\(id)")
+                    }
+                }
+            case "rm", "remove", "delete":
+                let (idOpt, remaining) = parseOption(verbArgs, name: "--id")
+                let credentialId = idOpt ?? nonFlagArgs(remaining).first
+                guard let credentialId, !credentialId.isEmpty else {
+                    throw CLIError(message: "browser webauthn rm requires --id <credential-id>")
+                }
+                let payload = try client.sendV2(
+                    method: "browser.webauthn.rm",
+                    params: ["credential_id": credentialId]
+                )
+                if effectiveJSONOutput {
+                    print(jsonString(payload))
+                } else {
+                    print("Removed \(payload["removed"] as? Int ?? 0) passkey(s)")
+                }
+            default:
+                throw CLIError(message: "browser webauthn supports: status, list, rm --id <credential-id>")
+            }
             return
         }
 
@@ -17345,6 +17402,8 @@ struct CMUXCLI {
                 same find controller as Ctrl+Shift+F in a browser pane
               inspect|devtools [--direction <right|down|left|up>]
                 open the Web Inspector (DevTools) for this surface in a split
+              webauthn status | webauthn list | webauthn rm --id <credential-id>
+                inspect/manage the passkey vault (Linux port; needs no surface)
               screenshot [--out <path>] [--full-page]
                 without --out the PNG is discarded; --full-page captures the whole
                 document instead of just the visible viewport

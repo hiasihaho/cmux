@@ -5166,3 +5166,25 @@ HONEST SCOPE NOTE: the exposure half is verified by compilation and by
 the verbs lane's consumption, not by a leg here — the flag has no
 external surface until their branch reads it, and a leg that cannot
 observe is a leg that lies.
+## 2026-09-03 — passkey vault verbs: status / list / rm (webauthn-verbs-smoke 12/12)
+
+The passkey-desk lane from PASSKEYS.md §0, red-first on branch
+`webauthn-verbs` in its own worktree (two implementers now; the shared
+checkout stays promotable). `browser.webauthn.status` (flag, vault
+present/encrypted/backend/path, credential count), `.list` (metadata
+only — the suite fails if private-key material ever appears in the
+output, guarded against vacuous passes), `.rm` (by b64url credential id,
+`not_found` on a miss). CLI: `cmux browser webauthn status|list|rm
+--id`, vault-level so no surface handle; on macOS the app answers its
+normal unknown-method error (Linux-only addition, PARITY table).
+Implementation deliberately stays outside the P1b files: a new
+`BrowserWebAuthnVerbs.swift` works through the `WebAuthnVault.load/save`
+seam only, so the CXF lane and this one cannot collide.
+
+Suite notes: phase C proves the operator path on an ENCRYPTED vault —
+the first verb triggers the P1b v1→v2 migration and list decrypts;
+seeded fixtures use PADDED base64 (the P1b Foundation-strict-decode
+trap, now twice paid). En route: `capabilities-sweep.py` had been red on
+linux-port since the system.top arc (dispatched-but-not-advertised
+`system.build`/`system.top`) — fixed on this branch, which held the
+ControlProtocol.swift writer token; sweep green again.
