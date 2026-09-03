@@ -5129,3 +5129,66 @@ arrives as `ESC[99;133u` (132 = 128 num_lock + 4 ctrl) instead of
 `ESC[99;5u`, and lands as literal text. Their table knows `5u` (they
 fixed that case). Workarounds: NumLock off, or start it with
 `TERM_PROGRAM` unset. Upstream fix: mask lock bits before matching.
+
+## 2026-09-03 — passkeys CXF-core slice 1: the CXF format layer (webauthn-cxf-smoke 13/13)
+
+CXF-core slice 1 (green-lit in announce-cmux-desk 2026-09-03 20:22Z;
+the brief is now durable in PASSKEYS.md §0 after the original aged out
+of the feed ring — a letter is a mailbox, not a record). The FORMAT
+layer only: `WebAuthnCXF.swift` encodes and decodes FIDO CXF v1.0 —
+Proposed Standard 2025-08-14 with errata 2026-03-09
+(`cxf-v1.0-ps-errata-20260309`), the revision cited in the file header
+and here, because the spec plus our own round trip is the entire
+evidence base (we cannot validate against Apple or Android).
+
+- Model: document/header (version, exporterRpId, exporterDisplayName,
+  timestamp), account, item, passkey credential — field-for-field the
+  vault's WebAuthnCredential shape, the key held as the P-256 raw
+  scalar.
+- Wire: b64url per §2 — emitted unpadded (the JOSE/WebAuthn
+  convention), decoded padded OR unpadded in either alphabet, strict
+  otherwise. The P1b unpadded-fixture trap (the strict Foundation
+  refusal that read as a suite-timing bug for hours) is here as a
+  first-class leg, not a memory.
+- Passkey.key is PKCS#8 ASN.1 DER per §3.3.12: a fixed-shape DER writer
+  plus a strict TLV reader on decode — exact OIDs (id-ecPublicKey +
+  prime256v1), short-form lengths, scalar exactly 32 bytes, non-zero
+  and below the group order; optional trailing members of ECPrivateKey
+  tolerated.
+- Extensibility per §3.1.1: unknown fields ignored, unknown credential
+  types skipped AND counted; a foreign MAJOR version is rejected
+  (`unsupportedMajorVersion`), never silently ignored.
+
+Red-first, both numbers: red `f89a224fe5` (the codec stubbed to throw
+`.unimplemented`, so the rejection legs cannot pass vacuously) ran
+0 passed / 13 failed; the green runs 13/0 — and the pair was re-proven
+with the FINAL suite by swapping the stub back in (0/13 again), because
+the red commit's driver had a malformed fixture string (a stray quote
+in a raw-string concatenation made every fixture leg's JSON invalid).
+In red that bug was invisible — decode threw `.unimplemented` before
+parsing — so the red commit alone did not prove the fixtures parse;
+the stub-swap after the driver fix did.
+
+The suite is unlike its siblings: no cmux instance at all. Slice 1 has
+no runtime surface (the verbs are the passkey desk's lane), so
+`webauthn-cxf-smoke` compiles `WebAuthnCXF.swift` standalone with
+`swiftc -swift-version 5` (matching Package.swift's language mode) and
+runs a driver — no APP_ID, no port, no X display, so no suite-identity
+collision with the verbs lane's wavtest/8446. Not in run-all's
+instance-gated list, same as webauthn-smoke; the ledger row (13) moved
+in the red commit. The same file compiles into the app target
+(`swift build`, VTE gate mode: Build complete).
+
+TRAP, mine, recorded so the next raw-string author skips it:
+`#""credentials":[""#` puts a quote INSIDE the array — a `"` right
+before the `"#` delimiter is content. Every fixture leg failed "not
+valid JSON" against a correct codec, and the driver printed the built
+string nowhere, which cost a reread. When a fixture-builder leg fails,
+dump the built string first.
+
+NOT in slice 1 (per the brief): CXP transfer, UI, sync, vault wiring,
+any export verb, anything reachable from the page bridge. The mapping
+from WebAuthnCredential to CXFPasskey is field-for-field and lands with
+the vault-wiring slice — which is where the security line (native
+consent naming what leaves; nothing plaintext on disk by default; no
+standing ceremony grant implies an export grant) gets teeth.

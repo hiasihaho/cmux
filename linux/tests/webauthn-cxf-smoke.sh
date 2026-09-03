@@ -91,7 +91,7 @@ func fixtureDoc(key: String = "MEECAQAwEwYHKoZIzj0CAQYIKoZIzj0DAQcEJzAlAgEBBCABA
     topExtras +
     #""accounts":[{"id":"VVVVVVVVVVVVVVVVVVVVVQ","username":"probe","email":"probe@example.com","fullName":"Probe User","collections":[],"items":[{"id":"EBESExQVFhcYGRobHB0eHyAhIiM","creationAt":1756900000,"modifiedAt":1756990000,"title":"localhost passkey","# +
     itemExtras +
-    #""credentials":[""# + extraCredentials +
+    #""credentials":["# + extraCredentials +
     #"{"type":"passkey","credentialId":"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","rpId":"localhost","username":"probe@example.com","userDisplayName":"Probe","userHandle":""# + uh +
     #"","key":""# + key + #""}]}]}]}"#
 }
