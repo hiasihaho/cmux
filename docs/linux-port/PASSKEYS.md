@@ -59,6 +59,48 @@ uses UNPADDED base64, which Foundation's strict Data strategy refuses —
 so migration never ran and the leg stayed red after a correct green.
 That third one had been under investigation as a suite-timing bug.
 
+### CXF-core brief (durable copy — the feed ring drops old letters)
+
+Moved here 2026-09-03 after pk3 reported that the original brief had aged
+out of `announce-cmux-desk`. **Letters are a mailbox, not a record.**
+Anything a desk must still be able to read next month belongs in the
+repo.
+
+**Scope: the FORMAT layer only.** Encode our vault entries to CXF, parse
+them back, round-trip tested. NOT CXP (the transfer protocol), not UI,
+not sync, not device pairing.
+
+**CXF** = FIDO Credential Exchange Format, Proposed Standard Aug 2025,
+paired with CXP (transfer, standardising early 2026). Apple shipped
+CXF-based transfer in macOS/iOS 26; Android supports CXP via Play
+Services. Cite the exact revision implemented, in code and in PROGRESS:
+we cannot validate against Apple or Android, so the spec plus our own
+round trip is the entire evidence base.
+
+**Why it matters.** A passkey created in a cmux pane currently lives in
+OUR vault, in OUR shape, for ever. We built the authenticator, so we own
+the lock-in problem — and CXF is the prerequisite for the P3 "vault that
+travels" work, because a sync layer must speak a standard rather than our
+private JSON.
+
+**The security line, different from every other lane.** CXF export writes
+PRIVATE KEYS out of the vault P1b just encrypted. Before any code touches
+a real vault:
+
+- **No export path reachable from the page bridge or a browser pane.
+  Ever.** §6's rule that page-supplied strings are requests, not facts,
+  becomes "an export request from a page is not a request at all".
+- Export is a **human-consented, native-dialog** operation naming what is
+  leaving (how many credentials, which RPs).
+- **Nothing plaintext on disk by default.** If the spec's container is
+  unencrypted, encrypt it for transport and say so.
+- **No standing per-origin ceremony grant may imply an export grant.**
+
+**First slice (agreed with pk3, 2026-09-03):** pure encode/decode against
+fixtures with NO vault wiring — the schema proven before a real
+credential is in scope, which is where getting the spec wrong is cheapest
+to discover.
+
 **Blockers owned by the cmux desk — ask, do not work around**:
 - Flatpak config resolution (GAPS, `adce6eedc8`): the flag flip for
   `CMUX_WEBAUTHN` would land in `~/.var/app/<id>/config/cmux/cmux.json`,
