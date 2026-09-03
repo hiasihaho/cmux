@@ -447,6 +447,7 @@ struct ControlCommandHandler {
                     "surface.send_key", "surface.read_text", "surface.split",
                     "surface.close", "surface.current", "surface.focus", "surface.trigger_flash",
                     "session.save", "settings.open", "system.tree",
+                    "system.build", "system.top",
                     "pane.last", "surface.clear_history", "tab.action",
                     "surface.action",
                     "surface.reorder", "surface.move",
@@ -466,6 +467,8 @@ struct ControlCommandHandler {
                     "browser.open_split", "browser.navigate", "browser.url.get",
                     "browser.back", "browser.forward", "browser.reload",
                     "browser.identify",
+                    "browser.webauthn.status", "browser.webauthn.list",
+                    "browser.webauthn.rm",
                     "browser.eval", "browser.snapshot", "browser.wait",
                     "browser.click", "browser.dblclick", "browser.hover",
                     "browser.focus", "browser.fill", "browser.type",
@@ -705,6 +708,12 @@ struct ControlCommandHandler {
             return v2BrowserGetTitle(id: id, params: params)
         case "browser.identify":
             return v2BrowserIdentify(id: id, params: params)
+        case "browser.webauthn.status":
+            return v2BrowserWebAuthnStatus(id: id)
+        case "browser.webauthn.list":
+            return v2BrowserWebAuthnList(id: id)
+        case "browser.webauthn.rm":
+            return v2BrowserWebAuthnRemove(id: id, params: params)
         case "notification.create":
             return v2NotificationCreate(id: id, params: params)
         case "notification.create_for_surface":

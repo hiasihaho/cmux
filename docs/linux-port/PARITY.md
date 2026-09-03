@@ -189,6 +189,7 @@ up.
 | `browser.inspect` | Web Inspector hosted in a cmux pane via public WebKitGTK API. macOS has DevTools too (`BrowserPanel.toggleDeveloperTools`, private `_inspector` selectors) — the difference is presentation and API surface, so this is parity-with-a-twist rather than a pure addition |
 | `browser.find_in_page` | the same find controller the UI bar uses, exposed over the socket, so an agent and the human highlight identically |
 | `browser.identify` | surface/url/title for a browser pane in one call |
+| `browser.webauthn.status / list / rm` (`cmux browser webauthn …`) | inspect and manage the P1a/P1b passkey vault: status (flag, count, encrypted/backend), list (metadata only — never private-key material), rm by credential id. Vault-level, no surface handle. macOS passkeys live in iCloud Keychain, so it has no counterpart; suite `webauthn-verbs-smoke` (12) |
 | Popup burst budget | popups become tabs, capped per opener per 10s. macOS routes popups (richer: middle-click intent, modifier flags, open-externally rules) but has no budget |
 | `browser screenshot --full-page` | whole-document capture; both platforms default to the visible viewport, macOS exposes no full-page flag |
 | Navigation barrier on `goto`/`back`/`forward`/`reload` | the verb holds its response until the new document commits. macOS has the same latent race (`v2BrowserNavigate` → `navigateSmart` → immediate `.ok`) — see [UPSTREAM.md](UPSTREAM.md) §4b |
