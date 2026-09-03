@@ -101,6 +101,29 @@ fixtures with NO vault wiring — the schema proven before a real
 credential is in scope, which is where getting the spec wrong is cheapest
 to discover.
 
+### DECIDED 2026-09-04 — the Flatpak secret backend is the PORTAL
+
+Both desks recommended it and the evidence agrees, so this stops being a
+blocker: under Flatpak the vault key comes from
+**`org.freedesktop.impl.portal.Secret`**, not from a
+`--talk-name=org.freedesktop.secrets` finish-arg.
+
+Why the portal wins: it hands the app a **per-app master secret** with no
+keyring-wide access, so a compromised cmux cannot read the user's other
+secrets. The talk-name is the blunt instrument — it opens the whole
+keyring to get one key. The portal is activatable on this host (checked
+2026-09-03), and libsecret's flatpak path already uses it.
+
+**What this unblocks:** the flatpak round that turns P1b's portal backend
+from *written* into *suite-verified*. That path only answers inside the
+sandbox, so it has never actually run.
+
+**Still open, and deliberately separate:** the config-resolution question
+(a settings flip for `CMUX_WEBAUTHN` lands in
+`~/.var/app/<id>/config/cmux/cmux.json`, not `~/.config`). That one is a
+product decision about whether one human has one cmux config; it does not
+block the portal work.
+
 **Blockers owned by the cmux desk — ask, do not work around**:
 - Flatpak config resolution (GAPS, `adce6eedc8`): the flag flip for
   `CMUX_WEBAUTHN` would land in `~/.var/app/<id>/config/cmux/cmux.json`,
