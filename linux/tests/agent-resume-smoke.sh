@@ -40,7 +40,7 @@ MARKER=/tmp/cmux-resumetest-marker
 rm -rf "$FIXDIR" "$STUBDIR"
 rm -f "$MARKER" "$SESSION"
 mkdir -p "$FIXDIR" "$STUBDIR"
-for stub in claude kimi; do
+for stub in claude kimi hermes; do
     cat > "$STUBDIR/$stub" << EOF
 #!/bin/sh
 echo "$stub \$@" > $MARKER
@@ -63,6 +63,19 @@ INSTANCE_ENV=(CMUX_HOOK_SESSIONS_DIR=$FIXDIR SHELL=/bin/sh HOME=$STUBHOME
               CMUX_TERM=$CMUX_SUITE_BACKEND)
 
 jfield() { python3 -c "import json,sys;print(json.load(sys.stdin)$1)"; }
+
+# One hermes hook record pointing this suite's live surface at <session id>.
+write_hermes_record() {
+    python3 -c "
+import json, sys
+sid, surface, path = sys.argv[1], sys.argv[2], sys.argv[3]
+json.dump({
+    'version': 1,
+    'sessions': {sid: {'isRestorable': True, 'agentLifecycle': 'idle', 'updatedAt': 100}},
+    'activeSessionsBySurface': {surface: {'sessionId': sid, 'updatedAt': 100}},
+    'activeSessionsByWorkspace': {},
+}, open(path, 'w'))" "$1" "$SID" "$FIXDIR/hermes-agent-hook-sessions.json"
+}
 
 start_xvfb
 start_instance || exit 2
@@ -200,6 +213,56 @@ start_instance || exit 2
 sleep 4
 [ ! -f "$MARKER" ] && ok "CMUX_AUTO_RESUME=0 suppresses the resume" \
     || bad "auto-resume off" "stub ran despite CMUX_AUTO_RESUME=0: $(cat "$MARKER")"
+
+# --- phase C: hermes resumes under the PROFILE that owns the session ----
+# Restore the resume-enabled env: the phase above deliberately turns
+# auto-resume OFF, and inheriting that made both legs fail with
+# "marker never appeared" (found while writing them).
+INSTANCE_ENV=(CMUX_HOOK_SESSIONS_DIR=$FIXDIR SHELL=/bin/sh HOME=$STUBHOME
+              CMUX_TERM=$CMUX_SUITE_BACKEND)
+# Hermes keeps one session store per profile, so `hermes --resume <id>`
+# under the default profile does not find a profile session at all — it
+# says "session not found", which reads like data loss and is not. The
+# id lives INSIDE the session file, not in its name, so the resolver
+# matches on content.
+rm -f "$MARKER" "$FIXDIR"/*-hook-sessions.json
+kill_instance
+HSID="20260903_014455_ab12cd"
+mkdir -p "$STUBHOME/.hermes/profiles/cmuxdesk/sessions/saved"
+cat > "$STUBHOME/.hermes/profiles/cmuxdesk/sessions/saved/hermes_conversation_20260903_010203.json" << HJSON
+{"model": "kimi-k3", "session_id": "$HSID", "messages": []}
+HJSON
+write_hermes_record "$HSID"
+start_instance || exit 2
+found=""
+for _ in $(seq 1 30); do
+    [ -f "$MARKER" ] && { found=yes; break; }
+    sleep 0.5
+done
+if [ "$found" = "yes" ]; then
+    expect "hermes resumes under the owning profile" \
+        "hermes -p cmuxdesk --resume $HSID" "$(cat "$MARKER")"
+else
+    bad "hermes profile resume" "marker never appeared"
+fi
+
+# And an id no profile claims must NOT acquire a -p flag.
+rm -f "$MARKER"
+kill_instance
+DSID="20260903_020202_ffffff"
+write_hermes_record "$DSID"
+start_instance || exit 2
+found=""
+for _ in $(seq 1 30); do
+    [ -f "$MARKER" ] && { found=yes; break; }
+    sleep 0.5
+done
+if [ "$found" = "yes" ]; then
+    expect "an unclaimed id keeps the plain hermes command" \
+        "hermes --resume $DSID" "$(cat "$MARKER")"
+else
+    bad "hermes default resume" "marker never appeared"
+fi
 
 rm -rf "$FIXDIR" "$STUBDIR"
 rm -f "$MARKER"
