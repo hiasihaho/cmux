@@ -468,7 +468,7 @@ struct ControlCommandHandler {
                     "browser.back", "browser.forward", "browser.reload",
                     "browser.identify",
                     "browser.webauthn.status", "browser.webauthn.list",
-                    "browser.webauthn.rm",
+                    "browser.webauthn.rm", "browser.webauthn.export",
                     "browser.eval", "browser.snapshot", "browser.wait",
                     "browser.click", "browser.dblclick", "browser.hover",
                     "browser.focus", "browser.fill", "browser.type",
@@ -714,6 +714,8 @@ struct ControlCommandHandler {
             return v2BrowserWebAuthnList(id: id)
         case "browser.webauthn.rm":
             return v2BrowserWebAuthnRemove(id: id, params: params)
+        case "browser.webauthn.export":
+            return v2BrowserWebAuthnExport(id: id, params: params)
         case "notification.create":
             return v2NotificationCreate(id: id, params: params)
         case "notification.create_for_surface":

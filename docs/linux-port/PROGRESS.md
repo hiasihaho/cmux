@@ -5250,3 +5250,81 @@ from WebAuthnCredential to CXFPasskey is field-for-field and lands with
 the vault-wiring slice — which is where the security line (native
 consent naming what leaves; nothing plaintext on disk by default; no
 standing ceremony grant implies an export grant) gets teeth.
+
+## 2026-09-04 — passkeys CXF slice 2a: vault-seam export behind native consent (webauthn-cxf-export-smoke 15/15)
+
+The vault's passkeys can leave the building. `cmux browser webauthn
+export --out <path> [--plaintext] [--force] [--passphrase-stdin]` writes
+the vault as a FIDO CXF v1.0 document — behind the four security rules
+from the brief, each with a named home:
+
+1. **No page-bridge reachability, ever.** Structural, not procedural:
+   `WebAuthnCXFExport.swift` is socket-verb only and
+   `BrowserWebAuthn.swift` never names it — the suite carries a
+   grep-leg so a future wiring mistake fails a gate, not a review.
+2. **Native consent naming what leaves.** The verb validates
+   synchronously and answers `consent_pending` (count, rp_ids,
+   destination, format) WITHOUT waiting: ControlSocketServer replies
+   inside `response.wait(seconds:)`, so a verb that blocked on a human
+   dialog would time out and look like a hang. Consent rides the P1a
+   GClosure/AdwAlertDialog mechanism, parented to the main window
+   (UIDialogs.mainWindowWidget — the export has no webView to parent
+   to), with a passphrase entry (adw_alert_dialog_set_extra_child, the
+   UICommands.promptText pattern) when the CLI didn't pipe one.
+   Completion is TYPED — exported / denied / expired (5-minute timer;
+   a dialog nobody answers is a state, not a limbo) / failed — and
+   lands in the notification store plus an instance-log breadcrumb.
+3. **Nothing plaintext on disk by default.** CXF v1.0 defines no
+   encrypted container, so the default artifact is OUR envelope around
+   the CXF document, documented as ours-until-CXP: scrypt
+   (N=2^17, r=8, p=1 — the green-light's blocking correction; HKDF is
+   extract-and-expand for HIGH-entropy input, which is why P1b uses it
+   correctly on keyring bytes and why it would have been wrong for a
+   human passphrase here) with the parameters recorded IN the envelope
+   `{version, format, kdf:{name,salt,n,r,p}, nonce, ciphertext}`, so a
+   future cost-tune never strands a file. `--plaintext` opts out, and
+   consent + CLI both say which artifact you just made
+   ("cmux-encrypted CXF (only cmux can read this)" vs "CXF (portable,
+   plaintext)") — the safe default is cmux-only; the PORTABLE one is
+   plaintext, and portability is the reason CXF exists.
+4. **No standing ceremony grant implies an export grant.** The suite
+   hatch is a SEPARATE `CMUX_WEBAUTHN_EXPORT_AUTOAPPROVE`, never the
+   ceremony's — affirmed by the green-light as correct, not
+   duplication. Both stay manifest-banned.
+
+File hygiene at the destination: 0600 via tmp+rename (the vault's
+pattern), refuse an existing path unless `--force`, and the check runs
+AGAIN at write time because consent is async and the path could have
+appeared while the dialog stood. Undecryptable vaults refuse with a
+typed `unavailable` — the first real consumer of `vaultIsUndecryptable`
+— and an empty vault refuses rather than writing a plausible empty
+export. The passphrase travels stdin -> socket param, never argv
+(ps visibility).
+
+Red-first, both numbers: red `c27cf0a87e` ran 1 passed / 14 failed
+(every failure the absent verb; the grep guard passes both ways by
+design, like the latch's regression guard). Green 15/0. The swiftc
+driver for the --plaintext leg reuses slice-1's WebAuthnCXF.swift so
+THE FORMAT LAYER validates the seam's output; the envelope legs are
+decrypted by python carrying its own scrypt (hashlib) + AES-GCM
+(cryptography), never the code under test.
+
+TRAP, mine, and exactly the class slice 1's driver pattern exists to
+catch: the python walker's `scalar_of` read `tlv(ec, 0)` twice — the
+second read re-parsed the version INTEGER as the scalar and failed
+green-blocking. The product DER was byte-correct all along (verified by
+dumping CXFPKCS8.wrapP256Scalar directly). An independent checker is
+only independent if it walks FORWARD.
+
+HONEST COVERAGE LIMITS, stated not implied: the consent dialog's TEXT
+is reasoned (it names count/RPs/destination/format in code), not
+headless-tested — denied and expired are typed in code and asserted
+only via the timer/deny paths existing, since nobody clicks on Xvfb.
+The macOS compile check for the shared CLI/cmux.swift change is
+DEFERRED to the merge checkpoint: the diff is Foundation-only over
+helpers the merged verbs already use cross-platform, and the ultmos VM
+was not running (connection refused); noted in the push letter.
+
+Regression cluster on the green binary: ui-commands-smoke (the socket
+surface I touched), webauthn-smoke, webauthn-verbs-smoke,
+webauthn-cxf-smoke — numbers in the commit message.

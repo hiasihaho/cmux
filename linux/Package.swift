@@ -94,8 +94,12 @@ let package = Package(
                 .product(name: "Adwaita", package: "adwaita-swift"),
                 // Shared workstream (Feed) engine — same model the macOS app uses.
                 .product(name: "CMUXAgentLaunch", package: "CMUXAgentLaunch"),
-                // WebAuthn software authenticator (ES256 + vault).
-                .product(name: "Crypto", package: "swift-crypto")
+                // WebAuthn software authenticator (ES256 + vault); the
+                // CXF export envelope's passphrase KDF (scrypt) lives in
+                // _CryptoExtras — a password KDF, not HKDF (which is for
+                // high-entropy input).
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "_CryptoExtras", package: "swift-crypto")
             ] + (ghosttyEmbed ? ["CGhosttyEmbed"] : []),
             path: "Sources/CmuxAdw",
             swiftSettings: [.swiftLanguageMode(.v5)]
