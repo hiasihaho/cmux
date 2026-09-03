@@ -25,9 +25,23 @@ entry here.
 
 | Track | Owner | State |
 |---|---|---|
-| P1b vault encryption-at-rest | **pk3** (kimi, main implementer) | red landed (`da5f0f8e59`), green in a sibling **worktree** — never in the shared checkout |
-| Design / option space / spikes | **passkey desk** (codex) | P1a shipped; now wider research scope, output is documents with verdicts, not half-features |
-| Coordination, cmux-core blockers, discipline | **cmux desk** | see blockers below |
+| **CXF-core** (format layer: encode/decode + round-trip) | **pk3** (workspace:11, kimi CLI — third incarnation, 2026-09-03) | briefed, not started. Security line: export writes PRIVATE KEYS out of the vault P1b encrypted |
+| **`cmux browser webauthn` verbs** | **passkey desk** (workspace:10) | starting 2026-09-03 |
+| Coordination, cmux-core blockers, discipline | **cmux desk** (workspace:9) | see blockers below |
+| P1b vault encryption-at-rest | pk3 (first incarnation) | **DONE** — merged `0ed7db78e1`, `webauthn-smoke` 21/21, incl. the undecryptable-vault overwrite guard |
+| Ghostty eager-spawn latch (live-lock fix) | pk3 (first incarnation) | **DONE** — `9ca61710d7` red → `551289e291` green, re-verified independently 2/2 |
+| P1a client layer + software authenticator | passkey desk | **DONE** — `19e65e9b52`, webauthn.io verified live |
+
+**Two implementers work in parallel now.** The collision rules are not
+optional: a worktree each (`git worktree add`), one writer per file, and
+ownership read from this table rather than assumed. The shared checkout
+is what a promote builds from — a half-feature must never sit in it.
+
+**Cross-desk review, red-first.** Each desk reads the other's RED commit
+BEFORE the green exists. That is the cheapest review this project has:
+on 2026-09-02 it caught an unpadded-base64 fixture whose strict
+Foundation decode silently disabled a migration — the implementer had
+been chasing it as a suite-timing bug for hours.
 
 **pk3's P1b contract**: v2 envelope (`{version, backend, nonce,
 ciphertext}`), key provider with two backends (gnome-keyring on the
