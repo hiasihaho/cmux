@@ -91,6 +91,13 @@ enum AgentResume {
     /// `20260531_201509_0ccf4f`). Head bytes only, newest first, capped —
     /// this runs on the restore path, once per surface.
     ///
+    /// TWO stores per profile, both scanned (found by testing a real
+    /// profile session, 2026-09-03): `sessions/` holds saved
+    /// conversations, and `terminal-sessions/<tty>` is the per-tty
+    /// "what ran here last" pointer — extensionless, tiny, and the one
+    /// that actually exists for a live session. Scanning only `sessions/`
+    /// found nothing for a session that had just run for ten minutes.
+    ///
     /// Returns nil for the default profile, an unknown id, or anything
     /// whose name is not shell-safe: the caller types the result into a
     /// live shell, so an unrecognised profile degrades to the plain
@@ -120,18 +127,22 @@ enum AgentResume {
             guard name.range(of: "^[A-Za-z0-9._-]+$", options: .regularExpression) != nil else {
                 continue
             }
-            guard let walker = fm.enumerator(
-                at: profile.appendingPathComponent("sessions"),
-                includingPropertiesForKeys: [.contentModificationDateKey],
-                options: [.skipsHiddenFiles]
-            ) else { continue }
             var files: [(URL, Date)] = []
-            for case let url as URL in walker {
-                guard url.pathExtension == "json" else { continue }
-                let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
-                    .contentModificationDate ?? .distantPast
-                files.append((url, modified))
-                if files.count >= 600 { break }
+            for store in ["terminal-sessions", "sessions"] {
+                guard let walker = fm.enumerator(
+                    at: profile.appendingPathComponent(store),
+                    includingPropertiesForKeys: [.contentModificationDateKey],
+                    options: [.skipsHiddenFiles]
+                ) else { continue }
+                for case let url as URL in walker {
+                    // No extension filter: the tty pointers carry none.
+                    let values = try? url.resourceValues(
+                        forKeys: [.contentModificationDateKey, .isRegularFileKey]
+                    )
+                    guard values?.isRegularFile == true else { continue }
+                    files.append((url, values?.contentModificationDate ?? .distantPast))
+                    if files.count >= 600 { break }
+                }
             }
             for (url, _) in files.sorted(by: { $0.1 > $1.1 }).prefix(300) {
                 guard let handle = try? FileHandle(forReadingFrom: url) else { continue }

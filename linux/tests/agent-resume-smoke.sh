@@ -228,9 +228,18 @@ INSTANCE_ENV=(CMUX_HOOK_SESSIONS_DIR=$FIXDIR SHELL=/bin/sh HOME=$STUBHOME
 rm -f "$MARKER" "$FIXDIR"/*-hook-sessions.json
 kill_instance
 HSID="20260903_014455_ab12cd"
-mkdir -p "$STUBHOME/.hermes/profiles/cmuxdesk/sessions/saved"
-cat > "$STUBHOME/.hermes/profiles/cmuxdesk/sessions/saved/hermes_conversation_20260903_010203.json" << HJSON
-{"model": "kimi-k3", "session_id": "$HSID", "messages": []}
+# The LIVE shape, verified against a real profile session (2026-09-03):
+# an extensionless per-tty pointer under terminal-sessions/. Scanning
+# only sessions/ missed a session that had just run for ten minutes.
+mkdir -p "$STUBHOME/.hermes/profiles/cmuxdesk/terminal-sessions"
+cat > "$STUBHOME/.hermes/profiles/cmuxdesk/terminal-sessions/tty-dev-pts-9" << HJSON
+{"session_id": "$HSID", "cwd": "/home/hias/cmux", "ts": 1788395111.76}
+HJSON
+# And the saved-conversation shape, which is a real .json under sessions/.
+SSID="20260903_015500_beef01"
+mkdir -p "$STUBHOME/.hermes/profiles/deskarchive/sessions/saved"
+cat > "$STUBHOME/.hermes/profiles/deskarchive/sessions/saved/hermes_conversation_20260903_010203.json" << HJSON
+{"model": "kimi-k3", "session_id": "$SSID", "messages": []}
 HJSON
 write_hermes_record "$HSID"
 start_instance || exit 2
@@ -244,6 +253,24 @@ if [ "$found" = "yes" ]; then
         "hermes -p cmuxdesk --resume $HSID" "$(cat "$MARKER")"
 else
     bad "hermes profile resume" "marker never appeared"
+fi
+
+# The saved-conversation store resolves as well (different profile, so a
+# pass here cannot be the previous leg's fixture answering).
+rm -f "$MARKER"
+kill_instance
+write_hermes_record "$SSID"
+start_instance || exit 2
+found=""
+for _ in $(seq 1 30); do
+    [ -f "$MARKER" ] && { found=yes; break; }
+    sleep 0.5
+done
+if [ "$found" = "yes" ]; then
+    expect "a saved conversation resolves its profile too" \
+        "hermes -p deskarchive --resume $SSID" "$(cat "$MARKER")"
+else
+    bad "hermes saved-session resume" "marker never appeared"
 fi
 
 # And an id no profile claims must NOT acquire a -p flag.

@@ -5099,7 +5099,17 @@ degrades to today's plain command rather than widening what gets typed.
 `HERMES_HOME`/`HOME` are read from the environment so a suite's stub HOME
 is honoured instead of the developer's real profiles.
 
-`agent-resume-smoke` 11 → 13, red-first: with the fix stashed the profile
+CORRECTION, same day, found by testing a REAL profile session instead of
+only the fixture: hermes keeps TWO stores per profile, and the first
+version scanned the wrong one. `sessions/` holds saved conversations;
+`terminal-sessions/<tty>` is the per-tty "what ran here last" pointer —
+extensionless, 92 bytes, and the one that actually exists for a live
+session. A ten-minute cmuxdesk session left nothing in `sessions/` at
+all. The resolver now scans both, and the suite fixtures use the real
+shapes of each (a tty pointer and a saved conversation, in different
+profiles so one cannot answer for the other).
+
+`agent-resume-smoke` 11 → 14, red-first: with the fix stashed the profile
 leg fails with the exact wrong command (`hermes --resume <id>`), and the
 negative leg — an id no profile claims must NOT acquire a `-p` — passes
 in both states, which is what makes it a guard rather than a mirror.
