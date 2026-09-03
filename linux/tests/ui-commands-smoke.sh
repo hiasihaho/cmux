@@ -506,10 +506,20 @@ done
 cx close-workspace --workspace "$WSEG" >/dev/null 2>&1
 
 info "live ghostty config reload"
+# ABSENT is not BROKEN. A VTE-only build has no ghostty surfaces to
+# propagate to, and the app says so honestly ("no live ghostty
+# surfaces") — treating that as a failure produced a red that reproduced
+# identically on pristine linux-port and cost a desk a diagnosis
+# (pk3, 2026-09-04). Same rule the product follows: distinguish the
+# states instead of collapsing them.
 rout=$(cx reload-config 2>&1)
-echo "$rout" | grep -q "ghostty config (live)" \
-    && ok "reload-config reports live ghostty propagation" \
-    || bad "live reload" "got: $(echo "$rout" | head -c 80)"
+if echo "$rout" | grep -q "ghostty config (live)"; then
+    ok "reload-config reports live ghostty propagation"
+elif echo "$rout" | grep -q "no live ghostty surfaces"; then
+    skip "live ghostty reload" "VTE-only build: no ghostty surfaces to propagate to"
+else
+    bad "live reload" "got: $(echo "$rout" | head -c 80)"
+fi
 
 # --- surface-tab icons (MACOS-UX §2.2, mirror ⑤): render-truth via the
 # tab_icon field debug.surfaces reads back from each AdwTabPage. Icons
