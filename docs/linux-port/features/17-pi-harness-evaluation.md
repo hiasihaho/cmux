@@ -108,24 +108,44 @@ cannot be got wrong.
 
 ## The one serious operational finding
 
-**An unreachable provider in `models.json` hangs pi at startup — for
-ever, not slowly.** Measured: with two dead local endpoints and one
-remote provider configured, `pi -p "hi"` ran the full 400-second window
-and never sent a single request to the target endpoint. Removing them,
-the same command answered in **1.87 s**. `--offline` does not help.
+**A provider that ACCEPTS connections and never answers hangs pi
+indefinitely. A provider that is simply down does not.** Both were
+measured, because the first version of this section blamed the wrong one.
 
-This cost three wrong diagnoses before the A/B: I blamed typebox, then
-`node:child_process`, then TypeScript-vs-JavaScript, because loading an
-extension and adding a provider both looked like "pi hangs". The variable
-was neither.
+| configured providers | `pi -p "hi"` |
+|---|---|
+| 0, 1, 2 dead (connection refused) | ~4 s |
+| 3 dead | 10 s |
+| ONE silent server (accepts, never responds) | **hangs — 90 s window exhausted** |
+
+So "unreachable" is cheap; **silent** is fatal. The 400-second hang that
+produced the original claim came from my own probe server: a
+single-threaded `HTTPServer` wedged on a half-read connection, which
+accepts and never answers — the exact fatal shape. I had blamed the
+provider list.
+
+**`retry.provider.timeoutMs` does not fix it**, though the settings file
+IS read: setting `retry.maxRetries: 1` changed the observed attempt count
+from 4 to 2, so the mechanism works — `timeoutMs` just does not bound a
+silent request on the custom `openai-completions` path. That makes this
+an upstream gap rather than a misconfiguration, and
+`linux/tests/helpers/` now ships a six-line reproducer for it.
+
+This cost four wrong diagnoses before the measurements: typebox,
+`node:child_process`, TypeScript-vs-JavaScript, and then the provider
+list — because loading an extension, adding a provider and wedging a
+probe server all look identical from outside ("pi hangs").
 
 Practical rules that follow:
-- keep only providers that answer; delete an entry the moment its server
-  is down (`step35ik` was dropped for this reason);
-- when a probe provider is needed, register it, use it, remove it — the
-  harness below is designed for exactly that lifecycle;
-- if pi ever seems to hang, check `models.json` before suspecting your
-  extension.
+- a provider that is DOWN is harmless; delete entries anyway, but not out
+  of fear;
+- never leave a half-open endpoint configured — that is the one that
+  costs the session;
+- if pi seems to hang, check whether something ACCEPTS but does not
+  answer, before suspecting an extension;
+- `retry.maxRetries` / `retry.baseDelayMs` in `~/.pi/agent/settings.json`
+  are honoured and are the knobs for the 429 backoff (default 3 / 2000ms
+  → the 2s/4s/8s ladder measured above).
 
 ## The harness, and why it lives in the repo
 
