@@ -548,6 +548,88 @@ else
     bad "undecryptable guard" "no .undecryptable backup written; old envelope overwritten"
 fi
 
+# ---------- P1b guard: the undecryptable state must not stick (2026-09-03)
+# vaultUndecryptable was cleared ONLY by save(), never by a successful
+# load — and the key is resolved once per process, so the fail -> recover
+# transition arrives as an EXTERNAL vault-file swap in one process
+# (restore tooling, a second instance on the same path). With the flag
+# stuck, the save after the recovered load moves a DECRYPTABLE vault
+# aside as if unreadable. Repro in one process: fabricate an envelope
+# under a THROWAWAY key (valid shape, undecryptable with ours), load it
+# (flag sets), swap the good vault back, load again (decrypts), save —
+# the aside count must not grow. Cross-desk review finding, pk3.
+info "P1b guard: undecryptable state does not stick across a recovered load"
+python3 -c "import cryptography" 2>/dev/null \
+    || { echo "webauthn-smoke: python3-cryptography is required for the envelope-fabrication leg" >&2; exit 2; }
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=1
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=host
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+# The guard leg left a PLAINTEXT v1 vault; this load migrates it to v2.
+cx browser eval --script 'navigator.credentials.get({publicKey:{challenge:new Uint8Array(32),rpId:"localhost"}}).then(r=>"ok").catch(e=>"err:"+e.name)' --surface "$SURF" >/dev/null 2>&1
+MIG2=0
+for _ in $(seq 1 20); do
+    if python3 -c "import json,sys; d=json.load(open('$VAULT')); sys.exit(0 if d.get('version')==2 else 1)" 2>/dev/null; then
+        MIG2=1; break
+    fi
+    sleep 1
+done
+if [ "$MIG2" != "1" ]; then
+    bad "guard-flap setup" "vault did not migrate to v2 under the host backend"
+    echo; echo "== webauthn-smoke: $PASS passed, $FAIL failed"; exit 1
+fi
+cp "$VAULT" "$WORK/vault-good.json"
+# Fabricate an undecryptable envelope: valid v2 shape, throwaway key.
+python3 - "$VAULT" <<'PY'
+import base64, json, os, sys
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+key = os.urandom(32); nonce = os.urandom(12)
+sealed = AESGCM(key).encrypt(nonce, json.dumps({"version": 1, "credentials": []}).encode(), None)
+json.dump({"version": 2, "backend": "host",
+           "nonce": base64.b64encode(nonce).decode(),
+           "ciphertext": base64.b64encode(sealed).decode()},
+          open(sys.argv[1], "w"))
+PY
+# Failed load: sets the undecryptable state in-process (and must log it —
+# until the verbs consume vaultIsUndecryptable, that log line is the only
+# place the truth is visible; assert it as a contract).
+cx browser eval --script 'navigator.credentials.get({publicKey:{challenge:new Uint8Array(32).fill(3),rpId:"localhost"}}).then(r=>"ok").catch(e=>"err:"+e.name)' --surface "$SURF" >/dev/null 2>&1
+LOGGED=0
+for _ in $(seq 1 15); do
+    grep -q "could not be decrypted" "$LOG" 2>/dev/null && { LOGGED=1; break; }
+    sleep 1
+done
+[ "$LOGGED" = "1" ] && ok "undecryptable load logs its state to the instance log" \
+    || bad "undecryptable logging" "no 'could not be decrypted' line in instance log"
+# Recover: the good vault returns (external swap) and decrypts again.
+cp "$WORK/vault-good.json" "$VAULT"
+ASIDES_BEFORE=$(ls "$VAULT".undecryptable-*.bak 2>/dev/null | wc -l)
+cx browser click '#get' --surface "$SURF" >/dev/null 2>&1
+OUT=$(poll_out "$SURF" 'getting')
+case "$OUT" in
+    asserted:*) ok "recovered vault completes an assertion ceremony after the flap" ;;
+    *)          bad "post-flap ceremony" "$OUT" ;;
+esac
+# The save after the successful re-read must NOT move the vault aside.
+cx browser click '#create' --surface "$SURF" >/dev/null 2>&1
+poll_out "$SURF" 'creating' >/dev/null
+ASIDES_AFTER=$(ls "$VAULT".undecryptable-*.bak 2>/dev/null | wc -l)
+[ "$ASIDES_AFTER" = "$ASIDES_BEFORE" ] \
+    && ok "save after a successful re-read does not move a decryptable vault aside" \
+    || bad "undecryptable state stuck" "asides $ASIDES_BEFORE -> $ASIDES_AFTER; a decryptable vault was moved aside"
+
 echo
 echo "== webauthn-smoke: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
