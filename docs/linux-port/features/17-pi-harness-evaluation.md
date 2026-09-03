@@ -216,6 +216,39 @@ broken. Against step35 (which does return `usage`) the pane showed
 `↑19k ↓104 14.3%/66k` — live tokens against the configured window. The
 zeros in criterion 2 were the provider's silence, not Pi's accounting.
 
+## Working around a provider that cannot stream
+
+`chat.s.regio-ai.eu` returns an EMPTY stream for every model while
+answering non-streamed requests correctly (UPSTREAM.md §5d). Every agent
+CLI streams, so the provider is unusable by all of them at once.
+
+**What does not work:** there is no config-only fix in pi.
+`samplingParams` IS merged verbatim into the request body — setting
+`{"stream": false}` reaches the wire — but pi's openai-completions client
+has no non-streaming path and fails with `openaiStream is not async
+iterable`. No `compat` flag disables streaming either (the documented
+ones are `supportsDeveloperRole`, `supportsReasoningEffort`,
+`supportsFinishReason`, `supportsEagerToolInputStreaming`, …).
+
+**What works:** [`linux/scripts/unstream-proxy.py`](../../../linux/scripts/unstream-proxy.py)
+— a ~90-line shim that accepts a streamed request, calls the upstream
+WITHOUT `stream`, and re-emits the answer as the SSE chunks the client
+expects (role delta → content → tool calls → finish_reason → usage →
+`[DONE]`). Errors pass through untouched, so a client that classifies a
+429 still sees the 429.
+
+    linux/scripts/unstream-proxy.py https://chat.s.regio-ai.eu/api/v1 8480
+    # then point baseUrl at http://127.0.0.1:8480/v1
+
+Measured through it: `pi -p "…"` answers in **7.45 s, exit 0**, and the
+usage the upstream does return arrives where a streaming client expects
+it — `{"input": 8851, "output": 46, "totalTokens": 8897}`, i.e. **the
+context meter comes back too**.
+
+It fixes the provider for EVERY harness at once (pi, opencode, hermes)
+rather than one, needs no change to any of them, and is meant to be
+deleted when the operator restores streaming.
+
 ## Harness comparison, on the axes this project actually pays for
 
 | | opencode | hermes | Pi |
