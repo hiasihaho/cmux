@@ -5129,3 +5129,40 @@ arrives as `ESC[99;133u` (132 = 128 num_lock + 4 ctrl) instead of
 `ESC[99;5u`, and lands as literal text. Their table knows `5u` (they
 fixed that case). Workarounds: NumLock off, or start it with
 `TERM_PROGRAM` unset. Upstream fix: mask lock bits before matching.
+
+## 2026-09-03 — passkeys: the undecryptable-vault state no longer sticks (webauthn-smoke 23/1 -> 24/0)
+
+Found while grounding the verbs-branch merge blocker (the cross-desk
+review of `6f55032e72`): `WebAuthnVault.vaultUndecryptable` was set by a
+failed load and cleared ONLY by `save()` — never by a later successful
+load. Because the vault key is resolved once per process, the
+fail -> recover transition cannot arrive as a keyring flap INSIDE one
+process; it arrives as an external vault-file swap (restore tooling, a
+second instance on the same path). With the flag stuck, the save after
+the recovered load moved a DECRYPTABLE vault aside as
+`.undecryptable-<ts>.bak` — no data loss (the guard copies, never
+truncates), but a false operator signal from the guard built to protect
+against exactly this confusion.
+
+Fix: the flag is re-derived at the top of every `load()` and renamed
+`vaultIsUndecryptable` with `private(set)` — the `browser.webauthn`
+verbs (passkey-desk lane) read it so `status` gains
+`vault_undecryptable` and `list` can answer `unavailable` instead of an
+empty list. That was the merge blocker's other half: on an
+undecryptable vault the verbs reported `credential_count: 0`, and the
+only trace of the truth was a stderr line in the instance log.
+
+Red-first, both numbers: red `250738b763` ran 23 passed / 1 failed —
+"undecryptable state stuck: asides 1 -> 2" — with the repro done IN one
+process: a fabricated throwaway-key envelope (valid v2 shape, AES-GCM
+under a random key) fails a load, the good vault is swapped back, a load
+decrypts, and the save moves it aside anyway. Green 24/0. The two
+companion legs are guards that pass both ways by design: the
+undecryptable load must log its state (the log line is a contract until
+the verbs consume the flag), and the recovered vault must still complete
+an assertion ceremony. Ledger 21 -> 24 moved in the red commit.
+
+HONEST SCOPE NOTE: the exposure half is verified by compilation and by
+the verbs lane's consumption, not by a leg here — the flag has no
+external surface until their branch reads it, and a leg that cannot
+observe is a leg that lies.

@@ -100,9 +100,16 @@ enum WebAuthnVault {
     /// file aside before writing — otherwise the next ceremony would
     /// overwrite (or, with no key, write PLAINTEXT over) every stored
     /// passkey on a transient failure. Review-required data-loss guard.
-    private static var vaultUndecryptable = false
+    /// Re-derived by EVERY load() (2026-09-03, cross-desk review: it was
+    /// cleared only by save(), so a fail -> external-recovery -> save
+    /// sequence in one process moved a DECRYPTABLE vault aside). The
+    /// browser.webauthn verbs read this so status/list can never report
+    /// "empty" when the truth is "cannot decrypt right now".
+    private(set) static var vaultIsUndecryptable = false
 
     static func load() -> [WebAuthnCredential] {
+        // Per-load re-derivation — see the guard's doc above.
+        vaultIsUndecryptable = false
         guard let data = try? Data(contentsOf: fileURL) else { return [] }
         // v2 envelope first: decrypt with the current backend's key.
         if let envelope = try? JSONDecoder().decode(Envelope.self, from: data),
@@ -111,7 +118,7 @@ enum WebAuthnVault {
                   let plaintext = try? decrypt(envelope, key: vaultKey.key),
                   let file = try? JSONDecoder().decode(File.self, from: plaintext),
                   file.version == 1 else {
-                vaultUndecryptable = true
+                vaultIsUndecryptable = true
                 FileHandle.standardError.write(Data(
                     "cmux: webauthn vault: encrypted vault could not be decrypted (key backend changed or vault corrupt) — preserving it; a save will move it aside, not overwrite it\n".utf8))
                 return []
@@ -147,7 +154,7 @@ enum WebAuthnVault {
         // Data-loss guard: an envelope we could not decrypt is moved aside
         // (0600), never overwritten — the keyring may come back, and the
         // user's keys with it.
-        if vaultUndecryptable, FileManager.default.fileExists(atPath: fileURL.path) {
+        if vaultIsUndecryptable, FileManager.default.fileExists(atPath: fileURL.path) {
             let stamp = ISO8601DateFormatter().string(from: Date())
                 .replacingOccurrences(of: ":", with: "-")
             let aside = URL(fileURLWithPath: fileURL.path + ".undecryptable-" + stamp + ".bak")
@@ -156,7 +163,7 @@ enum WebAuthnVault {
                 [.posixPermissions: 0o600], ofItemAtPath: aside.path)
             FileHandle.standardError.write(Data(
                 "cmux: webauthn vault: preserved undecryptable vault at \(aside.lastPathComponent)\n".utf8))
-            vaultUndecryptable = false
+            vaultIsUndecryptable = false
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
