@@ -57,12 +57,15 @@ stamp_build_info() {
         "$(git -C "$LINUX_DIR/.." rev-parse --short HEAD 2>/dev/null || echo unknown)" \
         "$(git -C "$LINUX_DIR/../ghostty" rev-parse --short HEAD 2>/dev/null || echo unknown)" \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$(git -C "$LINUX_DIR/.." status --porcelain 2>/dev/null | grep -vc '^??' || echo 0)" <<'PYEOF'
+        "$(git -C "$LINUX_DIR/.." status --porcelain 2>/dev/null | grep -vc '^??' || true)" <<'PYEOF'
 import json, sys
 out, sha, short, ghostty, built, dirty = sys.argv[1:7]
 # A stamp that hides uncommitted work is worse than none: it names a commit
 # the binary does not actually contain.
-modified = int(dirty or 0)
+# NOTE the shell side: `grep -vc` PRINTS "0" and exits 1 on zero matches,
+# so an `|| echo 0` there produced "0\n0" and killed every clean-tree
+# build (found 2026-09-04 — no build had ever run from a clean tree).
+modified = int(dirty.strip() or 0)
 json.dump({
     "build": short + ("+dirty" if modified else ""),
     "git_sha": sha,
@@ -76,9 +79,56 @@ print("  build stamp: %s%s (ghostty %s) at %s" % (
 PYEOF
 }
 
+# Vendored zig package cache for the ghostty-shim module (the SwiftPM
+# mirror treatment, extended to zig — round 4, landed 2026-09-04).
+# WHY: the builder sandbox gets an EPHEMERAL home ($HOME prints the real
+# path but ~/.cache starts empty every run), so zig refetches the whole
+# dependency tree through its own HTTP client — which fails in-sandbox
+# (HttpConnectionClosing) even while git/curl reach github fine from the
+# same netns. Host-side cache warming can never help; the only reliable
+# feed is a cache directory carried INTO the build as a source.
+# The zig toolchain pin lives in the MANIFEST (module source url+sha);
+# this parses it back so there is exactly one pin.
+zig_deps_cache() {
+    local cache="$LINUX_DIR/.flatpak-deps-cache/zig-global"
+    local tooldir="$LINUX_DIR/.flatpak-deps-cache/zig-toolchain"
+    local ghostty="$LINUX_DIR/../ghostty"
+    [ -f "$ghostty/build.zig" ] || die "ghostty submodule not checked out (git submodule update --init ghostty)"
+    local url sha
+    url=$(grep -oE 'https://ziglang.org/download/[^ ]*\.tar\.xz' "$MANIFEST" | head -1)
+    sha=$(grep -A1 "url: $url" "$MANIFEST" | grep -oE 'sha256: [0-9a-f]{64}' | cut -d' ' -f2)
+    [ -n "$url" ] && [ -n "$sha" ] || die "could not parse the zig pin from the manifest"
+    local zig="$tooldir/$(basename "$url" .tar.xz)/zig"
+    if [ ! -x "$zig" ]; then
+        mkdir -p "$tooldir"
+        curl -fsSL "$url" -o "$tooldir/zig.tar.xz"
+        echo "$sha  $tooldir/zig.tar.xz" | sha256sum -c - >/dev/null || die "zig tarball sha mismatch"
+        tar -C "$tooldir" -xJf "$tooldir/zig.tar.xz"
+        rm -f "$tooldir/zig.tar.xz"
+    fi
+    mkdir -p "$cache/p"
+    # Seed from the host's own zig cache first: entries are
+    # content-addressed, and zig's HTTP client both fails in-sandbox AND
+    # can hang host-side in CLOSE-WAIT against github (measured
+    # 2026-09-04), so every fetch avoided is a hang avoided. -n keeps
+    # existing vendored entries authoritative.
+    if [ -d "$HOME/.cache/zig/p" ]; then
+        cp -an "$HOME/.cache/zig/p/." "$cache/p/" 2>/dev/null || true
+    fi
+    # --fetch=all: bare --fetch skips LAZY dependencies (vaxis's zigimg/
+    # uucode), which then fetch mid-build — exactly what must not happen
+    # in the sandbox. With a warm seed this is a no-network no-op that
+    # only fills genuine gaps.
+    (cd "$ghostty" && ZIG_GLOBAL_CACHE_DIR="$cache" \
+        "$zig" build --fetch=all lib-gtk -Dapp-runtime=gtk -Dflatpak=true) \
+        || die "zig dependency fetch failed"
+    echo "zig deps cache: $(ls "$cache/p" 2>/dev/null | wc -l) entries in $cache"
+}
+
 build() {
     local extra=("$@")
     stamp_build_info
+    zig_deps_cache
     mkdir -p "$(dirname "$BUILD_DIR")"
     flatpak-builder --user --force-clean \
         --state-dir="$STATE_DIR" \
