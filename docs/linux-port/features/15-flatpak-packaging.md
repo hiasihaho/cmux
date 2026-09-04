@@ -469,6 +469,40 @@ about them from the manifest and got one wrong (2026-09-01).
   correct for credentials; sharing would be a product decision, not
   something to inherit by accident.
 
+**Flatpak-round measurements (passkey desk, 2026-09-04):**
+
+- **The builder sandbox's home is EPHEMERAL.** `$HOME` prints the real
+  path but `~/.cache` starts empty every stage — a host zig cache can
+  never feed a build. zig's own HTTP client also fails in-sandbox
+  (HttpConnectionClosing) where git/curl work from the same netns, and
+  can hang CLOSE-WAIT against github on the host. Hence the vendored
+  zig package cache: `flatpak-build.sh` seeds
+  `.flatpak-deps-cache/zig-global` from the host cache and tops it up
+  with `--fetch=all` (bare `--fetch` skips LAZY deps — they fetch
+  mid-build otherwise), and the manifest carries it in as a dir source
+  with `ZIG_GLOBAL_CACHE_DIR` pointed at it. Worktree builds also need
+  `git submodule update --init ghostty` first.
+- **Suite displays on a Wayland desktop**: the manifest's fallback-x11
+  binds X only when Wayland is ABSENT. A suite adds `--socket=x11`
+  per-invocation (never to the manifest), sets `DISPLAY` on the
+  `flatpak run` process itself (flatpak binds exactly the host's
+  `$DISPLAY` socket — `--env=DISPLAY` points at nothing), and mints an
+  xauth cookie for its Xvfb (flatpak transfers the `$XAUTHORITY`
+  cookie; a cookie-less server yields only "Failed to open display").
+- **A killed flatpak-builder leaves TWO corpses**: a wedged rofiles-fuse
+  mountpoint (`fusermount3 -uz`, then the path is inert) and a
+  `rofiles-*-lock` FILE beside it — each needs its own cleanup or the
+  next run dies on "Failure spawning rofiles-fuse".
+- **Secret portal contract (the hard one)**: RetrieveSecret's request
+  dies with its CALLER's bus connection — the frontend closes the impl
+  request ~3ms after forwarding when a short-lived `gdbus call` exits.
+  The app must call natively on its own connection
+  (`g_dbus_connection_call_with_unix_fd_list_sync`). And an INTERRUPTED
+  first token creation leaves a dangling item in the login keyring that
+  shadows the app id forever after (gck Code80 on every later call,
+  while other apps' tokens answer fine) — repair is a keyring
+  daemon restart/relogin, strictly the human's call.
+
 **Packaging rule (passkey desk, adopted):** a dev/test escape hatch that
 disables a consent prompt — `CMUX_WEBAUTHN_AUTOAPPROVE` is the current
 example — must NEVER appear in a manifest, an override recipe, or a

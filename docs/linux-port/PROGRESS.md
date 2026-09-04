@@ -5328,3 +5328,43 @@ was not running (connection refused); noted in the push letter.
 Regression cluster on the green binary: ui-commands-smoke (the socket
 surface I touched), webauthn-smoke, webauthn-verbs-smoke,
 webauthn-cxf-smoke — numbers in the commit message.
+## 2026-09-04 — flatpak round: the portal backend's first execution, and what it took
+
+The lane turned "written but never executed" into "executes, correctly,
+against a host whose keyring we poisoned ourselves." In order:
+
+- **Harness**: worktree flatpak builds need the ghostty submodule AND a
+  vendored zig package cache — the builder sandbox's home is EPHEMERAL
+  ($HOME prints the real path, ~/.cache starts empty; a host cache can
+  never feed it), zig's HTTP client fails in-sandbox and CLOSE-WAIT-hangs
+  on host, and bare --fetch skips lazy deps (fetch succeeded, build still
+  fetched). flatpak-build.sh now seeds .flatpak-deps-cache/zig-global
+  from the host cache + --fetch=all; the manifest mounts it. Also fixed:
+  the clean-tree stamp crash (grep -vc prints 0 AND exits 1 — no build
+  had ever run from a clean tree), and the two corpses a killed
+  flatpak-builder leaves (wedged rofiles mount + lock file).
+- **Suite display**: Wayland desktops need --socket=x11 per-invocation,
+  DISPLAY on the flatpak run process, and a minted xauth cookie.
+- **The portal finding** (webauthn-portal-smoke, red first): the
+  subprocess gdbus design cannot work — the frontend closes the request
+  ~3ms after forwarding because the request's lifetime is the CALLER's
+  bus connection, and gdbus exits on the method reply. Bus-traced, then
+  fixed natively: g_dbus_connection_call_with_unix_fd_list_sync on the
+  app's shared session connection (GUnixFDList via the CWebKit shim
+  precedent; g_variant_parse because the variadic constructors are
+  unreachable from Swift).
+- **The scar tissue**: our own interrupted probes left dangling
+  portal-token items (login/38, login/40 — unaddressable; Chromium's
+  login/7 answers with its label) that shadow com.manaflow.cmux, so
+  every RetrieveSecret now dies with gck Code80 (CKR_FUNCTION_CANCELED)
+  even from an unsandboxed direct impl call. The mechanics are verified
+  end-to-end (fd attached, frontend forwards to gnome-keyring with our
+  app id); the remaining red is host state. Repair = keyring daemon
+  restart or relogin — hias's call, never an agent's (the login keyring
+  holds the whole session's unlocked secrets). The suite prints the
+  host-impl diagnosis distinctly so nobody re-derives this.
+
+Trap for the record, the meta one: a probe that dies mid-request against
+a stateful service can poison the service for every later probe. The
+2026-09-02 fd probe that "worked" (returned a request path) was the
+first poisoning.
