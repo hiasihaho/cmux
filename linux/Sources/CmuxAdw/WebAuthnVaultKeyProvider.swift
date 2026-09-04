@@ -1,3 +1,4 @@
+import CWebKit   // gio via the webkit include chain + the GUnixFDList shim
 import Crypto
 import Foundation
 import Glibc
@@ -113,29 +114,69 @@ enum WebAuthnVaultKeyProvider {
     // MARK: - flatpak backend: Secret portal
 
     /// org.freedesktop.portal.Secret.RetrieveSecret: the portal writes the
-    /// per-app master secret into a pipe we supply. We drive it with
-    /// gdbus (ships with GLib, present in every flatpak runtime) and read
-    /// the secret from the pipe's read end. The secret length is opaque
-    /// to us, so it is expanded with HKDF-SHA256 to the AES-256 key.
+    /// per-app master secret into a pipe we supply. The call MUST ride the
+    /// app's own (long-lived) session-bus connection: the portal ties the
+    /// request's lifetime to the caller's connection, so a subprocess
+    /// `gdbus call` that exits after the method reply gets its request
+    /// CLOSED by the frontend ~3ms after it forwarded to the backend —
+    /// zero bytes ever reach the pipe. Measured on the bus 2026-09-04,
+    /// the flatpak round's first real execution of this path. The secret
+    /// length is opaque; it is expanded with HKDF-SHA256 to the AES key.
     private static func portalKey() -> SymmetricKey? {
         var fds: [Int32] = [0, 0]
         guard pipe(&fds) == 0 else { return nil }
         let readFD = fds[0], writeFD = fds[1]
         defer { close(readFD) }
 
-        // gdbus call --session -d org.freedesktop.portal.Desktop
-        //   -o /org/freedesktop/portal/desktop
-        //   -m org.freedesktop.portal.Secret.RetrieveSecret <fd> {}
-        // The fd is inherited by number; gdbus handles the h encoding.
-        let out = runCapturing([
-            "gdbus", "call", "--session",
-            "-d", "org.freedesktop.portal.Desktop",
-            "-o", "/org/freedesktop/portal/desktop",
-            "-m", "org.freedesktop.portal.Secret.RetrieveSecret",
-            String(writeFD), "{}",
-        ])
-        close(writeFD)
-        guard out != nil else { return nil }
+        // g_bus_get_sync returns the process's SHARED session connection
+        // (the same one GTK holds), so the request outlives this call.
+        guard let connection = g_bus_get_sync(G_BUS_TYPE_SESSION, nil, nil) else {
+            close(writeFD)
+            return nil
+        }
+        defer { g_object_unref(UnsafeMutableRawPointer(connection)) }
+        guard let fdList = g_unix_fd_list_new() else {
+            close(writeFD)
+            return nil
+        }
+        defer { g_object_unref(UnsafeMutableRawPointer(fdList)) }
+        let index = g_unix_fd_list_append(fdList, writeFD, nil)
+        close(writeFD)   // the list holds its own dup
+        guard index == 0 else { return nil }
+
+        // "(handle 0, @a{sv} {})": the h argument is an index into the
+        // attached fd list — always 0, so the variant is parsed from a
+        // constant (g_variant_new and g_variant_new_parsed are variadic
+        // and unreachable from Swift; g_variant_parse is not). The call
+        // below SINKS the reference; g_variant_parse returns a full one,
+        // so ours is dropped after the call.
+        guard let parameters = g_variant_parse(nil, "(handle 0, @a{sv} {})", nil, nil, nil) else {
+            return nil
+        }
+        defer { g_variant_unref(parameters) }
+        var gerror: UnsafeMutablePointer<GError>? = nil
+        let reply = g_dbus_connection_call_with_unix_fd_list_sync(
+            connection,
+            "org.freedesktop.portal.Desktop",
+            "/org/freedesktop/portal/desktop",
+            "org.freedesktop.portal.Secret",
+            "RetrieveSecret",
+            parameters,
+            nil,
+            G_DBUS_CALL_FLAGS_NONE,
+            15_000,
+            fdList,
+            nil,
+            nil,
+            &gerror
+        )
+        if let gerror {
+            FileHandle.standardError.write(Data(
+                "cmux: webauthn vault key: Secret portal call failed: \(String(cString: gerror.pointee.message))\n".utf8))
+            g_error_free(gerror)
+            return nil
+        }
+        if let reply { g_variant_unref(reply) }
 
         var secret = Data()
         var buf = [UInt8](repeating: 0, count: 4096)

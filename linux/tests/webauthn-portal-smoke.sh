@@ -175,9 +175,24 @@ ST=$(cx --json browser webauthn status 2>/dev/null)
 [ "$(echo "$ST" | jget vault_encrypted 2>/dev/null)" = "True" ] \
     && ok "v1 vault migrated to an encrypted envelope IN-SANDBOX" \
     || bad "portal encryption" "got '$ST'"
-[ "$(echo "$ST" | jget vault_backend 2>/dev/null)" = "portal" ] \
-    && ok "vault_backend is 'portal' — the Secret portal answered a real call" \
-    || bad "portal backend" "got '$ST'"
+if [ "$(echo "$ST" | jget vault_backend 2>/dev/null)" = "portal" ]; then
+    ok "vault_backend is 'portal' — the Secret portal answered a real call"
+else
+    bad "portal backend" "got '$ST'"
+    # Distinguish OUR bug from a sick host portal: ask gnome-keyring's
+    # impl directly (bypasses sandboxing entirely). A healthy host
+    # answers; the 2026-09-04 corpse state answered gck Code80
+    # (CKR_FUNCTION_CANCELED) because dangling portal-token items from
+    # interrupted creations shadow the app id — repair is a keyring
+    # daemon restart/relogin (hias's call, never a suite's).
+    exec 9>/dev/null
+    DIAG=$(gdbus call --session -d org.freedesktop.secrets \
+        -o /org/freedesktop/portal/desktop \
+        -m org.freedesktop.impl.portal.Secret.RetrieveSecret \
+        /org/cmux/probe com.manaflow.cmux 9 '{}' 2>&1 | head -1)
+    exec 9>&-
+    echo "  DIAG  host impl.portal.Secret answers: $DIAG"
+fi
 [ "$(echo "$ST" | jget vault_undecryptable 2>/dev/null)" = "False" ] \
     && [ "$(echo "$ST" | jget credential_count 2>/dev/null)" = "2" ] \
     && ok "both credentials decrypt through the HKDF-derived key" \
