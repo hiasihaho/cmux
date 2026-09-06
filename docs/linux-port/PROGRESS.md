@@ -5370,3 +5370,25 @@ Also recorded: a `@convention(c)` closure written inside the enum cannot
 become a C function pointer (it captures the enclosing type), so the
 handler lives at file scope — the trap already noted at
 `BrowserAutomation.swift:18`, met again from the other direction.
+
+**Review outcome, same day (qvision).** Approved with three non-blocking
+notes; all three were taken, because note 1 was a typed-answer
+conflation in MY code — the exact thing this desk called a merge blocker
+in the verbs branch a day earlier, and one standard for the desks and a
+looser one for the coordinator would corrode the practice.
+
+1. `unknown route` and `surface-has-no-readable-scrollback` both finished
+   as one opaque 404. They are now three distinct typed answers over the
+   seam — `unknown-route` (404), `unreadable` (503), `not-a-uuid` (400) —
+   carried as a JSON body via `finish_with_response`, so the wire says
+   what the code already knew internally.
+2. The unknown-route leg proved the document had CHANGED, not that the
+   route was refused — a handler serving an empty page would have passed
+   it. It now asserts the typed status itself.
+3. Remote NAVIGATION was untested, and the answer is a finding: a page on
+   `http://` executing `window.location = "cmux://about"` DOES move the
+   pane. Reading stays blocked (opaque origin, unguessable uuids), so it
+   is a display capability rather than a read — recorded as a GAPS row
+   and a suite SKIP naming the reason, not a silent pass.
+
+`browser-scheme-smoke` 6 -> 7 assertions, 1 honest skip.

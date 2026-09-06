@@ -82,10 +82,24 @@ sleep 3
 nope=$(cx browser --surface "$B" eval 'document.body.innerText' 2>/dev/null)
 if [ "$SCHEME_OK" = "no" ]; then
     skip "unknown-route refusal" "scheme not serving: refusal is indistinguishable from absence"
-elif echo "$nope" | grep -q "$MARKER"; then
-    bad "unknown route" "still showing the previous document"
+elif echo "$nope" | grep -q '"status": *"unknown-route"'; then
+    # "different document" would also pass for a handler that served an
+    # empty page; assert the typed refusal itself (qvision review).
+    ok "an unknown route is REFUSED with a typed status"
 else
-    ok "an unknown route does not serve the previous document"
+    bad "unknown route" "expected a typed unknown-route body; got: $(echo "$nope" | head -c 80)"
+fi
+
+info "the three non-answers are distinguishable across the seam"
+cx browser --surface "$B" goto "cmux://surface/not-a-uuid/scrollback" >/dev/null 2>&1
+sleep 2
+badid=$(cx browser --surface "$B" eval 'document.body.innerText' 2>/dev/null)
+if [ "$SCHEME_OK" = "no" ]; then
+    skip "typed non-answers" "scheme not serving"
+elif echo "$badid" | grep -q '"status": *"not-a-uuid"'; then
+    ok "a malformed id answers not-a-uuid, not the unknown-route code"
+else
+    bad "typed non-answers" "got: $(echo "$badid" | head -c 80)"
 fi
 
 info "a REMOTE page cannot read cmux:// (the point of the suite)"
@@ -99,6 +113,23 @@ elif echo "$leak" | grep -q "REFUSED"; then
     ok "a remote origin's fetch of cmux:// is refused"
 else
     bad "cross-origin read" "got: $(echo "$leak" | head -c 80)"
+fi
+
+info "a remote page NAVIGATING to cmux:// (qvision review note 3)"
+cx browser --surface "$B" goto "http://127.0.0.1:$PAGE_PORT/index.html" >/dev/null 2>&1
+sleep 3
+cx browser --surface "$B" eval 'window.location = "cmux://about"; "issued"' >/dev/null 2>&1
+sleep 3
+navd=$(cx browser --surface "$B" eval 'document.body.innerText' 2>/dev/null)
+if [ "$SCHEME_OK" = "no" ]; then
+    skip "remote navigation" "scheme not serving"
+elif echo "$navd" | grep -q '"build"'; then
+    # Recorded, not asserted as correct: display is not read (opaque
+    # origin, unguessable uuids), but a remote page moving the pane onto
+    # app state is a capability question. GAPS row, not a silent pass.
+    skip "remote navigation to cmux://" "ALLOWED by WebKit — recorded as a GAPS row, not silently passed"
+else
+    ok "a remote page cannot navigate the pane to cmux://"
 fi
 
 rm -rf "$WORK"

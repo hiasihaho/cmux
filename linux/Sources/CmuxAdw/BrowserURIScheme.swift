@@ -76,16 +76,20 @@ enum BrowserURIScheme {
             finish(request, json: info)
         case "surface" where parts.count >= 3 && parts[2] == "scrollback":
             guard let id = UUID(uuidString: parts[1]) else {
-                fail(request, "not a surface uuid: \(parts[1])"); return
+                fail(request, status: 400, kind: "not-a-uuid", detail: parts[1]); return
             }
             // nil means "could not read", which is NOT "empty" — the same
             // distinction the session store learned the hard way.
             guard let text = SurfaceRegistry.shared.scrollbackText(for: id) else {
-                fail(request, "surface has no readable scrollback: \(parts[1])"); return
+                // COULD-NOT-READ, which is not "empty" and not "no such
+                // route" — three different non-answers, three codes. The
+                // seam must carry the distinction the code already makes
+                // internally (qvision review, 2026-09-06).
+                fail(request, status: 503, kind: "unreadable", detail: parts[1]); return
             }
             finish(request, text: text, mime: "text/plain")
         default:
-            fail(request, "unknown cmux:// route: \(rest)")
+            fail(request, status: 404, kind: "unknown-route", detail: rest)
         }
     }
 
@@ -96,8 +100,12 @@ enum BrowserURIScheme {
         finish(request, text: String(decoding: data, as: UTF8.self), mime: "application/json")
     }
 
-    private static func finish(_ request: OpaquePointer,
-                               text: String, mime: String) {
+    private static func finish(_ request: OpaquePointer, text: String, mime: String) {
+        respond(request, text: text, mime: mime, status: 200, reason: "OK")
+    }
+
+    private static func respond(_ request: OpaquePointer, text: String, mime: String,
+                                status: UInt, reason: String) {
         let bytes = Array(text.utf8)
         // The stream takes ownership of the copy through the destructor.
         guard let buffer = malloc(max(bytes.count, 1)) else { return }
@@ -105,14 +113,26 @@ enum BrowserURIScheme {
             if let base = raw.baseAddress { memcpy(buffer, base, bytes.count) }
         }
         let stream = g_memory_input_stream_new_from_data(buffer, bytes.count, { ptr in free(ptr) })
-        webkit_uri_scheme_request_finish(request, stream, bytes.count, mime)
+        if let response = webkit_uri_scheme_response_new(stream, bytes.count) {
+            webkit_uri_scheme_response_set_content_type(response, mime)
+            webkit_uri_scheme_response_set_status(response, UInt32(status), reason)
+            webkit_uri_scheme_request_finish_with_response(request, response)
+            g_object_unref(UnsafeMutableRawPointer(response))
+        }
         if let stream { g_object_unref(UnsafeMutableRawPointer(stream)) }
     }
 
+    /// A non-answer, typed. Served as a JSON body with a distinct status
+    /// rather than one opaque 404, so a caller can tell "no such route"
+    /// from "that surface cannot be read right now" — the same rule the
+    /// session store and the vault verbs learned.
     private static func fail(_ request: OpaquePointer,
-                            _ message: String) {
-        let error = g_error_new_literal(g_quark_from_string("cmux-uri-scheme"), 404, message)
-        webkit_uri_scheme_request_finish_error(request, error)
-        g_error_free(error)
+                             status: UInt, kind: String, detail: String) {
+        let body = ["status": kind, "detail": detail,
+                    "note": "process-local; not a freshness or authenticity claim"]
+        let text = String(decoding:
+            (try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])) ?? Data("{}".utf8),
+            as: UTF8.self)
+        respond(request, text: text, mime: "application/json", status: status, reason: kind)
     }
 }
