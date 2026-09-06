@@ -38,8 +38,10 @@ wait_for_shell "$TSURF" 30
 cx send --surface "$TSURF" "echo $MARKER" >/dev/null 2>&1
 cx send-key --surface "$TSURF" Enter >/dev/null 2>&1
 sleep 2
-TUUID=$(cx --id-format uuids list-panes --workspace "$WS" 2>/dev/null \
-    | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' | tail -1)
+# The SURFACE uuid, not a pane's: list-panes prints pane ids, and asking
+# a browser pane for scrollback is how the first run of this suite failed.
+TUUID=$(cx --id-format uuids list-pane-surfaces --workspace "$WS" 2>/dev/null \
+    | grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
 [ -n "$TUUID" ] || { echo "$SUITE_NAME: no surface uuid" >&2; exit 2; }
 
 info "cmux://about — the app describing itself"

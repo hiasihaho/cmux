@@ -96,7 +96,6 @@ anything, then promote to Now.
 
 | Gap | Notes | Effort |
 |---|---|---|
-| Custom URI scheme seam (`webkit_web_context_register_uri_scheme`) | The Linux port has two of the three WebKit bridges — a reply-capable script-message handler (`BrowserWebAuthn.swift:85`, `BrowserAutomation.swift:659`) and inject/evaluate — but **no custom scheme handler**; macOS has one (`CmuxDiffViewerURLSchemeHandler`). Honest local use FIRST, no network in it: serve cmux's own content (diffs, markdown, session artefacts) to a pane without `file://` or a localhost server. **APPROVED by hias 2026-09-06** (relayed via qvision) with the scope fixed: standalone, no DHT, no network- or freshness-claims — qp2 is still red on A2 replay and A6 backdating, so a transport seam must not imply content authenticity. Timing and desk order stay this desk's call; the approval only removes the permission question. Prior art if it is ever pointed at a resolver: `~/palma/poc/qip-read/` (qip:// read resolver, 14/14) | qvision scout report 2026-09-06 + hias GO | S |
 
 ## Later / only if needed — honest macOS-only feature families
 
