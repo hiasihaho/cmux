@@ -69,6 +69,9 @@ enum BrowserSurfaceFactory {
     /// `network-session` is construct-only (like `related-view`), so a
     /// profiled pane must be born into its session — it cannot move later.
     private static func makeWebView(surfaceId: UUID) -> UnsafeMutablePointer<GtkWidget>? {
+        // Before the first view exists: a scheme registered afterwards is
+        // unknown to views already alive.
+        BrowserURIScheme.ensureRegistered()
         let assigned = BrowserProfileAssignments.pending.removeValue(forKey: surfaceId)
         guard let profileId = assigned,
               let session = BrowserProfiles.session(for: profileId) else {

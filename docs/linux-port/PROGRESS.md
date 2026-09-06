@@ -5328,3 +5328,67 @@ was not running (connection refused); noted in the push letter.
 Regression cluster on the green binary: ui-commands-smoke (the socket
 surface I touched), webauthn-smoke, webauthn-verbs-smoke,
 webauthn-cxf-smoke — numbers in the commit message.
+
+### `cmux://` — the URI scheme seam (2026-09-06)
+
+hias approved building the seam standalone after qvision's DHT scout
+report, with the scope fixed in the GAPS row: honest local use first, no
+DHT, no network- or freshness-claims. Built by this desk because both
+passkey lanes were mid-flight and cmux-core is this desk's lane.
+
+**Why a scheme rather than a file or a localhost server** — the
+justification the row demanded: everything served here has no path on
+disk. A surface's scrollback lives in the running process; `BuildInfo`
+is assembled at build time and read from memory. `file://` cannot
+address them, and a localhost server would mean binding, authenticating
+and defending a port for data that never needs to leave the process. A
+seam justified by something `file://` already does would be justified by
+nothing.
+
+Two routes, read-only: `cmux://about` (build stamp, the route list, and
+a note stating the payload is process-local and NOT a freshness or
+authenticity claim) and `cmux://surface/<uuid>/scrollback`. Registered
+`as_no_access` and deliberately not cors-enabled, so a cmux:// document
+gets an opaque origin and a remote page cannot read it.
+
+`browser-scheme-smoke` 0/4 (2 skipped) red -> 6/6 green.
+
+TWO TRAPS, both mine, both worth the lines:
+
+1. **Two legs passed VACUOUSLY in the red run.** With no scheme at all,
+   "nothing leaked" and "nothing served" are trivially true, so the first
+   red reported 2 passed. They are now gated on the about route working
+   and SKIP otherwise — the same guard pk3's review demanded of the verbs
+   secrecy leg. A red that reports passes is a red that lies.
+2. **The green then failed on my own fixture**: `list-panes` prints PANE
+   ids, so the suite asked a BROWSER pane for its scrollback and got the
+   honest answer "no readable scrollback". The route was right and the
+   test was wrong — `list-pane-surfaces` is the command that yields
+   surface ids.
+
+Also recorded: a `@convention(c)` closure written inside the enum cannot
+become a C function pointer (it captures the enclosing type), so the
+handler lives at file scope — the trap already noted at
+`BrowserAutomation.swift:18`, met again from the other direction.
+
+**Review outcome, same day (qvision).** Approved with three non-blocking
+notes; all three were taken, because note 1 was a typed-answer
+conflation in MY code — the exact thing this desk called a merge blocker
+in the verbs branch a day earlier, and one standard for the desks and a
+looser one for the coordinator would corrode the practice.
+
+1. `unknown route` and `surface-has-no-readable-scrollback` both finished
+   as one opaque 404. They are now three distinct typed answers over the
+   seam — `unknown-route` (404), `unreadable` (503), `not-a-uuid` (400) —
+   carried as a JSON body via `finish_with_response`, so the wire says
+   what the code already knew internally.
+2. The unknown-route leg proved the document had CHANGED, not that the
+   route was refused — a handler serving an empty page would have passed
+   it. It now asserts the typed status itself.
+3. Remote NAVIGATION was untested, and the answer is a finding: a page on
+   `http://` executing `window.location = "cmux://about"` DOES move the
+   pane. Reading stays blocked (opaque origin, unguessable uuids), so it
+   is a display capability rather than a read — recorded as a GAPS row
+   and a suite SKIP naming the reason, not a silent pass.
+
+`browser-scheme-smoke` 6 -> 7 assertions, 1 honest skip.
