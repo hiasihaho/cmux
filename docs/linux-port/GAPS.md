@@ -92,6 +92,12 @@ anything, then promote to Now.
 | Ghostty-embed hardening | roadmap/05 — fast-churn resource leak | L |
 | CXF slice 2a: vault-seam EXPORT (pk3 lane, one row per lane) | Green-lit 2026-09-03 with one blocking correction folded in: the envelope KDF is **scrypt** (`_CryptoExtras`, Package.swift product addition announced), NOT HKDF (extract-and-expand is for high-entropy input; a passphrase is low-entropy). Sharpenings: typed completion states (exported/denied/expired/failed) via the notification store; 0600 + refuse-existing-path unless `--force`; consent dialog and CLI name the format ("cmux-encrypted CXF — only cmux can read this" vs "CXF — portable, plaintext"). Security rules (PASSKEYS.md §0): no page-bridge reachability (grep-leg in the suite), async native consent (socket verbs answer inside `response.wait` — never block on a human), encrypted-by-default envelope (params recorded IN the envelope), separate `CMUX_WEBAUTHN_EXPORT_AUTOAPPROVE` hatch (rule 4: no ceremony grant implies an export grant — reusing the ceremony hatch would violate it). Slice 2b (import) gets the long-form-DER interop item | cmux desk green-light 2026-09-03 | M |
 
+## Next — real features, planned (continued)
+
+| Gap | Notes | Effort |
+|---|---|---|
+| Custom URI scheme seam (`webkit_web_context_register_uri_scheme`) | The Linux port has two of the three WebKit bridges — a reply-capable script-message handler (`BrowserWebAuthn.swift:85`, `BrowserAutomation.swift:659`) and inject/evaluate — but **no custom scheme handler**; macOS has one (`CmuxDiffViewerURLSchemeHandler`). Honest local use FIRST, no network in it: serve cmux's own content (diffs, markdown, session artefacts) to a pane without `file://` or a localhost server. **APPROVED by hias 2026-09-06** (relayed via qvision) with the scope fixed: standalone, no DHT, no network- or freshness-claims — qp2 is still red on A2 replay and A6 backdating, so a transport seam must not imply content authenticity. Timing and desk order stay this desk's call; the approval only removes the permission question. Prior art if it is ever pointed at a resolver: `~/palma/poc/qip-read/` (qip:// read resolver, 14/14) | qvision scout report 2026-09-06 + hias GO | S |
+
 ## Later / only if needed — honest macOS-only feature families
 
 The sweep's remaining ~130 methods. `unknown_method` is the correct
