@@ -180,6 +180,15 @@ the same running app. The rules below are what that cost to learn.
   CALLER's surface id, and macOS's resolver (issue #7939) then lets the
   surface outrank the workspace — the same command notifies the sender
   there. Name the target surface, or use a letter.
+- **A turn ends with a DONE letter in the channel, not with a green
+  suite or a merge commit** (amendment `turn-signals`, countersigned
+  2026-09-07). Post `STARTED <task> · in_reply_to <sha>` when you pick
+  work up and a DONE with pointers and shas when you finish. Anything
+  another desk reads from your pane before that is an OBSERVATION, never
+  a result. **git knowing is not the channel knowing** — this desk's DONE
+  for `fa9785374c` existed only in its pane precisely BECAUSE the merge
+  was already in the log, and a reader who must run `git log` to learn a
+  turn ended is pane-scraping with a better tool.
 - **Session-to-session is a feed letter plus a pane doorbell**:
   `feed.push` a `UserPromptSubmit` into a stable workstream
   (`announce-<target>`), then `cmux send` a one-liner and `send-key
