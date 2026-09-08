@@ -134,7 +134,7 @@ enum BrowserSurfaceFactory {
         if let restored = BrowserRestoreStore.pending.removeValue(forKey: leaf.surfaceId) {
             BrowserSessionState.restore(restored, into: webView)
         } else if case .browser(let initialURL) = leaf.kind, !initialURL.isEmpty {
-            webkit_web_view_load_uri(webView, initialURL)
+            BrowserNavigationPolicy.load(webView, initialURL)
         }
 
         let tabId = tab.id
@@ -199,6 +199,21 @@ enum BrowserSurfaceFactory {
            let manager = webkit_network_session_get_website_data_manager(session) {
             webkit_website_data_manager_set_favicons_enabled(manager, 1)
         }
+        // E1 (hias ruling 2026-09-08): a page is never the authority on
+        // where a pane goes. Refuses `cmux://` navigations cmux did not
+        // vouch for and returns FALSE for every other scheme, so nothing
+        // else about this view's navigation changes.
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(widget), "decide-policy",
+            unsafeBitCast(browserDecidePolicy, to: GCallback.self),
+            nil, nil, GConnectFlags(0)
+        )
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(widget), "destroy",
+            unsafeBitCast(browserNavPolicyForget, to: GCallback.self),
+            nil, nil, GConnectFlags(0)
+        )
+
         // Capture browser state as soon as a navigation commits (see
         // browserLoadChangedForSession) rather than waiting for the 15s
         // session timer.

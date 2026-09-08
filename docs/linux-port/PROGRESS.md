@@ -5392,3 +5392,62 @@ looser one for the coordinator would corrode the practice.
    and a suite SKIP naming the reason, not a silent pass.
 
 `browser-scheme-smoke` 6 -> 7 assertions, 1 honest skip.
+
+
+## 2026-09-08 — E1: a page is never the authority on where a pane goes
+
+hias' ruling `kb-decision-20260908-cmux-e1-e2-e3`, relayed by qvision,
+closed the gap this desk had recorded two days earlier as a suite SKIP
+rather than passing over it. Under hias' standing condition: **no build
+touches the productive environment before it is checked and shown safe**
+— worktree build, suite gate, revert ready, and the activation is his
+act, not a side effect of a DONE.
+
+**What the gap actually was.** Measured, not assumed: a page on `http://`
+executing `window.location = "cmux://about"` moved the pane onto
+app-owned state. Reading stayed blocked (opaque origin, uuids not
+guessable), so it was a DISPLAY capability. The red run found a SECOND
+entry the original probe had not looked for: an `<iframe src="cmux://…">`
+reached a cmux:// document too.
+
+**Why a token and not an origin check — the finding that shaped the fix.**
+WebKitGTK's `WebKitNavigationAction` exposes navigation type, user
+gesture, mouse button, modifiers and a redirect flag, and **no initiator
+origin**. There is nothing to compare against, so "cmux initiated this"
+cannot be READ off a navigation; it has to be ESTABLISHED. The handler
+therefore consumes a one-shot token armed for the exact URI immediately
+before cmux asks WebKit to go there, and the five cmux-initiated
+navigation sites now run through `BrowserNavigationPolicy`. The
+constraint turned out to be a benefit: the set of places cmux can move a
+pane to `cmux://` is now enumerable, and it is five.
+
+**The two rules that keep it from being a wall.** A navigation to any
+other scheme returns FALSE — the decision is left to WebKit exactly as
+before, so no existing pane behavior changes. And a document already
+served from `cmux://` may navigate within it (reload, in-page links):
+that content is this process's own JSON and text, never a remote script,
+and it is not an entry, since a page can only get there if cmux put it
+there. The main frame's URI is the right question even for a subframe —
+a remote page with a cmux:// iframe has an http main frame.
+
+**Session restore was the near-miss.** Restore does not `load_uri`; it
+navigates INTO the restored back/forward list with
+`go_to_back_forward_list_item`. Unarmed, a pane restored onto `cmux://`
+would have come back refused — the policy would have narrowed a seam the
+running environment depends on, which is exactly what hias' condition 3
+forbids. `goToItem` arms from the list item's own URI.
+
+**Red, then green.** `31d121a1c6` (9 passed / 2 failed) before any
+handler existed, and both failures for the right reason. The subframe
+probe was the one worth doubting: denied, the iframe stays at
+about:blank, which inherits the parent origin and reads back; allowed, it
+holds an opaque-origin document and the same read throws. It threw — so
+the subframe entry is real, not theoretical. Green at 11/0.
+
+The refusal legs ship in PAIRS. A policy that closed the gap by making
+`cmux://` unreachable for everyone would satisfy every refusal leg and
+quietly destroy the seam, so each refusal is matched by a
+capability-preservation leg (cmux still navigates there; a cmux://
+document still reloads) that had to pass BEFORE and after.
+
+`browser-scheme-smoke` 7 -> 11 assertions, 0 skips.
