@@ -161,6 +161,33 @@ else
     skip "subframe navigation" "inconclusive probe, not a pass: $(echo "$framed" | head -c 60)"
 fi
 
+info "E1: window.open is a third entry (control first, or this proves nothing)"
+# A popup becomes a TAB in the opener's pane, i.e. a new SURFACE in this
+# workspace — counted with the same list-pane-surfaces call this suite
+# already relies on, rather than a CLI form it has never exercised.
+surfcount() { cx --id-format uuids list-pane-surfaces --workspace "$WS" 2>/dev/null \
+    | grep -ciE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'; }
+cx browser --surface "$B" goto "http://127.0.0.1:$PAGE_PORT/index.html" >/dev/null 2>&1
+sleep 3
+before=$(surfcount)
+cx browser --surface "$B" eval 'window.open("http://127.0.0.1:'"$PAGE_PORT"'/index.html"); "issued"' >/dev/null 2>&1
+sleep 4
+control=$(surfcount)
+cx browser --surface "$B" eval 'window.open("cmux://about"); "issued"' >/dev/null 2>&1
+sleep 4
+after=$(surfcount)
+if [ "$SCHEME_OK" = "no" ]; then
+    skip "window.open refusal" "scheme not serving"
+elif [ "${control:-0}" -le "${before:-0}" ]; then
+    # Popup routing sits behind a settings flag and a burst budget.
+    # Without this control, "no new surface" is true for the wrong reason.
+    skip "window.open refusal" "popups did not route here ($before -> $control): a refusal would prove nothing"
+elif [ "${after:-0}" -eq "${control:-0}" ]; then
+    ok "a remote page's window.open(cmux://) opens no pane"
+else
+    bad "window.open refusal" "a popup pane appeared for cmux:// ($control -> $after)"
+fi
+
 info "E1 refuses a CLASS — it must not take the route away from cmux"
 # The other half of the ruling. A policy that closed the gap by making
 # cmux:// unreachable for everyone would pass the leg above and destroy

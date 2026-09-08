@@ -125,8 +125,11 @@ enum BrowserNavigationPolicy {
 
     // MARK: - Small helpers
 
+    /// The view's ADDRESS, not its hashValue: two live views colliding in
+    /// a seeded hash would let a token armed for one vouch for the other,
+    /// which is the one thing this type must never do.
     private static func key(_ webView: UnsafeMutablePointer<WebKitWebView>) -> UInt {
-        UInt(bitPattern: UnsafeMutableRawPointer(webView).hashValue)
+        UInt(bitPattern: UnsafeRawPointer(webView))
     }
 
     static func forget(_ webView: UnsafeMutablePointer<WebKitWebView>) {

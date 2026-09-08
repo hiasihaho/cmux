@@ -128,6 +128,28 @@ enum BrowserSurfaceFactory {
         gtk_widget_set_vexpand(widget, 1)
         let webView = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: WebKitWebView.self)
 
+        // E1 (hias ruling 2026-09-08): a page is never the authority on
+        // where a pane goes. Refuses `cmux://` navigations cmux did not
+        // vouch for and returns FALSE for every other scheme, so nothing
+        // else about this view's navigation changes.
+        //
+        // BEFORE the first load, deliberately — like the console capture
+        // and the WebAuthn polyfill below. Connected afterwards, the
+        // pane's own initial navigation would be decided by a handler
+        // that does not exist yet, its armed token would go unconsumed,
+        // and a later page-initiated navigation to the same URI could
+        // spend it.
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(widget), "decide-policy",
+            unsafeBitCast(browserDecidePolicy, to: GCallback.self),
+            nil, nil, GConnectFlags(0)
+        )
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(widget), "destroy",
+            unsafeBitCast(browserNavPolicyForget, to: GCallback.self),
+            nil, nil, GConnectFlags(0)
+        )
+
         // A session restore parks the full browser state (zoom, history,
         // WebKit's own blob) here, since SurfaceKind can only carry a URL.
         // Falls back to the plain URL when there is nothing parked.
@@ -199,21 +221,6 @@ enum BrowserSurfaceFactory {
            let manager = webkit_network_session_get_website_data_manager(session) {
             webkit_website_data_manager_set_favicons_enabled(manager, 1)
         }
-        // E1 (hias ruling 2026-09-08): a page is never the authority on
-        // where a pane goes. Refuses `cmux://` navigations cmux did not
-        // vouch for and returns FALSE for every other scheme, so nothing
-        // else about this view's navigation changes.
-        g_signal_connect_data(
-            UnsafeMutableRawPointer(widget), "decide-policy",
-            unsafeBitCast(browserDecidePolicy, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
-        )
-        g_signal_connect_data(
-            UnsafeMutableRawPointer(widget), "destroy",
-            unsafeBitCast(browserNavPolicyForget, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
-        )
-
         // Capture browser state as soon as a navigation commits (see
         // browserLoadChangedForSession) rather than waiting for the 15s
         // session timer.

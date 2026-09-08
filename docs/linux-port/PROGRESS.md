@@ -5451,3 +5451,25 @@ capability-preservation leg (cmux still navigates there; a cmux://
 document still reloads) that had to pass BEFORE and after.
 
 `browser-scheme-smoke` 7 -> 11 assertions, 0 skips.
+
+**Three defects the suites did not catch, found by reading the diff
+while the gate ran.** Worth recording because none of them would have
+gone red. (1) The per-view key was a seeded `hashValue` rather than the
+address; two colliding live views would have let one view's token vouch
+for a navigation in another — the single thing the policy must never do.
+(2) The `decide-policy` handler was connected AFTER the view's first
+load, so the pane's own initial navigation would be judged by a handler
+that did not exist yet, leaving an armed token unconsumed for a later
+page-initiated navigation to the same URI to spend. The GTK main loop
+very likely ordered this safely in practice, which is worse than a plain
+bug: it would have held until it didn't. The connect now precedes both
+the restore and the initial load — the discipline the console capture
+and the WebAuthn polyfill already follow in the same function. (3)
+`window.open` had been reasoned about and never measured; its leg now
+opens an http popup as a CONTROL first, because popup routing sits
+behind a settings flag and a burst budget and "no new surface appeared"
+would otherwise be true for the wrong reason.
+
+Popup and WebDriver views were verified to reach the policy rather than
+assumed to: both park in `BrowserAdoption.pending` and come back out
+through `BrowserSurfaces.create`, which is where the handler installs.
