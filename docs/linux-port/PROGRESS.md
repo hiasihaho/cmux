@@ -5473,3 +5473,30 @@ would otherwise be true for the wrong reason.
 Popup and WebDriver views were verified to reach the policy rather than
 assumed to: both park in `BrowserAdoption.pending` and come back out
 through `BrowserSurfaces.create`, which is where the handler installs.
+
+**The third entry, and why the guard that skipped nearly hid it.**
+`window.open("cmux://about")` from a remote page DID open a pane (3 -> 4
+surfaces). E1 as first written did not cover it, and the commit message
+asserting that the opener's new-window decision would have been enough
+was simply wrong. The cause is an ordering one, the same family as the
+handler-before-load fix: `popupCreate` returns the new view and WebKit
+begins loading the target into it immediately, while the pane adoption
+that would install the policy on that view happens on a later main-loop
+turn. The load wins the race. So the refusal moved to the creation seam
+— `popupCreate` declines outright when the target is app-owned, with the
+policy still installed on the new view as the backstop for popups whose
+url WebKit has not resolved yet.
+
+What nearly hid it was my own leg. Its first version could only ever
+SKIP: `window.open` issued from an `eval` carries no user gesture, so
+WebKit's popup blocker refused the CONTROL popup, and the leg
+politely reported "popups did not route here" — in a full gate that
+otherwise read 253/0. The vacuous-pass guard did its job (it did not
+claim a pass it had not earned) and still let a hole through, because
+a leg that always skips asserts nothing. It now clicks real buttons in
+the fixture and counts summed `surface_count` rather than
+`list-pane-surfaces`, both of which `browser-popup-smoke` had already
+had to learn. Standing lesson: a skip is a deferred assertion, and a
+skip that can never become an assertion is a hole with a comment on it.
+
+`browser-scheme-smoke` 11 -> 12 assertions, 0 skips.

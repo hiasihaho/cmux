@@ -139,16 +139,7 @@ enum BrowserSurfaceFactory {
         // that does not exist yet, its armed token would go unconsumed,
         // and a later page-initiated navigation to the same URI could
         // spend it.
-        g_signal_connect_data(
-            UnsafeMutableRawPointer(widget), "decide-policy",
-            unsafeBitCast(browserDecidePolicy, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
-        )
-        g_signal_connect_data(
-            UnsafeMutableRawPointer(widget), "destroy",
-            unsafeBitCast(browserNavPolicyForget, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
-        )
+        BrowserNavigationPolicy.install(UnsafeMutableRawPointer(widget))
 
         // A session restore parks the full browser state (zoom, history,
         // WebKit's own blob) here, since SurfaceKind can only carry a URL.

@@ -35,6 +35,37 @@ enum BrowserNavigationPolicy {
     /// Keyed by the view pointer; dropped when the widget dies.
     private static var armed: [UInt: String] = [:]
 
+    /// Views already carrying the handler. A popup gets it at creation
+    /// (see `popupCreate`) and again when the pane adopts it, and a
+    /// double connection would be merely wasteful rather than wrong —
+    /// but the set makes the intent explicit and keeps one view to one
+    /// handler.
+    private static var installed: Set<UInt> = []
+
+    /// Connects the policy to a web view. MUST run before the view's
+    /// first load: a navigation decided before the handler exists is a
+    /// navigation nobody judged, and it leaves an armed token behind for
+    /// a later page-initiated navigation to spend.
+    static func install(_ widget: UnsafeMutableRawPointer) {
+        let k = UInt(bitPattern: UnsafeRawPointer(widget))
+        guard !installed.contains(k) else { return }
+        installed.insert(k)
+        g_signal_connect_data(
+            widget, "decide-policy",
+            unsafeBitCast(browserDecidePolicy, to: GCallback.self),
+            nil, nil, GConnectFlags(0)
+        )
+        g_signal_connect_data(
+            widget, "destroy",
+            unsafeBitCast(browserNavPolicyForget, to: GCallback.self),
+            nil, nil, GConnectFlags(0)
+        )
+    }
+
+    /// True when this URI may only be reached because cmux asked for it.
+    /// `popupCreate` needs the question before a view exists to ask it of.
+    static func isAppOwned(_ uri: String) -> Bool { isCmuxScheme(uri) }
+
     // MARK: - The cmux-initiated navigation seam
 
     /// `load_uri`, with cmux vouching for the destination.
@@ -134,6 +165,7 @@ enum BrowserNavigationPolicy {
 
     static func forget(_ webView: UnsafeMutablePointer<WebKitWebView>) {
         armed.removeValue(forKey: key(webView))
+        installed.remove(key(webView))
     }
 
     private static func isCmuxScheme(_ uri: String) -> Bool {

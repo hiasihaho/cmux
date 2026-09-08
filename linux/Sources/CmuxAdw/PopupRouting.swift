@@ -79,6 +79,18 @@ let popupCreate: @convention(c) (
         return String(cString: uri)
     }()
 
+    // E1: a page may not open a WINDOW onto app-owned state either.
+    // Refused here rather than on the new view, because WebKit starts
+    // loading the target into that view as soon as this function
+    // returns — before the pane adoption that would install the policy
+    // on it. Measured, not reasoned: the version of E1 that relied on
+    // the opener's new-window decision let a cmux:// popup through
+    // (browser-scheme-smoke, 3 -> 4 surfaces).
+    if BrowserNavigationPolicy.isAppOwned(targetURL) {
+        popupLog("refused a popup onto app-owned state: \(targetURL)")
+        return nil
+    }
+
     guard PopupRouting.allowPopup(from: opener.surfaceId) else {
         popupLog("blocked popup burst from \(opener.surfaceId) (url: \(targetURL))")
         return nil
@@ -110,6 +122,11 @@ let popupCreate: @convention(c) (
     }
     let raw = UnsafeMutableRawPointer(created)
     let view = OpaquePointer(raw)
+    // The deferred-url case: `targetURL` is empty for popups WebKit has
+    // not resolved yet, so the check above cannot see them. Installing
+    // here — before this function returns and WebKit begins loading —
+    // is the backstop that judges them.
+    BrowserNavigationPolicy.install(raw)
 
     guard PopupRouting.adopt?(view, opener.surfaceId) == true else {
         // No pane to put it in: drop the view and decline, so WebKit's own
