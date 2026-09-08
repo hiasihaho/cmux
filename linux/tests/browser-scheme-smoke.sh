@@ -24,8 +24,13 @@ PAGE_PORT=8452
 source "$(dirname "$0")/lib.sh"
 
 WORK=$(mktemp -d)
-printf '%s' '<!doctype html><title>scheme fixture</title><body><p>remote origin</p></body>' \
-    > "$WORK/index.html"
+cat > "$WORK/index.html" <<'HTML'
+<!doctype html><title>scheme fixture</title><body>
+<p>remote origin</p>
+<button id="openhttp" onclick="window.open('/index.html','_blank')">http</button>
+<button id="opencmux" onclick="window.open('cmux://about','_blank')">cmux</button>
+</body>
+HTML
 start_fixture_server "$WORK"
 
 start_xvfb
@@ -162,20 +167,25 @@ else
 fi
 
 info "E1: window.open is a third entry (control first, or this proves nothing)"
-# A popup becomes a TAB in the opener's pane, i.e. a new SURFACE in this
-# workspace — counted with the same list-pane-surfaces call this suite
-# already relies on, rather than a CLI form it has never exercised.
-surfcount() { cx --id-format uuids list-pane-surfaces --workspace "$WS" 2>/dev/null \
-    | grep -ciE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'; }
+# A popup becomes a TAB in the opener's pane, so the pane count does not
+# move and the SURFACE count does — the counter browser-popup-smoke had
+# to learn the same way. And the click is a real one: window.open issued
+# from an eval carries no user gesture, WebKit's popup blocker refuses
+# it, and the leg could then only ever skip.
+surfaces() {
+    cx --json list-panes --workspace "$WS" 2>/dev/null | python3 -c '
+import json,sys
+print(sum(p["surface_count"] for p in json.load(sys.stdin)["panes"]))'
+}
 cx browser --surface "$B" goto "http://127.0.0.1:$PAGE_PORT/index.html" >/dev/null 2>&1
 sleep 3
-before=$(surfcount)
-cx browser --surface "$B" eval 'window.open("http://127.0.0.1:'"$PAGE_PORT"'/index.html"); "issued"' >/dev/null 2>&1
-sleep 4
-control=$(surfcount)
-cx browser --surface "$B" eval 'window.open("cmux://about"); "issued"' >/dev/null 2>&1
-sleep 4
-after=$(surfcount)
+before=$(surfaces)
+cx browser --surface "$B" click '#openhttp' >/dev/null 2>&1
+sleep 3
+control=$(surfaces)
+cx browser --surface "$B" click '#opencmux' >/dev/null 2>&1
+sleep 3
+after=$(surfaces)
 if [ "$SCHEME_OK" = "no" ]; then
     skip "window.open refusal" "scheme not serving"
 elif [ "${control:-0}" -le "${before:-0}" ]; then
