@@ -143,6 +143,15 @@ enum BrowserNavigationPolicy {
         // also not an entry: a page can only get here if cmux put it here.
         // The MAIN frame's uri is the right question even for a subframe:
         // a remote page with a `cmux://` iframe has an http main frame.
+        //
+        // INVARIANT THIS DEPENDS ON, for whoever adds the next route:
+        // every `cmux://` route serves application/json or text/plain,
+        // so nothing served here can embed a remote frame or run script.
+        // Serve HTML from this scheme and the carve-out stops holding —
+        // a remote page inside a cmux:// document could then steer the
+        // main frame anywhere in the scheme, and this branch would allow
+        // it. Add an HTML route and this rule needs re-deciding, not
+        // merely re-reading.
         if let current = webkit_web_view_get_uri(view),
            isCmuxScheme(String(cString: current)) {
             webkit_policy_decision_use(decision)
