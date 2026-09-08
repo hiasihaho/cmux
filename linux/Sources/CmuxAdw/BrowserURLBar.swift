@@ -291,7 +291,7 @@ let browserURLBarBack: @convention(c) (
 ) -> Void = { _, userData in
     guard let userData else { return }
     let state = Unmanaged<BrowserURLBarState>.fromOpaque(userData).takeUnretainedValue()
-    BrowserNavigationPolicy.goBack(state.webView)
+    webkit_web_view_go_back(state.webView)
 }
 
 let browserURLBarForward: @convention(c) (
@@ -299,7 +299,7 @@ let browserURLBarForward: @convention(c) (
 ) -> Void = { _, userData in
     guard let userData else { return }
     let state = Unmanaged<BrowserURLBarState>.fromOpaque(userData).takeUnretainedValue()
-    BrowserNavigationPolicy.goForward(state.webView)
+    webkit_web_view_go_forward(state.webView)
 }
 
 /// Reload doubles as Stop while a load is in flight (macOS behavior).
@@ -365,7 +365,7 @@ let browserURLBarActivate: @convention(c) (
     guard let raw = gtk_editable_get_text(OpaquePointer(entryPtr)) else { return }
     let typed = String(cString: raw)
     guard let destination = BrowserURLBar.destination(for: typed) else { return }
-    BrowserNavigationPolicy.load(state.webView, destination)
+    webkit_web_view_load_uri(state.webView, destination)
     // Hand focus back to the page, or the next keystroke goes to the bar.
     gtk_widget_grab_focus(
         UnsafeMutableRawPointer(state.webView).assumingMemoryBound(to: GtkWidget.self)

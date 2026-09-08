@@ -812,7 +812,7 @@ extension ControlCommandHandler {
         }
         runNavigation(id: id, params: params, target: target,
                       baseResult: ["url": url], respond: respond) { webView in
-            BrowserNavigationPolicy.load(webView, url)
+            webkit_web_view_load_uri(webView, url)
         }
     }
 
@@ -828,8 +828,8 @@ extension ControlCommandHandler {
         runNavigation(id: id, params: params, target: target,
                       baseResult: ["action": action], respond: respond) { webView in
             switch action {
-            case "back": BrowserNavigationPolicy.goBack(webView)
-            case "forward": BrowserNavigationPolicy.goForward(webView)
+            case "back": webkit_web_view_go_back(webView)
+            case "forward": webkit_web_view_go_forward(webView)
             default: webkit_web_view_reload(webView)
             }
         }

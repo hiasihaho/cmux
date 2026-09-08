@@ -136,15 +136,13 @@ enum BrowserSessionState {
         // go_to_back_forward_list_item navigates within the restored list.
         if let list = webkit_web_view_get_back_forward_list(webView),
            let item = webkit_back_forward_list_get_current_item(list) {
-            // Armed: a pane restored onto `cmux://` must come back, or
-            // the policy would have narrowed a seam restore depends on.
-            BrowserNavigationPolicy.goToItem(webView, item)
+            webkit_web_view_go_to_back_forward_list_item(webView, item)
             return true
         }
         // No usable list (blob restored nothing): fall through to the
         // portable URL rather than claiming success.
         guard !snapshot.url.isEmpty else { return false }
-        BrowserNavigationPolicy.load(webView, snapshot.url)
+        webkit_web_view_load_uri(webView, snapshot.url)
         return true
     }
 
@@ -154,7 +152,7 @@ enum BrowserSessionState {
         _ webView: UnsafeMutablePointer<WebKitWebView>
     ) -> Bool {
         guard !snapshot.url.isEmpty else { return false }
-        BrowserNavigationPolicy.load(webView, snapshot.url)
+        webkit_web_view_load_uri(webView, snapshot.url)
         return true
     }
 }

@@ -194,7 +194,6 @@ up.
 | Popup burst budget | popups become tabs, capped per opener per 10s. macOS routes popups (richer: middle-click intent, modifier flags, open-externally rules) but has no budget |
 | `browser screenshot --full-page` | whole-document capture; both platforms default to the visible viewport, macOS exposes no full-page flag |
 | Navigation barrier on `goto`/`back`/`forward`/`reload` | the verb holds its response until the new document commits. macOS has the same latent race (`v2BrowserNavigate` → `navigateSmart` → immediate `.ok`) — see [UPSTREAM.md](UPSTREAM.md) §4b |
-| `cmux://` URI scheme + navigation policy | the app serving its OWN state to a pane (`cmux://about`, `cmux://surface/<uuid>/scrollback`) — state with no path on disk, so `file://` cannot address it and no port is bound. Registered `as_no_access` and NOT cors-enabled, so a remote origin's `fetch` is refused. **E1 (2026-09-08):** a `decide-policy` handler refuses `cmux://` navigations cmux did not vouch for — main frame and subframe — while cmux's own load/back/forward/restore paths keep the route. macOS has no counterpart |
 | Quadratic CLI transfer fix | in the **shared** `CLI/cmux.swift`, so macOS benefits once merged — UPSTREAM.md §4a |
 
 | debug.resume_plan + `linux/scripts/resume-audit.sh` | ★ | 2026-08-18: "who would auto-resume at the next restore" answered by the app's REAL resolver (AgentResume.resumeCommand) per terminal surface — drift-proof by construction; the script is a thin formatter. Suite-asserted (agent-resume-smoke). No macOS counterpart |

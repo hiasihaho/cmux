@@ -55,7 +55,6 @@ SUITES=(
     ui-commands-smoke
     tmux-compat-smoke
     browser-ephemeral-smoke
-    browser-scheme-smoke
     teams-siblings-smoke
 )
 
