@@ -128,13 +128,26 @@ enum BrowserSurfaceFactory {
         gtk_widget_set_vexpand(widget, 1)
         let webView = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: WebKitWebView.self)
 
+        // E1 (hias ruling 2026-09-08): a page is never the authority on
+        // where a pane goes. Refuses `cmux://` navigations cmux did not
+        // vouch for and returns FALSE for every other scheme, so nothing
+        // else about this view's navigation changes.
+        //
+        // BEFORE the first load, deliberately — like the console capture
+        // and the WebAuthn polyfill below. Connected afterwards, the
+        // pane's own initial navigation would be decided by a handler
+        // that does not exist yet, its armed token would go unconsumed,
+        // and a later page-initiated navigation to the same URI could
+        // spend it.
+        BrowserNavigationPolicy.install(UnsafeMutableRawPointer(widget))
+
         // A session restore parks the full browser state (zoom, history,
         // WebKit's own blob) here, since SurfaceKind can only carry a URL.
         // Falls back to the plain URL when there is nothing parked.
         if let restored = BrowserRestoreStore.pending.removeValue(forKey: leaf.surfaceId) {
             BrowserSessionState.restore(restored, into: webView)
         } else if case .browser(let initialURL) = leaf.kind, !initialURL.isEmpty {
-            webkit_web_view_load_uri(webView, initialURL)
+            BrowserNavigationPolicy.load(webView, initialURL)
         }
 
         let tabId = tab.id
