@@ -5,6 +5,29 @@ project could send elsewhere — manaflow (§1–4) and third-party harnesses
 and providers (§5: pi, opencode, hermes, regio-ai). Nothing has been sent;
 a dedicated session will do that.
 
+**2026-09-09: E1 MERGED** (`e31efc934d`) — the `cmux://` seam is now
+coupled to its refusal. hias' rulings of 2026-09-08 (E1/E2/E3), built
+under his standing condition that no build touches the productive
+environment before it is checked: worktree build, gate before AND after
+the merge, named revert `48516a5ce3` (verified byte-identical to
+`4511fc83c9`). A page may no longer steer a pane onto app-owned state —
+**three** entries, all measured: `window.location`, an `<iframe src>`,
+and `window.open`. WebKitGTK exposes no initiator origin, so "cmux
+initiated this" is established by a one-shot token armed for the exact
+URI; the five cmux-initiated navigation sites run through
+`BrowserNavigationPolicy`, and `window.open` is refused at the creation
+seam because WebKit's load beats the pane adoption that would install
+the policy. Post-merge gate 255/0. **Not promoted** — and worth knowing
+why that is not urgent: the daily has run since 2026-09-05 23:55 while
+the seam merged 09-06 20:11, so the running instance has no `cmux://`
+at all and the gap was never live. The seam is UNGATED, though, so the
+first promote from `fa9785374c` onward ships it armed; that promote now
+carries the policy with it. Next on hias' word: **E2**, passkey
+dogfooding of the browser WebAuthn verbs against real sites
+(webauthn.io / demo.yubico.com) with him at the browser — an S-step,
+not a desk build. E3 (palma-as-renderer) deliberately parked until
+qmp's timeline export stabilises.
+
 **2026-09-02: P1b vault encryption MERGED** (`0ed7db78e1`): pk3's
 two-backend key provider (gnome-keyring via secret-tool / Secret portal
 via gdbus fd-passing), AES-GCM v2 envelope, v1 migration with retired
