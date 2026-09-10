@@ -155,6 +155,23 @@ enum AgentResume {
         return nil
     }
 
+    /// `cd <dir> && <command>` when `cwd` is an existing absolute
+    /// directory, else the bare command. macOS parity: its command
+    /// builder prefixes the agent's own cwd (RestorableAgentSession) so a
+    /// resumed agent lands in its recorded project, not wherever the
+    /// pane's shell happened to restore — the "bare shell in $HOME" shape
+    /// when the two diverge. The directory is single-quoted (typed into a
+    /// live shell); a non-absolute or vanished path is ignored so a gone
+    /// target never BLOCKS resume.
+    static func cwdPrefixedCommand(_ command: String, cwd: String?) -> String {
+        guard let cwd, cwd.hasPrefix("/") else { return command }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: cwd, isDirectory: &isDir),
+              isDir.boolValue else { return command }
+        let quoted = "'" + cwd.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        return "cd \(quoted) && \(command)"
+    }
+
     /// Resolves the resume command for a restored surface: newest
     /// restorable active session across all agents' hook stores.
     static func resumeCommand(surfaceId: UUID) -> String? {
@@ -205,8 +222,11 @@ enum AgentResume {
             let record = sessions[sessionId] as? [String: Any]
             if let restorable = record?["isRestorable"] as? Bool, !restorable { continue }
             if let lifecycle = record?["agentLifecycle"] as? String, lifecycle == "ended" { continue }
-            guard let command = command(agent: agent, sessionId: sessionId) else { continue }
-
+            guard let bare = command(agent: agent, sessionId: sessionId) else { continue }
+            // GAP (b): land the resumed agent in its recorded working
+            // directory (the hook cwd is authoritative for the agent; the
+            // pane cwd is not).
+            let command = Self.cwdPrefixedCommand(bare, cwd: record?["cwd"] as? String)
             let updated = (record?["updatedAt"] as? Double) ?? 0
             if best == nil || updated > best!.updated {
                 best = (updated, command)

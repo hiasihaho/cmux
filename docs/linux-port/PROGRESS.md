@@ -5780,3 +5780,52 @@ saying so. Named here rather than left to be rediscovered.
 `webauthn-smoke` 40 -> 41: every ceremony now records what the verifier
 answered, because a verification that fails silently is indistinguishable
 from one that never ran.
+
+## 2026-09-11 — resume/restore round: measured the recurrence, fixed gap (b)
+
+The 2026-09-11 promote brought three real workspaces up as bare $HOME
+shells. qvision's round asked for a proper fix with a holding test.
+Measurement first (the round's whole point), and it overturned two of my
+own hypotheses — recorded because a correction is a contribution:
+
+1. **NOT a cwd-restore regression.** Three ghostty dev repros green:
+   background cwd survives two restarts; spawn-at-$HOME then cd-into-a-
+   project then background survives; surface-id is stable and a hook
+   record still matches after restore. The 2026-09-01 cwd fix holds.
+2. **NOT flatpak.** Its session file is 673 bytes from 09-01, dormant.
+   The productive daily is the native build with the correct default
+   session file (hias' own hypothesis, confirmed).
+3. **NOT isRestorable.** My first diagnosis ("only claude is restorable")
+   was REFUTED by measurement: the resolver skips only `isRestorable ==
+   false` OR `lifecycle == 'ended'`, and every non-claude record is
+   `isRestorable == null` + idle — which RESUMES. A codex/kimi/opencode/
+   pi record resumes fine. Flipping the flag would have "fixed" a non-bug.
+4. **The three strands had NO hook record in any store** (measured). That
+   is the "nothing to resume" case; its exact trigger is unprovable from
+   here (pre-promote state overwritten, same as the wedge) and stays
+   instrumented-open, NON-blocking (a strand is recoverable via
+   surface-id + workspace select + reload).
+
+helper's RR4 macOS-model review named the real, code-observable,
+macOS-divergent gap: **(b)** `resumeCommand` did not inject the agent's
+hook cwd. macOS builds `cd <agent-cwd> && <resume>`
+(RestorableAgentSession); Linux typed the bare command, so an agent whose
+pane restored at a different directory resumed WHERE THE SHELL HAPPENED TO
+BE — `$HOME`. Fixed: `AgentResume.cwdPrefixedCommand` prefixes the
+recorded cwd when it is an existing absolute directory, single-quoted
+(typed into a live shell); a vanished or non-absolute path falls back to
+the bare command so a gone dir never BLOCKS resume.
+
+`agent-resume-smoke` 14 → 18, red-first (RED commit 3 legs failing, the
+real-pwd leg showing `got '/home/hias'` — the reported shape): RR-HOME
+(plan cd-prefix + the resumed stub's real pwd IS the recorded dir),
+RR-CODEX (a second agent kind, RR3), RR-GONE (vanished-cwd fallback).
+
+**Honest scope**: gap (b) is ROBUSTNESS. It makes an agent land in its
+project even from a $HOME pane — but only when a record EXISTS, so it
+does not fix the record-less strands. helper's RR-SHELL / RR-SWAP and the
+generic-stop restorable-record (Part 2 of the ruling) and the per-agent
+stop-instrumentation (Part 3) are the next increment; Part 2 needs the
+measured nuance that a null-isRestorable record already resumes, so
+writing the flag explicitly is correctness/self-description, not the
+strand-fix.
