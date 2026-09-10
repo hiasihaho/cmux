@@ -40,10 +40,14 @@ MARKER=/tmp/cmux-resumetest-marker
 rm -rf "$FIXDIR" "$STUBDIR"
 rm -f "$MARKER" "$SESSION"
 mkdir -p "$FIXDIR" "$STUBDIR"
-for stub in claude kimi hermes; do
+for stub in claude kimi hermes codex; do
     cat > "$STUBDIR/$stub" << EOF
 #!/bin/sh
 echo "$stub \$@" > $MARKER
+# RR-HOME: record the directory the resumed agent actually landed in, so
+# a cwd-prefix (cd <hook-cwd> && …) is proven by the agent's real pwd,
+# not merely inspected in the plan string.
+pwd > $MARKER.pwd
 EOF
     chmod +x "$STUBDIR/$stub"
 done
@@ -291,6 +295,81 @@ else
     bad "hermes default resume" "marker never appeared"
 fi
 
+# --- phase RR-HOME: the resumed agent lands in its RECORDED cwd ---------
+# GAP (b), the "bare shell in $HOME" shape: an agent whose pane restored
+# at a DIFFERENT directory than the agent's own recorded cwd must still
+# resume INTO its cwd. macOS prefixes `cd <cwd> && <resume>`; Linux did
+# not, so the agent ran wherever the shell happened to be. Two proofs:
+# the plan string carries the prefix, AND the resumed stub's real pwd is
+# the recorded dir. RR3: covered for both claude and codex (two kinds).
+rm -f "$MARKER" "$MARKER.pwd" "$FIXDIR"/*-hook-sessions.json
+kill_instance
+# The workspace restores at /tmp (via new-workspace below), but the agent
+# was working in /etc — the two deliberately diverge.
+start_instance || exit 2
+RH_SID=$(v2 '{"id":1,"method":"surface.list"}' | jfield "['result']['surfaces'][0]['id']")
+RHU="22222222-3333-4444-8555-666666666666"
+cat > "$FIXDIR/claude-hook-sessions.json" << EOF
+{ "version": 1,
+  "sessions": { "$RHU": { "isRestorable": true, "agentLifecycle": "idle", "updatedAt": 200, "cwd": "/etc" } },
+  "activeSessionsBySurface": { "$RH_SID": { "sessionId": "$RHU", "updatedAt": 200 } },
+  "activeSessionsByWorkspace": {} }
+EOF
+force_save
+plan=$(v2 '{"id":2,"method":"debug.resume_plan"}')
+expect "RR-HOME: plan carries a cd-prefix to the recorded cwd" \
+    "cd '/etc' && claude --resume $RHU" \
+    "$(echo "$plan" | jfield "['result']['surfaces'][0].get('resume_command','')")"
+# and prove it end to end: the resumed stub's real pwd is /etc
+kill_instance
+start_instance || exit 2
+found=""
+for _ in $(seq 1 30); do [ -f "$MARKER.pwd" ] && { found=yes; break; }; sleep 0.5; done
+if [ "$found" = "yes" ]; then
+    expect "RR-HOME: resumed agent's real pwd is the recorded cwd" "/etc" "$(cat "$MARKER.pwd")"
+else
+    bad "RR-HOME pwd" "stub never ran"
+fi
+
+# --- phase RR-CODEX: gap (b) holds for a SECOND agent kind (RR3) --------
+rm -f "$MARKER" "$MARKER.pwd" "$FIXDIR"/*-hook-sessions.json
+kill_instance
+start_instance || exit 2
+RC_SID=$(v2 '{"id":1,"method":"surface.list"}' | jfield "['result']['surfaces'][0]['id']")
+RCU="cccccccc-3333-4444-8555-666666666666"
+cat > "$FIXDIR/codex-hook-sessions.json" << EOF
+{ "version": 1,
+  "sessions": { "$RCU": { "agentLifecycle": "idle", "updatedAt": 200, "cwd": "/usr" } },
+  "activeSessionsBySurface": { "$RC_SID": { "sessionId": "$RCU", "updatedAt": 200 } },
+  "activeSessionsByWorkspace": {} }
+EOF
+force_save
+plan=$(v2 '{"id":2,"method":"debug.resume_plan"}')
+expect "RR-CODEX: codex resume also carries the cd-prefix" \
+    "cd '/usr' && codex resume $RCU" \
+    "$(echo "$plan" | jfield "['result']['surfaces'][0].get('resume_command','')")"
+
+# --- phase RR-GONE: a VANISHED cwd never blocks resume -----------------
+# A cd-prefix to a missing directory would abort the resume entirely —
+# worse than a bare shell. So a non-existent recorded cwd falls back to
+# the bare command.
+rm -f "$FIXDIR"/*-hook-sessions.json
+kill_instance
+start_instance || exit 2
+RG_SID=$(v2 '{"id":1,"method":"surface.list"}' | jfield "['result']['surfaces'][0]['id']")
+RGU="99999999-3333-4444-8555-666666666666"
+cat > "$FIXDIR/claude-hook-sessions.json" << EOF
+{ "version": 1,
+  "sessions": { "$RGU": { "isRestorable": true, "agentLifecycle": "idle", "updatedAt": 200, "cwd": "/no/such/dir/xyzzy" } },
+  "activeSessionsBySurface": { "$RG_SID": { "sessionId": "$RGU", "updatedAt": 200 } },
+  "activeSessionsByWorkspace": {} }
+EOF
+force_save
+plan=$(v2 '{"id":2,"method":"debug.resume_plan"}')
+expect "RR-GONE: a vanished cwd falls back to the bare command" \
+    "claude --resume $RGU" \
+    "$(echo "$plan" | jfield "['result']['surfaces'][0].get('resume_command','')")"
+
 rm -rf "$FIXDIR" "$STUBDIR"
-rm -f "$MARKER"
+rm -f "$MARKER" "$MARKER.pwd"
 finish
