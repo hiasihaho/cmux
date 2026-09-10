@@ -5636,5 +5636,17 @@ all-zero AAGUID beside it is CORRECT and must not be "enriched":
 `attestation: none` requires it, and inventing one would be a false
 identity claim.
 
-RED `992577433e` (28 passed / 4 failed), GREEN 32/0.
-`webauthn-smoke` 27 -> 32 assertions.
+RED `992577433e` (28 passed / 4 failed), GREEN 32/0. Full gate on the
+final code: 262 passed, 0 failed, 0 crash lines.
+
+**Confirmed by hand, and one leg of it was a check the suite never
+made.** hias re-clicked on the hardened binary twice. First he
+authenticated with `cmux-dogfood` — a credential created under the OLD
+bridge, before the world split and before the use-after-free fix — and
+it worked. That is backward compatibility measured rather than assumed:
+the split changes the TRANSPORT between page and native, not the vault
+format, and now there is evidence for that rather than an argument.
+Then he ran a full register+authenticate cycle with a new
+`cmux-dogfood1`, which also worked. Vault: 2 passkeys, encrypted (host);
+instance alive; zero `JSC_IS_CONTEXT` lines and zero crashes since that
+instance started; no page errors.
