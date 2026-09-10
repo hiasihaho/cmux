@@ -5732,3 +5732,51 @@ unanswered. The all-zero AAGUID beside it is CORRECT and must not be
 CXF v1.0 has no UV member at all — UV is a per-ceremony authenticator
 assertion, never a credential property — so the export boundary is clean
 by construction and nobody should add a UV field to it later.
+
+### The fingerprint rung's first contact with a human (2026-09-10, same day)
+
+hias dogfooded the S2 build and reported: registration worked, and it
+never asked for a fingerprint. It was one defect of mine plus two design
+omissions, and the honest fallback made all three invisible.
+
+**The defect.** `verify(level: .fingerprint)` shells out to
+`fprintd-verify`, which claims the reader for the duration of the call.
+My watchdog terminated it with SIGTERM only — and `fprintd-verify`
+BLOCKS ON D-BUS AND IGNORES SIGTERM. So a timed-out verification left
+the process alive holding the device claim. One leaked process from a
+15:13 suite run held hias's fingerprint sensor until 16:5x; every
+ceremony in between failed with `Device was already claimed`, and the
+sensor was unavailable to the rest of his desktop too. The watchdog now
+escalates to SIGKILL after a grace period.
+
+**Why nothing showed it.** Three omissions, stacked:
+1. `fprintd-verify` exits 0 EVEN WHEN IT CANNOT CLAIM THE DEVICE, so the
+   exit status discriminates nothing and only the output does.
+2. The code collapsed three outcomes into two — verified / not verified —
+   with "we never got to ask" folded into the second. A busy reader was
+   indistinguishable from a finger that did not match. That is the UV bug
+   itself in miniature: an unknown reported as a specific answer.
+3. Nothing was logged per ceremony, so there was no trace anywhere.
+
+Then the honest fallback did its job and hid the whole thing: the site
+asked `userVerification: "preferred"`, so the ceremony proceeded with an
+honest UV=0. Correct behaviour, silent by construction. Had hias used
+the site's advanced options with `required`, he would have seen an
+explicit NotAllowedError instead of a quiet success.
+
+**Also a real limitation, now mitigated rather than solved.**
+`available()` probes with `fprintd-list`, which does NOT claim the
+device, so a BUSY reader still advertises as available. A claim failure
+now falls through to the polkit rung instead of being reported as
+"verification failed".
+
+**Still missing, and it is the reason a working reader gives no cue:**
+the verdict letter specified "click Sign In -> 'swipe now' state in the
+same dialog -> VerifyStart -> close on VerifyStatus. One dialog." The
+backend call is built; that in-dialog state is NOT. Until it exists, a
+fingerprint ceremony asks the human for a finger with nothing on screen
+saying so. Named here rather than left to be rediscovered.
+
+`webauthn-smoke` 40 -> 41: every ceremony now records what the verifier
+answered, because a verification that fails silently is indistinguishable
+from one that never ran.

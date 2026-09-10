@@ -97,6 +97,14 @@ enum WebAuthnVerification {
 
     private static var refusalLogged = false
 
+    /// Per-ceremony outcome, on the record. Before this, a verification
+    /// that silently failed was indistinguishable from one that never ran
+    /// — which is exactly how a claimed-device reader went unnoticed
+    /// while the consent dialog said nothing at all.
+    static func verificationLog(_ message: String) {
+        FileHandle.standardError.write(Data("cmux webauthn verify: \(message)\n".utf8))
+    }
+
     // MARK: - probes
 
     /// Enrolled fingers AND a reachable service. `fprintd-list` exits
@@ -129,16 +137,43 @@ enum WebAuthnVerification {
     static func verify(level: Level, rpId: String, completion: @escaping (Bool) -> Void) {
         switch level {
         case .none:
+            verificationLog("no verifier available — the ceremony proceeds with UV=0")
             completion(false)
         case .test:
             // Deliberately deferred rather than inline: an inline answer
             // would once again test a path no human takes.
+            verificationLog("test backend verified (no human was asked)")
             DispatchQueue.main.async { completion(true) }
         case .fingerprint:
             DispatchQueue.global(qos: .userInitiated).async {
-                let ok = run("fprintd-verify", [], timeout: 30)?
-                    .contains("verify-match") ?? false
-                DispatchQueue.main.async { completion(ok) }
+                let output = run("fprintd-verify", [], timeout: 25) ?? ""
+                // THREE OUTCOMES, NOT TWO. `fprintd-verify` exits 0 even
+                // when it cannot claim the device, so the exit status
+                // discriminates nothing and only the output does:
+                //   verify-match      -> this human is who they claim
+                //   verify-no-match   -> a finger, and it was not theirs
+                //   anything else     -> we never got to ask
+                // Collapsing the third into "not verified" is the same
+                // mistake as the UV flag itself: an unknown reported as a
+                // specific answer. It falls through to the next rung.
+                if output.contains("verify-match") {
+                    DispatchQueue.main.async { completion(true) }
+                    return
+                }
+                if output.contains("verify-no-match") {
+                    verificationLog("fingerprint did not match")
+                    DispatchQueue.main.async { completion(false) }
+                    return
+                }
+                let detail = output.contains("already claimed")
+                    ? "the reader is claimed by another process"
+                    : "no answer from fprintd"
+                verificationLog("fingerprint unavailable (\(detail)) — falling to the next rung")
+                if polkitReady() {
+                    verify(level: .password, rpId: rpId, completion: completion)
+                } else {
+                    DispatchQueue.main.async { completion(false) }
+                }
             }
         case .password:
             DispatchQueue.global(qos: .userInitiated).async {
@@ -167,7 +202,18 @@ enum WebAuthnVerification {
     /// JavaScript that nobody calls.)
     private static func armWatchdog(_ process: Process, seconds: Int) -> DispatchWorkItem {
         let killer = DispatchWorkItem {
-            if process.isRunning { process.terminate() }
+            guard process.isRunning else { return }
+            // SIGTERM FIRST, THEN SIGKILL — and the second half is not
+            // belt-and-braces. `fprintd-verify` blocks on a D-Bus call and
+            // IGNORES SIGTERM, so a terminate()-only watchdog leaves it
+            // alive holding the reader's device claim. Measured the hard
+            // way: one leaked process held hias's fingerprint sensor for
+            // an hour and a half, and every later ceremony failed with
+            // "Device was already claimed" while the dialog said nothing.
+            process.terminate()
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .seconds(2)) {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            }
         }
         DispatchQueue.global(qos: .utility)
             .asyncAfter(deadline: .now() + .seconds(seconds), execute: killer)

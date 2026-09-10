@@ -926,6 +926,15 @@ case "$OUT" in
     created-uv:*) ok "uv:required proceeds once a verifier can answer" ;;
     *)            bad "verified path" "a verifier was available and the ceremony still failed: $OUT" ;;
 esac
+# A verification that fails silently is indistinguishable from one that
+# never ran — which is how a claimed fingerprint reader went unnoticed
+# for 90 minutes while the consent dialog said nothing at all. Every
+# ceremony now says on the record what the verifier answered.
+if grep -q "cmux webauthn verify:" "$LOG" 2>/dev/null; then
+    ok "the verifier records its per-ceremony outcome"
+else
+    bad "silent verification" "no 'cmux webauthn verify:' line — a silent verifier hides both its failures and its absence"
+fi
 UVJSON=$(cx browser eval --script 'JSON.parse(window.__createUvJson).response.attestationObject' --surface "$SURF" 2>/dev/null | tr -d '"')
 FLAGS=$(python3 -c "
 import base64
