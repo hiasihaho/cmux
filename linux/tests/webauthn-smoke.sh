@@ -194,6 +194,7 @@ INSTANCE_ENV=(
     CMUX_WEBAUTHN_AUTOAPPROVE=1
     CMUX_WEBAUTHN_VAULT="$VAULT"
     CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_UV_BACKEND=none
     GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
 )
 start_instance || exit 2
@@ -421,6 +422,7 @@ INSTANCE_ENV=(
     CMUX_WEBAUTHN_AUTOAPPROVE=1
     CMUX_WEBAUTHN_VAULT="$VAULT"
     CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_UV_BACKEND=none
     GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
 )
 start_instance || exit 2
@@ -492,6 +494,7 @@ INSTANCE_ENV=(
     CMUX_WEBAUTHN_AUTOAPPROVE=1
     CMUX_WEBAUTHN_VAULT="$VAULT"
     CMUX_WEBAUTHN_KEY_BACKEND=none
+    CMUX_WEBAUTHN_UV_BACKEND=none
     GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
 )
 start_instance || exit 2
@@ -535,6 +538,7 @@ INSTANCE_ENV=(
     CMUX_WEBAUTHN_AUTOAPPROVE=1
     CMUX_WEBAUTHN_VAULT="$VAULT"
     CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_UV_BACKEND=none
     GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
 )
 start_instance || exit 2
@@ -561,6 +565,7 @@ INSTANCE_ENV=(
     CMUX_WEBAUTHN_AUTOAPPROVE=1
     CMUX_WEBAUTHN_VAULT="$VAULT"
     CMUX_WEBAUTHN_KEY_BACKEND=none
+    CMUX_WEBAUTHN_UV_BACKEND=none
     GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
 )
 start_instance || exit 2
@@ -612,6 +617,7 @@ INSTANCE_ENV=(
     CMUX_WEBAUTHN_AUTOAPPROVE=1
     CMUX_WEBAUTHN_VAULT="$VAULT"
     CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_UV_BACKEND=none
     GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
 )
 start_instance || exit 2
@@ -692,6 +698,7 @@ INSTANCE_ENV=(
     CMUX_WEBAUTHN_AUTOAPPROVE=async
     CMUX_WEBAUTHN_VAULT="$VAULT"
     CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_UV_BACKEND=none
     GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
 )
 start_instance || exit 2
@@ -742,6 +749,7 @@ INSTANCE_ENV=(
     CMUX_WEBAUTHN_AUTOAPPROVE=async
     CMUX_WEBAUTHN_VAULT="$VAULT"
     CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_UV_BACKEND=none
     GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
 )
 start_instance || exit 2
@@ -798,6 +806,7 @@ INSTANCE_ENV=(
     CMUX_WEBAUTHN=1
     CMUX_WEBAUTHN_AUTOAPPROVE=1
     CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_UV_BACKEND=none
     GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
     XDG_DATA_HOME="$WORK/xdgdata"
 )
@@ -870,14 +879,16 @@ cx browser click '#createuv' --surface "$SURF" >/dev/null 2>&1
 OUT=$(poll_out "$SURF" 'creating-uv')
 case "$OUT" in
     createuv-error:NotAllowedError) ok "uv:required is REFUSED up front when nothing can verify" ;;
-    created-uv:*)                   bad "false UV claim" "uv:required completed without verification — the RP now believes a factor it never got" ;;
+    created-uv:*)                   bad "false UV claim" "uv:required COMPLETED without verification — the RP now believes a factor it never got" ;;
+    ""|creating-uv)                 bad "uv:required timed out" "no answer at all — a hang is not a refusal, and must not be reported as one" ;;
     *)                              bad "uv:required refusal" "expected NotAllowedError, got: $OUT" ;;
 esac
 cx browser click '#getuv' --surface "$SURF" >/dev/null 2>&1
 OUT=$(poll_out "$SURF" 'getting-uv')
 case "$OUT" in
     getuv-error:NotAllowedError) ok "uv:required assertions are refused too, not only registrations" ;;
-    asserted-uv:*)               bad "false UV claim" "uv:required assertion completed without verification" ;;
+    asserted-uv:*)               bad "false UV claim" "uv:required assertion COMPLETED without verification" ;;
+    ""|getting-uv)               bad "uv:required assertion timed out" "no answer at all — a hang is not a refusal" ;;
     *)                           bad "uv:required assertion refusal" "expected NotAllowedError, got: $OUT" ;;
 esac
 

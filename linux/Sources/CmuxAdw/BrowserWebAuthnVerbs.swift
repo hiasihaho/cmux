@@ -44,6 +44,12 @@ extension ControlCommandHandler {
             // means "your passkeys exist but the key backend cannot open
             // them right now" — NOT an empty vault.
             "vault_undecryptable": WebAuthnVault.vaultIsUndecryptable,
+            // S2: the verification level belongs beside the vault state,
+            // and for the same reason — an operator has to be able to see
+            // what this authenticator can actually PROVE, not only what it
+            // can store. "none" here is why a bank-grade site refuses us.
+            "verification": WebAuthnVerification.available().rawValue,
+            "verification_sentence": WebAuthnVerification.available().sentence,
         ])
     }
 
