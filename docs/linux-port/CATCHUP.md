@@ -5,6 +5,42 @@ project could send elsewhere — manaflow (§1–4) and third-party harnesses
 and providers (§5: pi, opencode, hermes, regio-ai). Nothing has been sent;
 a dedicated session will do that.
 
+**2026-09-10: the passkey day.** hias dogfooded the WebAuthn verbs at
+the browser (E2) and the ceremony failed, which turned into five merged
+increments and one destroyed credential. `linux-port` @ `999e189a6f`,
+independently re-verified from the committed tree with a fresh build:
+webauthn-smoke 32/0, verbs 17/0, keyisolation 5/0, cxf-core 13/0,
+cxf-export 15/0, and the developer's keyring item byte-identical across
+the whole run.
+
+What landed: a **use-after-free in the reply path** (the reply was
+retained across the consent dialog, the JSCContext that builds its value
+was not — a GLib CRITICAL under a human click, a SEGFAULT in the suite);
+**S1**, a subframe could run a ceremony with the top-level site's
+authority, closed by moving the bridge into its own script world with a
+top-frame-only relay, which is what macOS always did; **S3**,
+`CMUX_WEBAUTHN_AUTOAPPROVE` now inert unless the vault is redirected;
+and the **vault-key defect** — the host keyring key was GLOBAL, so any
+`KEY_BACKEND=host` test shared the key protecting real credentials while
+its vault sat safely in /tmp. Vault scoped, key not. That asymmetry cost
+hias two passkeys: the file stayed perfect and became permanently
+unreadable. Every suite is now off the real Secret Service.
+
+**Still open:** S2 (the honest UV ladder) on `passkey-uv-ladder`, gate
+261/0, awaiting the lane's review. B+C (envelope v3 naming its key by
+`key_id`, design merged at `1568363f25`) in build. S5 and the "swipe
+now" dialog state with pk3. S4 and `credProps` unassigned. The Codeberg
+dependency switch is documented in GAPS and DEFERRED by hias.
+
+**The lesson of the day, three times over:** a result can be true where
+it ran and false where it landed. This desk reported 40/0 measured
+against an uncommitted CLI line (the branch was 39/1); the passkey lane
+reported 5/5 measured with a `seed_v1` its green commit dropped (it was
+1/3); and a fingerprint suite leaked an `fprintd-verify` that ignored
+SIGTERM and held the human's reader for ninety minutes. None of the
+three was caught by a suite. All three were caught by a reader. That is
+the argument for red-first cross-review at full strength.
+
 **2026-09-09: E1 MERGED** (`e31efc934d`) — the `cmux://` seam is now
 coupled to its refusal. hias' rulings of 2026-09-08 (E1/E2/E3), built
 under his standing condition that no build touches the productive
