@@ -124,6 +124,67 @@ sandbox, so it has never actually run.
 product decision about whether one human has one cmux config; it does not
 block the portal work.
 
+### Vault key v3: the envelope names its key (design — pk3, 2026-09-10)
+
+The 2026-09-10 incident's durable fix. A+B (the gated per-vault `file`
+backend for suites; mint rules with a three-valued lookup) closed the
+exposure; **C makes the class of bug impossible**: the orphaning existed
+because a vault could not say WHICH key it needed, so any resolution
+failure read as "mint a new one" and the mint overwrote the shared entry.
+Builder: passkey-cmux. This note is the contract the red and green are
+reviewed against; the incident analysis (three layers + the collapsed
+lookup) lives in the announce-cmux-desk letters of 2026-09-10.
+
+**Envelope v3**: `{version: 3, backend, key_id?, nonce, ciphertext}`.
+`key_id` is 16 random bytes minted WITH the key (never derived from it),
+base64url-unpadded on the wire, and is OPTIONAL: authoritative for the
+host backend, absent for portal/file (there the backend itself is the
+address — the portal's per-app master secret, the per-vault key file).
+
+**Host keyring addressing.** Entries store with attributes
+`service=cmux, purpose=webauthn-vault-key, key_id=<id>`; the secret is
+the 32-byte key as before. Entries coexist, one per minted key. The
+legacy global entry (no `key_id` attribute) stays READABLE for v2
+envelopes; nothing new is ever stored under it.
+
+**Resolution rules** (they replace "lookup miss mints"):
+
+1. The lookup is three-valued: FOUND(key) / ABSENT / ERROR. secret-tool
+   exit 0 with empty stdout is ABSENT; non-zero exit, timeout, and
+   unparseable output are ERROR. The 5-second deadline moves to 15 and
+   can only ever yield ERROR — a slow keyring must never again read as
+   an absent key (the 13:40 trigger candidate).
+2. v3 envelope: look up its `key_id`. FOUND → decrypt. ABSENT or ERROR
+   → `vault_undecryptable` (the state we already type and surface).
+   Never mint, never fall through to another key.
+3. v2 envelope: resolve the LEGACY global entry. FOUND → decrypt, then
+   migrate (below). ABSENT or ERROR → `vault_undecryptable`.
+4. Fresh vault (no envelope exists): mint — a fresh `key_id` and a fresh
+   32-byte key, stored under the full attribute set. Mint is the ONLY
+   store path and always writes a NEW entry; since a fresh `key_id`
+   never matches an existing entry's attributes, no code path can
+   overwrite another vault's key. Rotation, if ever wanted, is an
+   explicit verb, never implicit.
+
+**Migration v2 → v3** runs on a successful v2 decrypt-read, and it does
+NOT re-encrypt: the key bytes are unchanged, so nonce and ciphertext
+stay valid. Mint a `key_id`, store the SAME key bytes under it, rewrite
+the envelope as v3 with the new field. Addressing changes; the data
+cannot be stranded by the migration itself. The legacy entry is left in
+place as the read-only fallback for other v2 vaults; deleting it is a
+human decision, not the code's.
+
+**Suite legs the build must prove** (patterns already exist in
+webauthn-smoke's guard phase and the isolation suite):
+(a) a v2 vault migrates to v3 on first read — envelope gains `key_id`,
+nonce/ciphertext byte-identical, credentials still answer ceremonies;
+(b) v3 vault + its entry deleted → typed undecryptable AND no new entry
+minted (keyring entry count unchanged across the run);
+(c) two fresh vaults mint two entries; neither mint touches the other's
+entry or the legacy one;
+(d) an unparseable stored value (ERROR, not ABSENT) → undecryptable,
+no mint.
+
 **Blockers owned by the cmux desk — ask, do not work around**:
 - Flatpak config resolution (GAPS, `adce6eedc8`): the flag flip for
   `CMUX_WEBAUTHN` would land in `~/.var/app/<id>/config/cmux/cmux.json`,
