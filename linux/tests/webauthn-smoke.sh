@@ -630,6 +630,59 @@ ASIDES_AFTER=$(ls "$VAULT".undecryptable-*.bak 2>/dev/null | wc -l)
     && ok "save after a successful re-read does not move a decryptable vault aside" \
     || bad "undecryptable state stuck" "asides $ASIDES_BEFORE -> $ASIDES_AFTER; a decryptable vault was moved aside"
 
+info "the ASYNCHRONOUS reply path — the one a human actually takes"
+# Found by dogfooding with hias at the browser, 2026-09-10: every leg
+# above approves INLINE (CMUX_WEBAUTHN_AUTOAPPROVE=1), on the message
+# handler's own stack. A real consent dialog answers one or more
+# main-loop turns later, and on that path the reply never reached the
+# page — webauthn.io showed "the authenticator was unable to process the
+# specified options" while the credential sat safely in the vault.
+#
+# So this phase approves from an idle callback: the dialog's LIFETIME
+# without the click. It is the only leg here that can see a reply which
+# does not survive its own callback.
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION" "$VAULT"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=async
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=host
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+cx browser click '#create' --surface "$SURF" >/dev/null 2>&1
+OUT=$(poll_out "$SURF" 'creating')
+case "$OUT" in
+    created:*) ok "a deferred approval still returns the credential to the page" ;;
+    *)         bad "deferred create" "the page never got its credential: $OUT" ;;
+esac
+cx browser click '#get' --surface "$SURF" >/dev/null 2>&1
+OUT=$(poll_out "$SURF" 'getting')
+case "$OUT" in
+    asserted:*) ok "a deferred approval still returns the assertion to the page" ;;
+    *)          bad "deferred get" "the page never got its assertion: $OUT" ;;
+esac
+# The same use-after-free landed TWO ways: a GLib CRITICAL when hias
+# clicked the real dialog, and a SEGFAULT with a core dump in this
+# suite. So "no CRITICAL in the log" is not the assertion — a dead
+# instance writes no CRITICAL and would pass it vacuously, which is
+# exactly what the first version of this leg did over a core dump.
+# Liveness first, then the symptom.
+if ! cx ping >/dev/null 2>&1; then
+    bad "instance survived the deferred reply" "the instance is GONE — the deferred reply path crashed it"
+elif grep -q "JSC_IS_CONTEXT(context)' failed" "$LOG" 2>/dev/null; then
+    bad "dead JSCContext" "jsc_value_new_string ran on a released context — the reply outlived the context that builds it"
+else
+    ok "the instance survives a deferred reply, with no released-context CRITICAL"
+fi
+
 echo
 echo "== webauthn-smoke: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

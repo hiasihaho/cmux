@@ -42,8 +42,22 @@ enum BrowserWebAuthn {
 
     /// Test/dev escape hatch: skip the consent dialog. Headless suites
     /// cannot click GTK dialogs. Never enable on a daily instance.
-    static var autoApproves: Bool {
-        ProcessInfo.processInfo.environment["CMUX_WEBAUTHN_AUTOAPPROVE"] == "1"
+    ///
+    /// `1` approves IMMEDIATELY, on the message handler's own stack. That
+    /// is convenient and it is also why every suite passed while the only
+    /// path a human takes was broken: approving inline never lets the
+    /// reply outlive the callback, which is the entire difference a real
+    /// dialog makes. `async` approves from a later main-loop turn — the
+    /// dialog's lifetime without the click — so a headless suite can
+    /// cover the asynchronous path that actually ships.
+    enum Approval { case dialog, immediate, deferred }
+
+    static var approval: Approval {
+        switch ProcessInfo.processInfo.environment["CMUX_WEBAUTHN_AUTOAPPROVE"] {
+        case "1": return .immediate
+        case "async": return .deferred
+        default: return .dialog
+        }
     }
 }
 
@@ -230,9 +244,19 @@ private func runWebAuthnCeremony(
 
     // The reply outlives this stack frame whenever a dialog is shown.
     webkit_script_message_reply_ref(reply)
-    if BrowserWebAuthn.autoApproves {
+    switch BrowserWebAuthn.approval {
+    case .immediate:
         finish(true)
         return
+    case .deferred:
+        // Same lifetime as the dialog, no click required: the reply is
+        // sent from a later main-loop turn, after this stack — and the
+        // message value that owns the JSCContext — is gone.
+        _ = g_idle_add(webAuthnDeferredApprove,
+                       Unmanaged.passRetained(WebAuthnDeferredBox { finish(true) }).toOpaque())
+        return
+    case .dialog:
+        break
     }
     presentWebAuthnConsentDialog(
         webView: webView,
@@ -408,6 +432,21 @@ private func presentWebAuthnConsentDialog(
     let dialogPtr = UnsafeMutableRawPointer(dialog).assumingMemoryBound(to: AdwDialog.self)
     let parent = UnsafeMutableRawPointer(webView).assumingMemoryBound(to: GtkWidget.self)
     adw_dialog_present(dialogPtr, parent)
+}
+
+// MARK: - deferred approval (test seam)
+
+/// Carries a Swift closure across the C idle callback.
+private final class WebAuthnDeferredBox {
+    let action: () -> Void
+    init(_ action: @escaping () -> Void) { self.action = action }
+}
+
+private let webAuthnDeferredApprove: @convention(c) (UnsafeMutableRawPointer?) -> Int32 = {
+    userData in
+    guard let userData else { return 0 }
+    Unmanaged<WebAuthnDeferredBox>.fromOpaque(userData).takeRetainedValue().action()
+    return 0  // G_SOURCE_REMOVE: fires once
 }
 
 // MARK: - reply helpers
