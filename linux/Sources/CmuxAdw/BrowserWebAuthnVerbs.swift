@@ -18,6 +18,13 @@ import Foundation
 extension ControlCommandHandler {
 
     func v2BrowserWebAuthnStatus(id: Any?) -> String {
+        // load() FIRST: it resolves the key and may run the v1->v2
+        // migration, which is what an operator asking for status wants to
+        // see happen. Reading the envelope BEFORE the migration reported
+        // the stale pre-migration state (encrypted:false, backend:none)
+        // while the count reflected the post-migration vault — a split
+        // answer the key-isolation suite caught. Read the file AFTER.
+        let count = WebAuthnVault.load().count
         var present = false
         var encrypted = false
         var backend = "none"
@@ -29,10 +36,6 @@ extension ControlCommandHandler {
                 backend = object["backend"] as? String ?? "unknown"
             }
         }
-        // Count via the seam — on an encrypted vault this resolves the
-        // key (and may run the v1 migration), which is what an operator
-        // asking for status wants to see happen.
-        let count = present ? WebAuthnVault.load().count : 0
         return v2Ok(id: id, result: [
             "enabled": BrowserWebAuthn.isEnabled,
             "vault_present": present,

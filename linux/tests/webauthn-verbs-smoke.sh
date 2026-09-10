@@ -144,7 +144,7 @@ sleep 1
 rm -f "$SESSION"
 INSTANCE_ENV=(
     CMUX_WEBAUTHN=1
-    CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_KEY_BACKEND=file
     CMUX_WEBAUTHN_VAULT="$VAULT"
 )
 start_instance || exit 2
@@ -159,8 +159,8 @@ ST3=$(cx --json browser webauthn status 2>/dev/null)
 [ "$(echo "$ST3" | jget vault_encrypted 2>/dev/null)" = "True" ] \
     && ok "status: vault_encrypted true after migration" \
     || bad "status encrypted" "got '$ST3'"
-[ "$(echo "$ST3" | jget vault_backend 2>/dev/null)" = "host" ] \
-    && ok "status: vault_backend host" \
+[ "$(echo "$ST3" | jget vault_backend 2>/dev/null)" = "file" ] \
+    && ok "status: vault_backend file (suites use the gated file backend, never the real keyring)" \
     || bad "status backend" "got '$ST3'"
 
 # ------------------- phase D: undecryptable is its own typed answer
@@ -204,7 +204,7 @@ sleep 1
 rm -f "$SESSION"
 INSTANCE_ENV=(
     CMUX_WEBAUTHN=1
-    CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_KEY_BACKEND=file
     CMUX_WEBAUTHN_VAULT="$VAULT"
 )
 start_instance || exit 2
