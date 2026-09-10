@@ -68,9 +68,27 @@ KEYRING_BEFORE=$(keyring_fingerprint)
 
 start_xvfb
 
+# A seeded v1 plaintext vault: one `status` call then triggers
+# load() -> migrate -> resolve the key backend -> write a v2 envelope,
+# which is the whole key path with no browser ceremony (the portal
+# suite's instrument). PADDED base64 (the Foundation-strict trap).
+seed_v1() {
+    python3 - "$1" <<'PY'
+import base64, json, sys
+b64 = lambda b: base64.b64encode(b).decode()
+json.dump({"version": 1, "credentials": [
+    {"id": b64(bytes(range(32))), "rpId": "example.com",
+     "userHandle": b64(b"\x07"*16), "userName": "iso@example.com",
+     "userDisplayName": "Iso", "privateKey": b64(b"\x11"*32),
+     "createdAtMs": 1000}]}, open(sys.argv[1], "w"))
+PY
+    chmod 600 "$1"
+}
+
 # ------------------------------------------------ file backend resolves
 info "the file backend encrypts without touching the keyring"
 rm -f "$SESSION" "$VAULT" "$KEYFILE"
+seed_v1 "$VAULT"
 INSTANCE_ENV=(
     CMUX_WEBAUTHN=1
     CMUX_WEBAUTHN_AUTOAPPROVE=async
@@ -80,9 +98,6 @@ INSTANCE_ENV=(
 )
 start_instance || exit 2
 sleep 1
-SURF=$(cx browser open "http://localhost:$PAGE_PORT/x" --focus false 2>/dev/null \
-       | grep -oE 'surface=surface:[0-9]+' | cut -d= -f2)
-# No fixture server needed — status alone drives key resolution + migration.
 ST=$(cx --json browser webauthn status 2>/dev/null)
 [ "$(echo "$ST" | jget vault_backend 2>/dev/null)" = "file" ] \
     && ok "vault_backend is 'file' when CMUX_WEBAUTHN_KEY_BACKEND=file + redirected vault" \
@@ -104,9 +119,14 @@ done
 sleep 1
 rm -f "$SESSION"
 : > "$LOG"
-# No CMUX_WEBAUTHN_VAULT: the default vault. A file backend here would be
-# a new way to key the real vault off an attacker-plantable file, so it
-# must refuse and say so — exactly like the UV test backend.
+# No CMUX_WEBAUTHN_VAULT: the default vault (under a throwaway
+# XDG_DATA_HOME so the real one is untouched). A file backend here would
+# be a new way to key the real vault off an attacker-plantable file, so
+# it must refuse and say so — exactly like the UV test backend. Seed a
+# v1 vault at the DEFAULT path so a status call forces the migration that
+# resolves (and refuses) the backend.
+mkdir -p "$WORK/xdgdata-default/cmux"
+seed_v1 "$WORK/xdgdata-default/cmux/webauthn-credentials.json"
 INSTANCE_ENV=(
     CMUX_WEBAUTHN=1
     CMUX_WEBAUTHN_KEY_BACKEND=file
@@ -115,6 +135,7 @@ INSTANCE_ENV=(
 )
 start_instance || exit 2
 sleep 1
+cx --json browser webauthn status >/dev/null 2>&1   # force load()->migrate->resolve
 grep -q "file key backend ignored" "$LOG" \
     && ok "file backend refuses a default vault, and logs why" \
     || bad "file gate" "no 'file key backend ignored' line — the file backend would key a real vault"
