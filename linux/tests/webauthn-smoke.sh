@@ -60,7 +60,7 @@ const opts = () => ({
   rp: { id: 'localhost', name: 'wa-smoke' },
   user: { id: new Uint8Array(16).fill(7), name: 'probe@example.com', displayName: 'Probe' },
   pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
-  authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+  authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
   timeout: 15000,
   attestation: 'none'
 });
@@ -88,18 +88,47 @@ document.getElementById('get').addEventListener('click', async () => {
     const assertion = await navigator.credentials.get({ publicKey: {
       challenge: new Uint8Array(32).fill(1),
       rpId: 'localhost',
-      userVerification: 'required',
+      userVerification: 'preferred',
       timeout: 15000
     }});
     window.__getJson = JSON.stringify(assertion.toJSON());
     log('asserted:' + assertion.id.slice(0, 12));
   } catch (e) { log('get-error:' + e.name + ':' + e.message); }
 });
+// The uv:'required' pair. Separated from the default legs on purpose:
+// an authenticator that cannot verify must REFUSE these up front, while
+// the legs above must still succeed with an honest UV=0. Sharing one
+// button would make the honest path and the lying one look alike, which
+// is exactly where this bug lived.
+document.getElementById('createuv').addEventListener('click', async () => {
+  log('creating-uv');
+  try {
+    const o = opts();
+    o.authenticatorSelection.userVerification = 'required';
+    const cred = await navigator.credentials.create({ publicKey: o });
+    window.__createUvJson = JSON.stringify(cred.toJSON());
+    log('created-uv:' + cred.id.slice(0, 12));
+  } catch (e) { log('createuv-error:' + e.name); }
+});
+document.getElementById('getuv').addEventListener('click', async () => {
+  log('getting-uv');
+  try {
+    const assertion = await navigator.credentials.get({ publicKey: {
+      challenge: new Uint8Array(32).fill(2),
+      rpId: 'localhost',
+      userVerification: 'required',
+      timeout: 15000
+    }});
+    window.__getUvJson = JSON.stringify(assertion.toJSON());
+    log('asserted-uv:' + assertion.id.slice(0, 12));
+  } catch (e) { log('getuv-error:' + e.name); }
+});
 EOF
 cat > "$WORK/index.html" <<'EOF'
 <!DOCTYPE html><html><head><title>wa-smoke</title></head><body>
 <button id="create">create</button> <button id="createdup">create-dup</button>
 <button id="get">get</button>
+<button id="createuv">create-uv</button> <button id="getuv">get-uv</button>
 <div id="out">none</div>
 <iframe id="kid" src="child.html"></iframe>
 <script src="app.js"></script></body></html>
@@ -307,7 +336,12 @@ att, _ = cbor_parse(b64url(create["response"]["attestationObject"]))
 assert att["fmt"] == "none" and att["attStmt"] == {}, "attestation format"
 auth = att["authData"]
 assert auth[:32] == rp_hash, "create rpIdHash"
-assert auth[32] == 0x45, f"create flags {hex(auth[32])}"
+# UV bit (0x04) must reflect what actually happened. These legs run with
+# no verifier available and userVerification:'preferred', so the honest
+# answer is UP|AT with UV CLEAR. Asserting the byte a relying party
+# actually reads is the point — an app-reported string could say anything.
+if auth[32] != 0x41:
+    fail(f"create flags {hex(auth[32])} — expected 0x41 (UP|AT, UV clear) with no verifier available")
 cred_len = int.from_bytes(auth[53:55])
 cred_id = auth[55:55+cred_len]
 assert base64.urlsafe_b64encode(cred_id).rstrip(b"=").decode() == create["id"], "credential id"
@@ -320,7 +354,9 @@ assert len(x) == 32 and len(y) == 32, "COSE coordinates"
 client2 = json.loads(b64url(get["response"]["clientDataJSON"]))
 assert client2["type"] == "webauthn.get", "get clientData type"
 auth2 = b64url(get["response"]["authenticatorData"])
-assert auth2[:32] == rp_hash and auth2[32] == 0x05, "get authData"
+assert auth2[:32] == rp_hash, "get rpIdHash"
+if auth2[32] != 0x01:
+    fail(f"get flags {hex(auth2[32])} — expected 0x01 (UP, UV clear) with no verifier available")
 signed = auth2 + hashlib.sha256(b64url(get["response"]["clientDataJSON"])).digest()
 sig = b64url(get["response"]["signature"])
 assert get["response"]["userHandle"], "userHandle missing"
@@ -780,6 +816,136 @@ if grep -q "auto-approve ignored" "$LOG" 2>/dev/null; then
     ok "the refused bypass says so in the instance log"
 else
     bad "silent bypass refusal" "no 'auto-approve ignored' line — a refusal nobody can observe is indistinguishable from a hang"
+fi
+
+info "S2: the verification ladder — claim only what was actually done"
+# hias' E2 dogfood found we set UV=1 on every ceremony while obtaining
+# only a CLICK. UV is a claim about WHO is there; a click is presence.
+# A relying party asking userVerification:"required" believed a second
+# factor happened and could not tell otherwise.
+#
+# The ladder, strongest available per ceremony: fprintd -> polkit ->
+# none. This phase drives the two ends of it, because the middle needs a
+# root-installed policy file and the top needs a finger on a sensor.
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION" "$VAULT"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=async
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_UV_BACKEND=none
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+
+# --- bottom rung: nothing available. Honest, and still usable.
+cx browser click '#create' --surface "$SURF" >/dev/null 2>&1
+OUT=$(poll_out "$SURF" 'creating')
+case "$OUT" in
+    created:*) ok "uv:preferred still completes when no verifier exists" ;;
+    *)         bad "preferred with no verifier" "a ceremony that may proceed did not: $OUT" ;;
+esac
+# The flag byte, read the way a relying party reads it.
+UVFLAG=$(cx browser eval --script 'JSON.parse(window.__createJson).response.attestationObject' --surface "$SURF" 2>/dev/null | tr -d '"')
+FLAGS=$(python3 -c "
+import base64,sys
+d=base64.urlsafe_b64decode('$UVFLAG'+'='*(-len('$UVFLAG')%4))
+i=d.find(b'authData')
+print(hex(d[i+8+2+32]) if i>=0 else 'parse-failed')" 2>/dev/null)
+case "$FLAGS" in
+    0x41) ok "no verifier -> UV bit CLEAR in authenticatorData (0x41)" ;;
+    0x45) bad "false UV claim" "UV asserted with no verifier available (0x45) — the bug this phase exists for" ;;
+    *)    skip "UV flag byte" "could not parse authData, so nothing was measured: $FLAGS" ;;
+esac
+
+# --- the refusal: what we cannot prove, we do not attempt.
+cx browser click '#createuv' --surface "$SURF" >/dev/null 2>&1
+OUT=$(poll_out "$SURF" 'creating-uv')
+case "$OUT" in
+    createuv-error:NotAllowedError) ok "uv:required is REFUSED up front when nothing can verify" ;;
+    created-uv:*)                   bad "false UV claim" "uv:required completed without verification — the RP now believes a factor it never got" ;;
+    *)                              bad "uv:required refusal" "expected NotAllowedError, got: $OUT" ;;
+esac
+cx browser click '#getuv' --surface "$SURF" >/dev/null 2>&1
+OUT=$(poll_out "$SURF" 'getting-uv')
+case "$OUT" in
+    getuv-error:NotAllowedError) ok "uv:required assertions are refused too, not only registrations" ;;
+    asserted-uv:*)               bad "false UV claim" "uv:required assertion completed without verification" ;;
+    *)                           bad "uv:required assertion refusal" "expected NotAllowedError, got: $OUT" ;;
+esac
+
+# --- the level has to be legible, or the honesty is invisible.
+ST=$(cx browser webauthn status 2>/dev/null)
+case "$ST" in
+    *"no verification"*|*"verification: none"*) ok "status reports the verification level, not only the vault state" ;;
+    *) bad "status hides the level" "webauthn status says nothing about verification: $ST" ;;
+esac
+
+# --- top rung, faked at the BACKEND (never at the consent gate): proves
+# the honest UV=1 path exists and that uv:required then proceeds. Gated
+# exactly like AUTOAPPROVE — inert unless the vault is redirected — so
+# this cannot become the next silent bypass.
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION" "$VAULT"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=async
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_UV_BACKEND=test
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+cx browser click '#createuv' --surface "$SURF" >/dev/null 2>&1
+OUT=$(poll_out "$SURF" 'creating-uv')
+case "$OUT" in
+    created-uv:*) ok "uv:required proceeds once a verifier can answer" ;;
+    *)            bad "verified path" "a verifier was available and the ceremony still failed: $OUT" ;;
+esac
+UVJSON=$(cx browser eval --script 'JSON.parse(window.__createUvJson).response.attestationObject' --surface "$SURF" 2>/dev/null | tr -d '"')
+FLAGS=$(python3 -c "
+import base64
+d=base64.urlsafe_b64decode('$UVJSON'+'='*(-len('$UVJSON')%4))
+i=d.find(b'authData')
+print(hex(d[i+8+2+32]) if i>=0 else 'parse-failed')" 2>/dev/null)
+case "$FLAGS" in
+    0x45) ok "a real verification sets the UV bit (0x45)" ;;
+    0x41) bad "UV never set" "verification succeeded but the flag stayed clear — now we under-claim" ;;
+    *)    skip "verified UV flag byte" "could not parse authData: $FLAGS" ;;
+esac
+# The same guard S3 taught: a test-only verifier must not reach a real vault.
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_UV_BACKEND=test
+    CMUX_WEBAUTHN_KEY_BACKEND=host
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+    XDG_DATA_HOME="$WORK/xdgdata2"
+)
+start_instance || exit 2
+sleep 1
+if grep -q "test verifier ignored" "$LOG" 2>/dev/null; then
+    ok "the test verifier refuses a default vault, and says so"
+else
+    bad "test verifier on a real vault" "no 'test verifier ignored' line — the fake verifier would apply to real credentials"
 fi
 
 echo
