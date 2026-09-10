@@ -712,11 +712,20 @@ start_instance || exit 2
 sleep 1
 SURF=$(open_pane)
 REACH=$(cx browser eval --script '(()=>{const f=document.getElementById("kid");if(!f)return "NO-FRAME";const w=f.contentWindow;const has=(o)=>typeof (o&&o.webkit&&o.webkit.messageHandlers&&o.webkit.messageHandlers.cmuxWebAuthn);return has(w)+"/"+has(window)})()' --surface "$SURF" 2>/dev/null | tr -d '"')
+# EXPECTATION REWRITTEN UPWARD after the world split, not relaxed to
+# suit it. The first version demanded undefined/object — "gone from the
+# subframe, still there in the top page" — which encoded the OLD
+# architecture, where the bridge lived in the page world. The relay
+# design removes page-world reachability ENTIRELY: no page script, top
+# frame or not, can see the handler. undefined/undefined is therefore
+# the stronger result, and the leg below ("still completes a ceremony")
+# is what stops this from being satisfied by a feature that is simply
+# broken — it passed before the change and has to keep passing.
 case "$REACH" in
-    NO-FRAME) skip "subframe bridge reachability" "fixture frame missing — nothing was measured" ;;
-    undefined/object) ok "the bridge is unreachable from a subframe, still reachable from the top frame" ;;
-    */undefined)      bad "top-frame bridge" "the top frame lost its bridge too ($REACH) — that breaks the feature instead of securing it" ;;
-    *)                bad "subframe bridge" "a subframe can reach the passkey bridge ($REACH)" ;;
+    NO-FRAME)            skip "subframe bridge reachability" "fixture frame missing — nothing was measured" ;;
+    undefined/undefined) ok "no page script can see the bridge — not the subframe, not the top frame" ;;
+    undefined/object)    bad "page-world bridge" "the top page can still reach the bridge directly ($REACH) — the world split did not take" ;;
+    *)                   bad "subframe bridge" "a subframe can reach the passkey bridge ($REACH)" ;;
 esac
 # Reachability is the shape; being ANSWERED is the capability. A handle
 # that refuses every message would still fail the leg above, so assert

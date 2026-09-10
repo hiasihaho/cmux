@@ -5564,3 +5564,77 @@ site with the pattern — `BrowserWebAuthn.swift` is the sole user of
 `jsc_value_get_context`, and the CXF export never replies to the page.
 
 `webauthn-smoke` 24 -> 27 assertions.
+
+## 2026-09-10 — S1 + S3: closing the two bypasses the dogfood exposed
+
+hias, after reading the E2 findings: "we definitely need this to be
+super secure without bypasses." He ruled S1 and S3 blocking.
+
+**S1 — a subframe could run a ceremony with the top-level site's
+authority.** The rule "no ceremonies from iframes" lived in the
+page-world polyfill (`window.self !== window.top`), while the native
+bridge sat in the DEFAULT script world, reachable from every frame — and
+`WebAuthnOrigin.from(webView:)` derives the origin from the MAIN frame.
+Measured on the dev instance before any change:
+
+    framePolyfill: false      <- the guard "worked"
+    bridgeInFrame: "object"   <- and was irrelevant
+    FRAME GOT A REPLY: {"capabilities":{...},"ok":true}
+
+So a third-party iframe — an ad, a widget, a comment box — could open a
+ceremony carrying the embedding site's authority, and the consent dialog
+would name that site truthfully, which makes it *more* convincing, not
+less. For `get` the frame chooses the challenge, so an approval hands it
+a valid assertion.
+
+The file's own header had justified the deviation: "a page calling the
+handler directly is no stronger than a page calling the API we define,
+because every security decision happens in Swift from embedder-trusted
+state." That is right about a page lying about ITSELF and silent about a
+DIFFERENT PRINCIPAL in the same view. The rationale was updated with the
+fix; a wrong reason left in place is how the same hole gets reopened.
+
+Fixed the way macOS already did it: the handler is registered in an
+isolated world (`cmuxWebAuthnWorld`), the only script in that world is a
+relay injected TOP_FRAME only, and the page-world polyfill talks to the
+relay over CustomEvents on the shared DOM. A subframe has no script in
+that world and therefore no bridge to call. **Accepted and documented:**
+a SAME-origin subframe can still reach the top document and speak to the
+relay — that is the same security principal.
+
+**S3 — the consent bypass applied to the real vault.**
+`CMUX_WEBAUTHN_AUTOAPPROVE=1` removed the dialog and still asserted
+UV=1, and anything able to set a variable in this process's environment
+(a `.desktop` file, a shell profile, a wrapper) could turn every passkey
+into a silent signature. It is now inert unless `CMUX_WEBAUTHN_VAULT`
+also points away from the default path: a test may bypass consent on a
+vault it created, never on the credentials a person uses. The refusal is
+logged, because a bypass that fails silently is indistinguishable from a
+hang for whoever set the variable — and the suite asserts BOTH the
+non-completion and the log line, since "the ceremony did not finish"
+alone would pass for any unrelated breakage.
+
+**A test expectation rewritten UPWARD, which deserves saying plainly.**
+The reachability leg first demanded `undefined/object` — gone from the
+subframe, still present in the top page — encoding the architecture
+being replaced. The relay removes page-world reachability entirely, so
+`undefined/undefined` is the stronger result and the leg now demands it.
+Changing an expectation after seeing a result is exactly how a suite
+gets talked into agreeing with its code, so the guard is the pairing:
+"the top frame still completes a ceremony" passed BEFORE the change and
+has to keep passing, which is what stops "nobody can see the bridge"
+from being satisfied by a feature that is simply broken.
+
+**Not built, deliberately, and left with the passkey lane:** S2 (we
+assert User Verification we never performed — flags 0x45/0x05 claim UV
+on a consent CLICK, which is presence, not identity), S4 (no
+user-activation requirement), S5 (no public-suffix list in rpId
+validation), S6 (signCount always 0). Also open: `clientExtensionResults`
+is always `{}`, so `credProps` goes unanswered — which is why
+webauthn.io labelled the credential "of unknown discoverability". The
+all-zero AAGUID beside it is CORRECT and must not be "enriched":
+`attestation: none` requires it, and inventing one would be a false
+identity claim.
+
+RED `992577433e` (28 passed / 4 failed), GREEN 32/0.
+`webauthn-smoke` 27 -> 32 assertions.
