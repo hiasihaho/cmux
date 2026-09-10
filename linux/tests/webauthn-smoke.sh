@@ -101,7 +101,11 @@ cat > "$WORK/index.html" <<'EOF'
 <button id="create">create</button> <button id="createdup">create-dup</button>
 <button id="get">get</button>
 <div id="out">none</div>
+<iframe id="kid" src="child.html"></iframe>
 <script src="app.js"></script></body></html>
+EOF
+cat > "$WORK/child.html" <<'EOF'
+<!DOCTYPE html><html><head><title>wa-child</title></head><body>child</body></html>
 EOF
 python3 -m http.server $PAGE_PORT --directory "$WORK" >/dev/null 2>&1 &
 PAGE_PID=$!
@@ -629,6 +633,154 @@ ASIDES_AFTER=$(ls "$VAULT".undecryptable-*.bak 2>/dev/null | wc -l)
 [ "$ASIDES_AFTER" = "$ASIDES_BEFORE" ] \
     && ok "save after a successful re-read does not move a decryptable vault aside" \
     || bad "undecryptable state stuck" "asides $ASIDES_BEFORE -> $ASIDES_AFTER; a decryptable vault was moved aside"
+
+info "the ASYNCHRONOUS reply path — the one a human actually takes"
+# Found by dogfooding with hias at the browser, 2026-09-10: every leg
+# above approves INLINE (CMUX_WEBAUTHN_AUTOAPPROVE=1), on the message
+# handler's own stack. A real consent dialog answers one or more
+# main-loop turns later, and on that path the reply never reached the
+# page — webauthn.io showed "the authenticator was unable to process the
+# specified options" while the credential sat safely in the vault.
+#
+# So this phase approves from an idle callback: the dialog's LIFETIME
+# without the click. It is the only leg here that can see a reply which
+# does not survive its own callback.
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION" "$VAULT"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=async
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=host
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+cx browser click '#create' --surface "$SURF" >/dev/null 2>&1
+OUT=$(poll_out "$SURF" 'creating')
+case "$OUT" in
+    created:*) ok "a deferred approval still returns the credential to the page" ;;
+    *)         bad "deferred create" "the page never got its credential: $OUT" ;;
+esac
+cx browser click '#get' --surface "$SURF" >/dev/null 2>&1
+OUT=$(poll_out "$SURF" 'getting')
+case "$OUT" in
+    asserted:*) ok "a deferred approval still returns the assertion to the page" ;;
+    *)          bad "deferred get" "the page never got its assertion: $OUT" ;;
+esac
+# The same use-after-free landed TWO ways: a GLib CRITICAL when hias
+# clicked the real dialog, and a SEGFAULT with a core dump in this
+# suite. So "no CRITICAL in the log" is not the assertion — a dead
+# instance writes no CRITICAL and would pass it vacuously, which is
+# exactly what the first version of this leg did over a core dump.
+# Liveness first, then the symptom.
+if ! cx ping >/dev/null 2>&1; then
+    bad "instance survived the deferred reply" "the instance is GONE — the deferred reply path crashed it"
+elif grep -q "JSC_IS_CONTEXT(context)' failed" "$LOG" 2>/dev/null; then
+    bad "dead JSCContext" "jsc_value_new_string ran on a released context — the reply outlived the context that builds it"
+else
+    ok "the instance survives a deferred reply, with no released-context CRITICAL"
+fi
+
+info "S1: the bridge must not be reachable from a SUBFRAME"
+# Measured on the dev instance 2026-09-10 and confirmed here: the rule
+# "no ceremonies from iframes" lives in the PAGE-WORLD polyfill, while
+# window.webkit.messageHandlers.cmuxWebAuthn is reachable from every
+# frame — and Swift derives the origin from the MAIN frame. So a
+# third-party iframe could run a ceremony labelled with the embedding
+# site's name. A guard written in JavaScript that an attacker simply
+# does not call is decoration; this asserts the bridge itself.
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION" "$VAULT"
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=async
+    CMUX_WEBAUTHN_VAULT="$VAULT"
+    CMUX_WEBAUTHN_KEY_BACKEND=host
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+REACH=$(cx browser eval --script '(()=>{const f=document.getElementById("kid");if(!f)return "NO-FRAME";const w=f.contentWindow;const has=(o)=>typeof (o&&o.webkit&&o.webkit.messageHandlers&&o.webkit.messageHandlers.cmuxWebAuthn);return has(w)+"/"+has(window)})()' --surface "$SURF" 2>/dev/null | tr -d '"')
+# EXPECTATION REWRITTEN UPWARD after the world split, not relaxed to
+# suit it. The first version demanded undefined/object — "gone from the
+# subframe, still there in the top page" — which encoded the OLD
+# architecture, where the bridge lived in the page world. The relay
+# design removes page-world reachability ENTIRELY: no page script, top
+# frame or not, can see the handler. undefined/undefined is therefore
+# the stronger result, and the leg below ("still completes a ceremony")
+# is what stops this from being satisfied by a feature that is simply
+# broken — it passed before the change and has to keep passing.
+case "$REACH" in
+    NO-FRAME)            skip "subframe bridge reachability" "fixture frame missing — nothing was measured" ;;
+    undefined/undefined) ok "no page script can see the bridge — not the subframe, not the top frame" ;;
+    undefined/object)    bad "page-world bridge" "the top page can still reach the bridge directly ($REACH) — the world split did not take" ;;
+    *)                   bad "subframe bridge" "a subframe can reach the passkey bridge ($REACH)" ;;
+esac
+# Reachability is the shape; being ANSWERED is the capability. A handle
+# that refuses every message would still fail the leg above, so assert
+# the end-to-end refusal separately.
+ANSWERED=$(cx browser eval --script '(async()=>{const f=document.getElementById("kid");if(!f)return "NO-FRAME";try{const r=await f.contentWindow.webkit.messageHandlers.cmuxWebAuthn.postMessage(JSON.stringify({kind:"capabilities"}));return "ANSWERED:"+String(r).slice(0,40)}catch(e){return "REFUSED:"+e.name}})()' --surface "$SURF" 2>/dev/null | tr -d '"')
+case "$ANSWERED" in
+    REFUSED:*)  ok "a subframe's message to the bridge is refused end to end" ;;
+    NO-FRAME)   skip "subframe bridge answer" "fixture frame missing" ;;
+    ANSWERED:*) bad "subframe bridge answer" "the bridge answered a subframe: $ANSWERED" ;;
+    *)          skip "subframe bridge answer" "inconclusive, not a pass: $ANSWERED" ;;
+esac
+# The feature must survive its own hardening: the top frame still works.
+cx browser click '#create' --surface "$SURF" >/dev/null 2>&1
+OUT=$(poll_out "$SURF" 'creating')
+case "$OUT" in
+    created:*) ok "the top frame still completes a ceremony after the world split" ;;
+    *)         bad "top-frame ceremony" "hardening broke the real path: $OUT" ;;
+esac
+
+info "S3: the consent bypass must not apply to a real vault"
+# CMUX_WEBAUTHN_AUTOAPPROVE removes the dialog AND still asserts UV. A
+# comment saying "never enable on a daily instance" is not enforcement:
+# a .desktop file or a shell profile can set it. It must be inert unless
+# the vault is explicitly redirected somewhere disposable.
+for pid in $(pgrep -x cmux-adw 2>/dev/null); do
+    app=$(tr '\0' '\n' </proc/"$pid"/environ 2>/dev/null | sed -n 's/^CMUX_APP_ID=//p')
+    [ "$app" = "$APP_ID" ] && kill "$pid" 2>/dev/null
+done
+sleep 1
+rm -f "$SESSION"
+# NO CMUX_WEBAUTHN_VAULT here: auto-approve is asking to bypass consent
+# on whatever vault the user really has.
+INSTANCE_ENV=(
+    CMUX_WEBAUTHN=1
+    CMUX_WEBAUTHN_AUTOAPPROVE=1
+    CMUX_WEBAUTHN_KEY_BACKEND=host
+    GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
+    XDG_DATA_HOME="$WORK/xdgdata"
+)
+start_instance || exit 2
+sleep 1
+SURF=$(open_pane)
+cx browser click '#create' --surface "$SURF" >/dev/null 2>&1
+OUT=$(poll_out "$SURF" 'creating')
+# Two independent signals. "Did not complete" alone would pass for any
+# unrelated breakage, so the refusal must also SAY it refused.
+case "$OUT" in
+    created:*) bad "auto-approve on a default vault" "consent was bypassed against the real vault ($OUT)" ;;
+    *)         ok "auto-approve does not silently complete a ceremony on a default vault" ;;
+esac
+if grep -q "auto-approve ignored" "$LOG" 2>/dev/null; then
+    ok "the refused bypass says so in the instance log"
+else
+    bad "silent bypass refusal" "no 'auto-approve ignored' line — a refusal nobody can observe is indistinguishable from a hang"
+fi
 
 echo
 echo "== webauthn-smoke: $PASS passed, $FAIL failed"

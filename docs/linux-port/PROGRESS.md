@@ -5500,3 +5500,153 @@ had to learn. Standing lesson: a skip is a deferred assertion, and a
 skip that can never become an assertion is a hole with a comment on it.
 
 `browser-scheme-smoke` 11 -> 12 assertions, 0 skips.
+
+## 2026-09-10 — E2 dogfood: the consent dialog nobody could answer
+
+hias at the browser, webauthn.io, on an isolated dev instance built from
+the merged tree. The first ceremony failed in the most instructive way
+available.
+
+**What he saw.** A correct consent dialog — right origin (`webauthn.io`),
+right account, reading like a passkey prompt rather than a debug box —
+and then, after approving, the site's "The authenticator was unable to
+process the specified options, or could not create a new credential".
+
+**What had actually happened.** The authenticator processed them
+perfectly: the vault went `0 passkeys / plaintext` to `1 passkey /
+encrypted (host)`, so P1b encryption engaged correctly on first write.
+The credential existed. It just never reached the page — an ORPHAN the
+relying party knows nothing about. The site's message blames the
+options; the console showed the options were entirely ordinary (ES256 +
+RS256, residentKey preferred, attestation none). The RP's error text
+pointed away from the fault, which is worth remembering the next time a
+site's message is treated as a diagnosis.
+
+**Root cause.** `webkit_script_message_reply_ref(reply)` retained the
+reply across the dialog — the comment above it even says "the reply
+outlives this stack frame whenever a dialog is shown" — but nothing
+retained the `JSCContext` that has to BUILD the reply's value.
+`jsc_value_get_context` is transfer-none: the context belongs to the
+message value, which WebKit releases the moment the callback returns.
+One main-loop turn later the user clicks, `jsc_value_new_string` runs on
+freed memory, `returnWebAuthnJSON` bails on its guard, and the page's
+promise never settles.
+
+**Why 24/24 green never saw it, which is the real finding.** Every leg
+set `CMUX_WEBAUTHN_AUTOAPPROVE=1`, which approves INLINE, on the message
+handler's own stack — before anything is released, so the dangling
+context is never touched. The escape hatch that lets a headless suite
+skip a GTK dialog also skips ASYNCHRONY, and asynchrony is the only
+thing that makes the real path different. The suite covered a path no
+human takes; the path every human takes had no coverage at all. New
+mode `CMUX_WEBAUTHN_AUTOAPPROVE=async` approves from an idle callback —
+the dialog's lifetime without the click — so the shipping path is
+testable headlessly.
+
+**The bug is nondeterministic, and that matters.** Under hias' click it
+was a GLib CRITICAL (`assertion 'JSC_IS_CONTEXT(context)' failed`); in
+the suite the same use-after-free SEGFAULTED with a core dump. That is
+almost certainly why "webauthn.io verified live" could be recorded
+truthfully on 2026-09-01 and be false today: freed memory sometimes
+still reads as valid. A page can trigger a ceremony, so this was a
+remotely-reachable use-after-free.
+
+**My own vacuous pass, in the leg written to prevent vacuous passes.**
+The third assertion checked the instance log for the CRITICAL — and
+PASSED over the core dump, because a dead instance writes no log line.
+It now asserts liveness BEFORE the symptom. Guarding against a failure
+mode and then shipping it in the same file is worth recording rather
+than quietly editing away.
+
+RED `2dfb8bd850` (25 passed / 2 failed + core dump), GREEN 27/0 with no
+crash line anywhere in the run. Checked and ruled out: this is the only
+site with the pattern — `BrowserWebAuthn.swift` is the sole user of
+`jsc_value_get_context`, and the CXF export never replies to the page.
+
+`webauthn-smoke` 24 -> 27 assertions.
+
+## 2026-09-10 — S1 + S3: closing the two bypasses the dogfood exposed
+
+hias, after reading the E2 findings: "we definitely need this to be
+super secure without bypasses." He ruled S1 and S3 blocking.
+
+**S1 — a subframe could run a ceremony with the top-level site's
+authority.** The rule "no ceremonies from iframes" lived in the
+page-world polyfill (`window.self !== window.top`), while the native
+bridge sat in the DEFAULT script world, reachable from every frame — and
+`WebAuthnOrigin.from(webView:)` derives the origin from the MAIN frame.
+Measured on the dev instance before any change:
+
+    framePolyfill: false      <- the guard "worked"
+    bridgeInFrame: "object"   <- and was irrelevant
+    FRAME GOT A REPLY: {"capabilities":{...},"ok":true}
+
+So a third-party iframe — an ad, a widget, a comment box — could open a
+ceremony carrying the embedding site's authority, and the consent dialog
+would name that site truthfully, which makes it *more* convincing, not
+less. For `get` the frame chooses the challenge, so an approval hands it
+a valid assertion.
+
+The file's own header had justified the deviation: "a page calling the
+handler directly is no stronger than a page calling the API we define,
+because every security decision happens in Swift from embedder-trusted
+state." That is right about a page lying about ITSELF and silent about a
+DIFFERENT PRINCIPAL in the same view. The rationale was updated with the
+fix; a wrong reason left in place is how the same hole gets reopened.
+
+Fixed the way macOS already did it: the handler is registered in an
+isolated world (`cmuxWebAuthnWorld`), the only script in that world is a
+relay injected TOP_FRAME only, and the page-world polyfill talks to the
+relay over CustomEvents on the shared DOM. A subframe has no script in
+that world and therefore no bridge to call. **Accepted and documented:**
+a SAME-origin subframe can still reach the top document and speak to the
+relay — that is the same security principal.
+
+**S3 — the consent bypass applied to the real vault.**
+`CMUX_WEBAUTHN_AUTOAPPROVE=1` removed the dialog and still asserted
+UV=1, and anything able to set a variable in this process's environment
+(a `.desktop` file, a shell profile, a wrapper) could turn every passkey
+into a silent signature. It is now inert unless `CMUX_WEBAUTHN_VAULT`
+also points away from the default path: a test may bypass consent on a
+vault it created, never on the credentials a person uses. The refusal is
+logged, because a bypass that fails silently is indistinguishable from a
+hang for whoever set the variable — and the suite asserts BOTH the
+non-completion and the log line, since "the ceremony did not finish"
+alone would pass for any unrelated breakage.
+
+**A test expectation rewritten UPWARD, which deserves saying plainly.**
+The reachability leg first demanded `undefined/object` — gone from the
+subframe, still present in the top page — encoding the architecture
+being replaced. The relay removes page-world reachability entirely, so
+`undefined/undefined` is the stronger result and the leg now demands it.
+Changing an expectation after seeing a result is exactly how a suite
+gets talked into agreeing with its code, so the guard is the pairing:
+"the top frame still completes a ceremony" passed BEFORE the change and
+has to keep passing, which is what stops "nobody can see the bridge"
+from being satisfied by a feature that is simply broken.
+
+**Not built, deliberately, and left with the passkey lane:** S2 (we
+assert User Verification we never performed — flags 0x45/0x05 claim UV
+on a consent CLICK, which is presence, not identity), S4 (no
+user-activation requirement), S5 (no public-suffix list in rpId
+validation), S6 (signCount always 0). Also open: `clientExtensionResults`
+is always `{}`, so `credProps` goes unanswered — which is why
+webauthn.io labelled the credential "of unknown discoverability". The
+all-zero AAGUID beside it is CORRECT and must not be "enriched":
+`attestation: none` requires it, and inventing one would be a false
+identity claim.
+
+RED `992577433e` (28 passed / 4 failed), GREEN 32/0. Full gate on the
+final code: 262 passed, 0 failed, 0 crash lines.
+
+**Confirmed by hand, and one leg of it was a check the suite never
+made.** hias re-clicked on the hardened binary twice. First he
+authenticated with `cmux-dogfood` — a credential created under the OLD
+bridge, before the world split and before the use-after-free fix — and
+it worked. That is backward compatibility measured rather than assumed:
+the split changes the TRANSPORT between page and native, not the vault
+format, and now there is evidence for that rather than an argument.
+Then he ran a full register+authenticate cycle with a new
+`cmux-dogfood1`, which also worked. Vault: 2 passkeys, encrypted (host);
+instance alive; zero `JSC_IS_CONTEXT` lines and zero crashes since that
+instance started; no page errors.

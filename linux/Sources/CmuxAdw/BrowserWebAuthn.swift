@@ -13,13 +13,25 @@ import Foundation
 // (BrowserWebAuthnBridgeContract in Sources/Panels/) so the two ports
 // stay conceptually one implementation.
 //
-// Deliberate v1 deviation from macOS: one page-world script + main-world
-// handler instead of the two-world CustomEvent relay. macOS hides its
-// native channel from pages because it *patches* a live WebKit API; here
-// there is nothing to hide from — a page calling the handler directly is
-// no stronger than a page calling the API we define, because every
-// security decision (origin, rpId, consent) happens in Swift from
-// embedder-trusted state, never from page-supplied data.
+// TWO WORLDS, like macOS. v1 shipped one page-world script plus a
+// default-world handler, reasoning that a page calling the handler
+// directly is no stronger than calling the API we define, since every
+// security decision happens in Swift from embedder-trusted state.
+//
+// That reasoning had a hole, measured 2026-09-10: the origin Swift
+// trusts is the MAIN FRAME's, and the default-world handler is reachable
+// from EVERY frame. So a third-party iframe could open a ceremony
+// carrying the embedding site's authority, and the consent dialog would
+// name that site — truthfully, which made it more convincing rather than
+// less. The page-world guard `window.self !== window.top` did not help:
+// an attacker calls the bridge, not the polyfill.
+//
+// So the bridge now lives in its own script world, with a relay script
+// injected TOP_FRAME only into that world; the page-world polyfill talks
+// to the relay over CustomEvents on the shared DOM. A subframe has no
+// script in that world and therefore no bridge to call. A SAME-origin
+// subframe can still reach the top document and speak to the relay —
+// that is the same security principal, and deliberately allowed.
 //
 // SECURITY INVARIANTS (do not weaken in refactors):
 //  - The effective origin comes from webkit_web_view_get_uri — never
@@ -30,9 +42,16 @@ import Foundation
 //    additionally requires the feature flag.
 //  - Injection is TOP_FRAME only; the script self-disables in insecure
 //    contexts.
+//  - The native handler is registered in `scriptWorld`, never the
+//    default world: reachability from a subframe IS the capability.
 
 enum BrowserWebAuthn {
     static let handlerName = "cmuxWebAuthn"
+
+    /// The isolated world the native bridge lives in. Page scripts —
+    /// including any script in a subframe — cannot see message handlers
+    /// registered here.
+    static let scriptWorld = "cmuxWebAuthnWorld"
 
     /// Strictly opt-in while the feature hardens (same posture as
     /// CMUX_WEBDRIVER). Flip to a setting once dogfooded.
@@ -42,9 +61,48 @@ enum BrowserWebAuthn {
 
     /// Test/dev escape hatch: skip the consent dialog. Headless suites
     /// cannot click GTK dialogs. Never enable on a daily instance.
-    static var autoApproves: Bool {
-        ProcessInfo.processInfo.environment["CMUX_WEBAUTHN_AUTOAPPROVE"] == "1"
+    ///
+    /// `1` approves IMMEDIATELY, on the message handler's own stack. That
+    /// is convenient and it is also why every suite passed while the only
+    /// path a human takes was broken: approving inline never lets the
+    /// reply outlive the callback, which is the entire difference a real
+    /// dialog makes. `async` approves from a later main-loop turn — the
+    /// dialog's lifetime without the click — so a headless suite can
+    /// cover the asynchronous path that actually ships.
+    enum Approval { case dialog, immediate, deferred }
+
+    /// S3: the escape hatch removes consent AND still asserts user
+    /// verification, so anything able to put a variable in this process's
+    /// environment — a .desktop file, a shell profile, a wrapper script —
+    /// could turn every passkey into a silent signature. "Never enable on
+    /// a daily instance" was a comment, and a comment is not an
+    /// enforcement.
+    ///
+    /// It is now inert unless the vault is ALSO redirected away from the
+    /// default path. A test can bypass consent on a vault it created; it
+    /// cannot bypass consent on the credentials a person actually uses.
+    /// The refusal is logged, because a bypass that fails silently is
+    /// indistinguishable from a hang for whoever set the variable.
+    static var approval: Approval {
+        let requested = ProcessInfo.processInfo.environment["CMUX_WEBAUTHN_AUTOAPPROVE"]
+        guard requested == "1" || requested == "async" else { return .dialog }
+        let vaultOverridden = (ProcessInfo.processInfo.environment["CMUX_WEBAUTHN_VAULT"]?
+            .isEmpty == false)
+        guard vaultOverridden else {
+            if !autoApproveRefusalLogged {
+                autoApproveRefusalLogged = true
+                FileHandle.standardError.write(Data(
+                    ("cmux webauthn: auto-approve ignored — CMUX_WEBAUTHN_AUTOAPPROVE "
+                     + "requires an explicit CMUX_WEBAUTHN_VAULT pointing away from the "
+                     + "default vault, so consent can never be bypassed on real "
+                     + "credentials. Falling back to the consent dialog.\n").utf8))
+            }
+            return .dialog
+        }
+        return requested == "async" ? .deferred : .immediate
     }
+
+    private static var autoApproveRefusalLogged = false
 }
 
 /// Carries the web view across the C signal callback (no captures
@@ -83,8 +141,20 @@ func installBrowserWebAuthn(_ webView: UnsafeMutablePointer<WebKitWebView>) {
         GConnectFlags(0)
     )
     _ = webkit_user_content_manager_register_script_message_handler_with_reply(
-        manager, BrowserWebAuthn.handlerName, nil
+        manager, BrowserWebAuthn.handlerName, BrowserWebAuthn.scriptWorld
     )
+
+    // The relay: the only script that can see the handler, injected into
+    // the isolated world and into the TOP FRAME only.
+    if let relay = webkit_user_script_new_for_world(
+        browserWebAuthnRelayScript,
+        WEBKIT_USER_CONTENT_INJECT_TOP_FRAME,
+        WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START,
+        BrowserWebAuthn.scriptWorld, nil, nil
+    ) {
+        webkit_user_content_manager_add_script(manager, relay)
+        webkit_user_script_unref(relay)
+    }
 
     if let script = webkit_user_script_new(
         browserWebAuthnUserScript,
@@ -203,11 +273,16 @@ private func runWebAuthnCeremony(
     }
 
     let creating = kind == "createCredential"
+    // Balances the two refs taken below, on every path out of `finish`.
+    let release: () -> Void = {
+        webkit_script_message_reply_unref(reply)
+        if let context { g_object_unref(UnsafeMutableRawPointer(context)) }
+    }
     let finish: (Bool) -> Void = { approved in
         guard approved else {
             returnWebAuthnError(reply, context: context, name: "NotAllowedError",
                                 message: "The passkey request was declined.")
-            webkit_script_message_reply_unref(reply)
+            release()
             return
         }
         do {
@@ -225,14 +300,32 @@ private func runWebAuthnCeremony(
             returnWebAuthnError(reply, context: context, name: "UnknownError",
                                 message: "The passkey request failed.")
         }
-        webkit_script_message_reply_unref(reply)
+        release()
     }
 
-    // The reply outlives this stack frame whenever a dialog is shown.
+    // The reply outlives this stack frame whenever a dialog is shown —
+    // and so does the CONTEXT that has to build the reply's value.
+    // jsc_value_get_context is transfer-none: the context belongs to the
+    // message value, which WebKit releases the moment this callback
+    // returns. Retaining the reply but not the context is what made a
+    // real consent dialog fail while every auto-approved suite passed —
+    // approving inline replies before anything is released, so the
+    // dangling context is never touched.
     webkit_script_message_reply_ref(reply)
-    if BrowserWebAuthn.autoApproves {
+    if let context { g_object_ref(UnsafeMutableRawPointer(context)) }
+    switch BrowserWebAuthn.approval {
+    case .immediate:
         finish(true)
         return
+    case .deferred:
+        // Same lifetime as the dialog, no click required: the reply is
+        // sent from a later main-loop turn, after this stack — and the
+        // message value that owns the JSCContext — is gone.
+        _ = g_idle_add(webAuthnDeferredApprove,
+                       Unmanaged.passRetained(WebAuthnDeferredBox { finish(true) }).toOpaque())
+        return
+    case .dialog:
+        break
     }
     presentWebAuthnConsentDialog(
         webView: webView,
@@ -410,6 +503,21 @@ private func presentWebAuthnConsentDialog(
     adw_dialog_present(dialogPtr, parent)
 }
 
+// MARK: - deferred approval (test seam)
+
+/// Carries a Swift closure across the C idle callback.
+private final class WebAuthnDeferredBox {
+    let action: () -> Void
+    init(_ action: @escaping () -> Void) { self.action = action }
+}
+
+private let webAuthnDeferredApprove: @convention(c) (UnsafeMutableRawPointer?) -> Int32 = {
+    userData in
+    guard let userData else { return 0 }
+    Unmanaged<WebAuthnDeferredBox>.fromOpaque(userData).takeRetainedValue().action()
+    return 0  // G_SOURCE_REMOVE: fires once
+}
+
 // MARK: - reply helpers
 
 private func returnWebAuthnJSON(
@@ -431,6 +539,49 @@ private func returnWebAuthnError(
         "error": ["name": name, "message": message],
     ])
 }
+
+// MARK: - the isolated-world relay
+
+/// Runs in `BrowserWebAuthn.scriptWorld`, top frame only. It is the ONLY
+/// script that can see the native handler; the page-world polyfill
+/// reaches it over CustomEvents on the shared DOM. A subframe has no
+/// script in this world, so it has no bridge to call — which is the
+/// whole point (S1, measured 2026-09-10).
+private let browserWebAuthnRelayScript = """
+(() => {
+  "use strict";
+  if (window.self !== window.top) return;
+  const handlerName = "cmuxWebAuthn";
+  const respond = (id, raw) => {
+    document.dispatchEvent(new CustomEvent("cmux-webauthn-response", {
+      detail: JSON.stringify({ id: id, raw: raw }),
+    }));
+  };
+  const failure = (name, message) =>
+    JSON.stringify({ ok: false, error: { name: name, message: message } });
+
+  document.addEventListener("cmux-webauthn-request", (event) => {
+    let request = null;
+    try { request = JSON.parse(String(event.detail)); } catch (_) { return; }
+    if (!request || typeof request.id !== "string" || typeof request.message !== "string") {
+      return;
+    }
+    let handler = null;
+    try {
+      const handlers = window.webkit && window.webkit.messageHandlers;
+      handler = handlers && handlers[handlerName];
+    } catch (_) {}
+    if (!handler || typeof handler.postMessage !== "function") {
+      respond(request.id, failure("NotSupportedError", "Passkey support is unavailable."));
+      return;
+    }
+    handler.postMessage(request.message).then(
+      (raw) => respond(request.id, String(raw)),
+      () => respond(request.id, failure("UnknownError", "The passkey request failed."))
+    );
+  });
+})();
+"""
 
 // MARK: - the page-world polyfill
 
@@ -483,20 +634,34 @@ private let browserWebAuthnUserScript = """
     catch (_) { const e = new Error(safeMessage); e.name = safeName; return e; }
   };
 
+  // The bridge is NOT reachable from here: it lives in an isolated world
+  // so that a subframe has no way to call it (see the header comment).
+  // This talks to the relay over the shared DOM instead, correlating
+  // replies by id. A page can of course forge a response to itself —
+  // that fools only the page, since every signature comes from Swift.
+  let nextRequestId = 0;
+  const waiting = new Map();
+  document.addEventListener("cmux-webauthn-response", (event) => {
+    let envelope = null;
+    try { envelope = JSON.parse(String(event.detail)); } catch (_) { return; }
+    if (!envelope || !waiting.has(envelope.id)) return;
+    const settle = waiting.get(envelope.id);
+    waiting.delete(envelope.id);
+    settle(envelope.raw);
+  });
+
   const callNative = (kind, payload) => {
-    let handler = null;
-    try {
-      const handlers = window.webkit && window.webkit.messageHandlers;
-      handler = handlers && handlers[handlerName];
-    } catch (_) {}
-    if (!handler || typeof handler.postMessage !== "function") {
-      return Promise.reject(makeError("NotSupportedError", "Passkey support is unavailable."));
-    }
     const message = JSON.stringify(payload === undefined ? { kind } : { kind, payload });
     if (message.length > maximumPayloadBytes) {
       return Promise.reject(makeError("TypeError", "Malformed passkey request."));
     }
-    return handler.postMessage(message).then((raw) => {
+    return new Promise((resolve) => {
+      const id = "cw" + (++nextRequestId);
+      waiting.set(id, resolve);
+      document.dispatchEvent(new CustomEvent("cmux-webauthn-request", {
+        detail: JSON.stringify({ id, message }),
+      }));
+    }).then((raw) => {
       let reply = null;
       try { reply = JSON.parse(raw); } catch (_) {}
       if (reply && reply.ok === true) return reply;
