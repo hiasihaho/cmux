@@ -13634,7 +13634,9 @@ struct CMUXCLI {
                     let backend = payload["vault_backend"] as? String ?? "none"
                     let vaultText = encrypted ? "encrypted (\(backend))" : "plaintext"
                     let enabledText = enabled ? "enabled" : "disabled (set CMUX_WEBAUTHN=1)"
-                    print("WebAuthn: \(enabledText) · \(count) passkey(s) · vault \(vaultText)")
+                    let verification = payload["verification_sentence"] as? String
+                        ?? payload["verification"] as? String ?? "unknown"
+                    print("WebAuthn: \(enabledText) · \(count) passkey(s) · vault \(vaultText) · \(verification)")
                 }
             case "list", "ls":
                 let payload = try client.sendV2(method: "browser.webauthn.list")

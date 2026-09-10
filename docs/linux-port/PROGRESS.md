@@ -5650,3 +5650,133 @@ Then he ran a full register+authenticate cycle with a new
 `cmux-dogfood1`, which also worked. Vault: 2 passkeys, encrypted (host);
 instance alive; zero `JSC_IS_CONTEXT` lines and zero crashes since that
 instance started; no page errors.
+
+## 2026-09-10 — S2: the verification ladder, and a field that was never forwarded
+
+hias' E2 dogfood found that `createFlags 0x45` / `getFlags 0x05` asserted
+User Verification on every ceremony while the consent gate obtained a
+CLICK. UV is a claim about WHO is present; a click is presence. A site
+asking `userVerification: "required"` believed a second factor had
+happened and had no way to discover otherwise.
+
+The passkey lane wrote the verdict letter, then handed the build here
+because the ceremony machinery had just been rewritten by this desk;
+they kept design authority and red-first cross-review.
+
+**Taken over this desk's own proposal.** I proposed "return UV=0 and let
+the relying party refuse". pk3's correction, from CTAP semantics: an
+authenticator that cannot verify does not answer a `required` ceremony
+at all — it FAILS up front with NotAllowedError. Returning UV=0 there
+outsources the honesty to the RP's diligence. `preferred`/`discouraged`
+proceed with an honest UV=0 (0x41/0x01). The stricter reading of the
+principle I was arguing for.
+
+**The gap under the gap.** Neither serializer forwarded the site's
+demand: `serializeCreateRequest` sent no `authenticatorSelection` at all
+and `serializeGetRequest` no `userVerification`. The requirement never
+reached Swift. It had been invisible for the same reason the whole bug
+was invisible — the authenticator claimed UV unconditionally, so a
+dropped field was hidden behind a plausible default. Nothing can honour
+a demand it never sees.
+
+**Measured, and it inverts the packaging story.** polkit has NO implicit
+default for an unregistered action; `pkcheck` errors with "Action ... is
+not registered" and `pkaction` confirms it is unknown. Control, so this
+cannot be read as "the mechanism does not work here": `pkcheck` on the
+registered allow_active action `net.reactivated.fprint.device.verify`
+returns authorized with no dialog. So on this host:
+
+    fingerprint rung -> needs NO packaging, usable today
+    password rung    -> needs the root-installed .policy
+
+which is the inverse of the lane's handover note ("the single step that
+needs your hands before the fingerprint rung can light up"). The sudo
+buys the FLOOR, not the top. `install-polkit-policy.sh` ships here,
+declaring `auth_self` rather than `auth_admin`: we are verifying the
+person at the keyboard, not authorising an administrative act, and
+training people to type an admin password at a web page's prompting
+would be its own harm.
+
+**Three defects of my own, none of which a suite would have caught.**
+(1) `run()` took a `timeout:` argument and ignored it — the parameter
+looked like a guarantee and was decoration, so `fprintd-verify` would
+have waited for a finger forever. It now arms a real watchdog. (2) A
+blanket edit pinning `CMUX_WEBAUTHN_UV_BACKEND=none` across the suite
+appended a second assignment to the one phase that had deliberately
+chosen `=test`, and the later assignment wins — that phase then silently
+tested the wrong rung. Its leg failed, which is the system working; every
+phase now names exactly one rung. (3) My own leg reported a TIMEOUT as
+"the ceremony completed without verification" — naming an unknown as a
+specific outcome, in the phase whose entire subject is not doing that.
+Timeouts are now their own branch.
+
+Flags are asserted from `authenticatorData` as a relying party reads
+them (0x41/0x01 unverified, 0x45/0x05 verified), never from anything the
+app reports about itself. The test verifier is faked at the BACKEND,
+never at the consent gate, and is inert unless the vault is redirected —
+the S3 rule, because a hatch that fakes verification is exactly the shape
+of the bug this file removes.
+
+`webauthn status` now reports the rung beside the vault state, so an
+operator can see what this authenticator can PROVE and not only what it
+can store.
+
+RED `97f786684d` (33 passed / 6 failed), GREEN 40/0.
+`webauthn-smoke` 32 -> 40 assertions.
+
+**Left with the passkey lane, unbuilt:** S4 (no user-activation
+requirement), S5 (no public-suffix list in `permitsRpId`), S6 (signCount
+always 0), and `clientExtensionResults` always `{}` so `credProps` goes
+unanswered. The all-zero AAGUID beside it is CORRECT and must not be
+"enriched": `attestation: none` requires it. Per pk3's §3.3.12 reading,
+CXF v1.0 has no UV member at all — UV is a per-ceremony authenticator
+assertion, never a credential property — so the export boundary is clean
+by construction and nobody should add a UV field to it later.
+
+### The fingerprint rung's first contact with a human (2026-09-10, same day)
+
+hias dogfooded the S2 build and reported: registration worked, and it
+never asked for a fingerprint. It was one defect of mine plus two design
+omissions, and the honest fallback made all three invisible.
+
+**The defect.** `verify(level: .fingerprint)` shells out to
+`fprintd-verify`, which claims the reader for the duration of the call.
+My watchdog terminated it with SIGTERM only — and `fprintd-verify`
+BLOCKS ON D-BUS AND IGNORES SIGTERM. So a timed-out verification left
+the process alive holding the device claim. One leaked process from a
+15:13 suite run held hias's fingerprint sensor until 16:5x; every
+ceremony in between failed with `Device was already claimed`, and the
+sensor was unavailable to the rest of his desktop too. The watchdog now
+escalates to SIGKILL after a grace period.
+
+**Why nothing showed it.** Three omissions, stacked:
+1. `fprintd-verify` exits 0 EVEN WHEN IT CANNOT CLAIM THE DEVICE, so the
+   exit status discriminates nothing and only the output does.
+2. The code collapsed three outcomes into two — verified / not verified —
+   with "we never got to ask" folded into the second. A busy reader was
+   indistinguishable from a finger that did not match. That is the UV bug
+   itself in miniature: an unknown reported as a specific answer.
+3. Nothing was logged per ceremony, so there was no trace anywhere.
+
+Then the honest fallback did its job and hid the whole thing: the site
+asked `userVerification: "preferred"`, so the ceremony proceeded with an
+honest UV=0. Correct behaviour, silent by construction. Had hias used
+the site's advanced options with `required`, he would have seen an
+explicit NotAllowedError instead of a quiet success.
+
+**Also a real limitation, now mitigated rather than solved.**
+`available()` probes with `fprintd-list`, which does NOT claim the
+device, so a BUSY reader still advertises as available. A claim failure
+now falls through to the polkit rung instead of being reported as
+"verification failed".
+
+**Still missing, and it is the reason a working reader gives no cue:**
+the verdict letter specified "click Sign In -> 'swipe now' state in the
+same dialog -> VerifyStart -> close on VerifyStatus. One dialog." The
+backend call is built; that in-dialog state is NOT. Until it exists, a
+fingerprint ceremony asks the human for a finger with nothing on screen
+saying so. Named here rather than left to be rediscovered.
+
+`webauthn-smoke` 40 -> 41: every ceremony now records what the verifier
+answered, because a verification that fails silently is indistinguishable
+from one that never ran.

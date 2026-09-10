@@ -101,6 +101,11 @@ struct CmuxApp: App {
             return surfaceId != nil
         }
         BrowserWebDriver.enableIfRequested()
+        // What this build can PROVE about the human, said at launch. A
+        // refused test backend announces itself here rather than at the
+        // first ceremony, and an operator learns the rung before they
+        // trust the authenticator with anything.
+        if BrowserWebAuthn.isEnabled { BrowserWebAuthn.announceVerificationOnce() }
 
         // Structural changes save immediately (scene body); this periodic
         // pass additionally picks up shell cwd drift (OSC 7) for restores.

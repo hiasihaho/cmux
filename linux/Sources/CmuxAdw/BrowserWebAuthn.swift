@@ -103,6 +103,16 @@ enum BrowserWebAuthn {
     }
 
     private static var autoApproveRefusalLogged = false
+
+    private static var verificationAnnounced = false
+
+    static func announceVerificationOnce() {
+        guard !verificationAnnounced else { return }
+        verificationAnnounced = true
+        let level = WebAuthnVerification.available()
+        FileHandle.standardError.write(Data(
+            "cmux webauthn: user verification — \(level.sentence) (\(level.rawValue))\n".utf8))
+    }
 }
 
 /// Carries the web view across the C signal callback (no captures
@@ -143,6 +153,12 @@ func installBrowserWebAuthn(_ webView: UnsafeMutablePointer<WebKitWebView>) {
     _ = webkit_user_content_manager_register_script_message_handler_with_reply(
         manager, BrowserWebAuthn.handlerName, BrowserWebAuthn.scriptWorld
     )
+
+    // Resolve the verification rung once, at install time. Two reasons:
+    // a refused test backend says so at launch instead of at the first
+    // ceremony, and an operator can see what this build can PROVE before
+    // trusting it with credentials.
+    BrowserWebAuthn.announceVerificationOnce()
 
     // The relay: the only script that can see the handler, injected into
     // the isolated world and into the TOP FRAME only.
@@ -272,23 +288,46 @@ private func runWebAuthnCeremony(
         return
     }
 
+    // WHAT THE SITE ASKED FOR. create carries it under
+    // authenticatorSelection; get carries it at the top level. Default is
+    // "preferred" per spec — proceed, and report honestly.
     let creating = kind == "createCredential"
+    let requestedUV: String = {
+        if creating {
+            let sel = publicKey["authenticatorSelection"] as? [String: Any] ?? [:]
+            return (sel["userVerification"] as? String) ?? "preferred"
+        }
+        return (publicKey["userVerification"] as? String) ?? "preferred"
+    }()
+    let rung = WebAuthnVerification.available()
+
+    // THE UP-FRONT REFUSAL (pk3's correction, taken over this desk's
+    // weaker proposal). An authenticator that cannot verify does not
+    // answer a "required" ceremony with UV=0 and leave the honesty to the
+    // relying party's check — it declines. Before the dialog, because
+    // asking a person to approve something we already know we cannot
+    // deliver is its own small dishonesty.
+    if requestedUV == "required", !rung.verifiesUser {
+        returnWebAuthnError(
+            reply, context: context, name: "NotAllowedError",
+            message: "This site requires user verification, and no verification "
+                   + "method is available on this device.")
+        return
+    }
     // Balances the two refs taken below, on every path out of `finish`.
     let release: () -> Void = {
         webkit_script_message_reply_unref(reply)
         if let context { g_object_unref(UnsafeMutableRawPointer(context)) }
     }
-    let finish: (Bool) -> Void = { approved in
-        guard approved else {
-            returnWebAuthnError(reply, context: context, name: "NotAllowedError",
-                                message: "The passkey request was declined.")
-            release()
-            return
-        }
+    // Signing happens only after the ladder has answered, so the flag
+    // byte reports what actually occurred rather than what was intended.
+    let sign: (Bool) -> Void = { userVerified in
         do {
             let response = creating
-                ? try performCreate(rpId: rpId, origin: origin, publicKey: publicKey)
-                : try performGet(rpId: rpId, origin: origin, publicKey: publicKey)
+                ? try performCreate(rpId: rpId, origin: origin, publicKey: publicKey,
+                                    userVerified: userVerified)
+                : try performGet(rpId: rpId, origin: origin, publicKey: publicKey,
+                                 userVerified: userVerified)
             returnWebAuthnJSON(reply, context: context, object: response)
         } catch let error as WebAuthnCeremonyError {
             returnWebAuthnError(reply, context: context, name: error.name, message: error.message)
@@ -301,6 +340,38 @@ private func runWebAuthnCeremony(
                                 message: "The passkey request failed.")
         }
         release()
+    }
+
+    let finish: (Bool) -> Void = { approved in
+        guard approved else {
+            returnWebAuthnError(reply, context: context, name: "NotAllowedError",
+                                message: "The passkey request was declined.")
+            release()
+            return
+        }
+        // Approval is the moment verification runs: the dialog explains
+        // the ceremony (it names the site, create-vs-sign, the account —
+        // a bare system prompt cannot), and verification is what the
+        // approve button DOES. The passkey lane's call, and it is right:
+        // we never draw our own password field, because teaching people
+        // to type a password into an app is phishing-shaped.
+        guard rung.verifiesUser else {
+            sign(false)   // honest UV=0; uv:"required" was already refused
+            return
+        }
+        WebAuthnVerification.verify(level: rung, rpId: rpId) { verified in
+            if !verified, requestedUV == "required" {
+                returnWebAuthnError(
+                    reply, context: context, name: "NotAllowedError",
+                    message: "User verification failed.")
+                release()
+                return
+            }
+            // A failed verification on a preferred/discouraged ceremony is
+            // not a failed ceremony — it is a ceremony that must stop
+            // claiming the factor. Reporting UV=0 here is the whole point.
+            sign(verified)
+        }
     }
 
     // The reply outlives this stack frame whenever a dialog is shown —
@@ -365,7 +436,8 @@ private func clientDataJSON(type: String, challenge: Data, origin: WebAuthnOrigi
 }
 
 private func performCreate(
-    rpId: String, origin: WebAuthnOrigin, publicKey: [String: Any]
+    rpId: String, origin: WebAuthnOrigin, publicKey: [String: Any],
+    userVerified: Bool
 ) throws -> [String: Any] {
     guard let challenge = b64urlDecode(publicKey["challenge"] as? String), !challenge.isEmpty else {
         throw WebAuthnCeremonyError.type("A challenge is required.")
@@ -392,7 +464,8 @@ private func performCreate(
         excludeCredentialIds: exclude
     )
     let clientData = clientDataJSON(type: "webauthn.create", challenge: challenge, origin: origin)
-    let created = try WebAuthnSoftwareAuthenticator.create(rpId: rpId, request: request)
+    let created = try WebAuthnSoftwareAuthenticator.create(
+        rpId: rpId, request: request, userVerified: userVerified)
 
     return [
         "ok": true,
@@ -415,7 +488,8 @@ private func performCreate(
 }
 
 private func performGet(
-    rpId: String, origin: WebAuthnOrigin, publicKey: [String: Any]
+    rpId: String, origin: WebAuthnOrigin, publicKey: [String: Any],
+    userVerified: Bool
 ) throws -> [String: Any] {
     guard let challenge = b64urlDecode(publicKey["challenge"] as? String), !challenge.isEmpty else {
         throw WebAuthnCeremonyError.type("A challenge is required.")
@@ -426,7 +500,7 @@ private func performGet(
     let assertion = try WebAuthnSoftwareAuthenticator.assert(
         rpId: rpId,
         request: WebAuthnGetRequest(challenge: challenge, rpId: rpId, allowCredentialIds: allow),
-        clientDataJSON: clientData
+        clientDataJSON: clientData, userVerified: userVerified
     )
     return [
         "ok": true,
@@ -718,6 +792,18 @@ private let browserWebAuthnUserScript = """
         excludeCredentials: Array.isArray(publicKey.excludeCredentials)
           ? publicKey.excludeCredentials.map(serializeCredentialDescriptor).filter(Boolean)
           : undefined,
+        // The site's user-verification requirement. Dropped until S2,
+        // and the loss was invisible because the authenticator claimed
+        // UV unconditionally — a discarded field hidden behind a
+        // plausible default. Nothing can honour a demand it never sees.
+        authenticatorSelection: {
+          userVerification:
+            normalizedString(publicKey.authenticatorSelection
+              && publicKey.authenticatorSelection.userVerification) || undefined,
+          residentKey:
+            normalizedString(publicKey.authenticatorSelection
+              && publicKey.authenticatorSelection.residentKey) || undefined,
+        },
       },
     };
   };
@@ -731,6 +817,9 @@ private let browserWebAuthnUserScript = """
         allowCredentials: Array.isArray(publicKey.allowCredentials)
           ? publicKey.allowCredentials.map(serializeCredentialDescriptor).filter(Boolean)
           : undefined,
+        // See serializeCreateRequest: an assertion carries the demand at
+        // the top level rather than under authenticatorSelection.
+        userVerification: normalizedString(publicKey.userVerification) || undefined,
       },
     };
   };

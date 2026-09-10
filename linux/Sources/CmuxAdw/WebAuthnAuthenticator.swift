@@ -290,10 +290,18 @@ enum WebAuthnSoftwareAuthenticator {
     /// attestation "none".
     private static let aaguid = Data(count: 16)
 
-    /// UP | UV | AT — user presence and verification are asserted only
-    /// after BrowserWebAuthn's consent gate actually obtained them.
-    private static let createFlags: UInt8 = 0x45
-    private static let getFlags: UInt8 = 0x05
+    /// UP (0x01) always — the consent dialog is real user presence.
+    /// AT (0x40) on create, because attested credential data follows.
+    /// UV (0x04) ONLY when a verifier actually verified the human this
+    /// ceremony. Before S2 these were constants that always claimed UV,
+    /// which made every ceremony assert a factor nobody had provided.
+    private static func createFlags(userVerified: Bool) -> UInt8 {
+        0x41 | (userVerified ? 0x04 : 0x00)
+    }
+
+    private static func getFlags(userVerified: Bool) -> UInt8 {
+        0x01 | (userVerified ? 0x04 : 0x00)
+    }
 
     struct CreatedCredential {
         var credentialId: Data
@@ -312,7 +320,8 @@ enum WebAuthnSoftwareAuthenticator {
     /// Registration ceremony. `rpId` is the CLIENT-validated relying
     /// party id — this layer trusts it (BrowserWebAuthn owns origin
     /// truth and must never pass a page-controlled value unvalidated).
-    static func create(rpId: String, request: WebAuthnCreateRequest) throws -> CreatedCredential {
+    static func create(rpId: String, request: WebAuthnCreateRequest,
+                       userVerified: Bool) throws -> CreatedCredential {
         guard request.algorithms.contains(-7) else {
             throw WebAuthnCeremonyError.notSupported(
                 "This authenticator supports only ES256 (alg -7).")
@@ -331,7 +340,7 @@ enum WebAuthnSoftwareAuthenticator {
 
         let cose = coseKey(for: key.publicKey)
         var authData = Data(SHA256.hash(data: Data(rpId.utf8)))
-        authData.append(createFlags)
+        authData.append(createFlags(userVerified: userVerified))
         authData.append(contentsOf: [0, 0, 0, 0])
         authData.append(aaguid)
         authData.append(contentsOf: [UInt8(credentialId.count >> 8), UInt8(credentialId.count & 0xFF)])
@@ -369,7 +378,7 @@ enum WebAuthnSoftwareAuthenticator {
     /// Assertion ceremony. Picks the newest matching resident credential;
     /// an account picker for multi-credential RPs is a later increment.
     static func assert(rpId: String, request: WebAuthnGetRequest,
-                       clientDataJSON: Data) throws -> Assertion {
+                       clientDataJSON: Data, userVerified: Bool) throws -> Assertion {
         let vault = WebAuthnVault.load()
         var candidates = vault.filter { $0.rpId == rpId }
         if !request.allowCredentialIds.isEmpty {
@@ -384,7 +393,7 @@ enum WebAuthnSoftwareAuthenticator {
         let key = try P256.Signing.PrivateKey(rawRepresentation: credential.privateKey)
 
         var authData = Data(SHA256.hash(data: Data(rpId.utf8)))
-        authData.append(getFlags)
+        authData.append(getFlags(userVerified: userVerified))
         authData.append(contentsOf: [0, 0, 0, 0])
 
         let toSign = authData + Data(SHA256.hash(data: clientDataJSON))
