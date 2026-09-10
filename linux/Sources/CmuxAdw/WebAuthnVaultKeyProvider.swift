@@ -26,7 +26,7 @@ import Glibc
 
 enum WebAuthnVaultKeyProvider {
     enum Backend: String {
-        case host, portal, none
+        case host, portal, file, none
     }
 
     struct VaultKey {
@@ -46,6 +46,8 @@ enum WebAuthnVaultKeyProvider {
             return portalKey().map { VaultKey(key: $0, backend: .portal) }
                 ?? { FileHandle.standardError.write(Data(
                     "cmux: webauthn vault key: forced portal backend unavailable, vault stays plaintext\n".utf8)); return nil }()
+        case .file:
+            return fileKey().map { VaultKey(key: $0, backend: .file) }
         case .none:
             return nil
         case .auto:
@@ -60,7 +62,7 @@ enum WebAuthnVaultKeyProvider {
 
     // MARK: - selection
 
-    private enum Selection { case host, portal, none, auto }
+    private enum Selection { case host, portal, file, none, auto }
 
     private static var isFlatpak: Bool {
         guard let raw = ProcessInfo.processInfo.environment["FLATPAK_ID"] else { return false }
@@ -71,10 +73,65 @@ enum WebAuthnVaultKeyProvider {
         switch ProcessInfo.processInfo.environment["CMUX_WEBAUTHN_KEY_BACKEND"] {
         case "host": return .host
         case "portal": return .portal
+        case "file": return .file
         case "none": return .none
         default: return .auto
         }
     }
+
+    // MARK: - file backend: a key file beside a REDIRECTED vault
+
+    /// The suites' key backend. It exists so tests never touch the real
+    /// Secret Service — the layer-1 defect (2026-09-10) was that the host
+    /// keyring key was global, so a KEY_BACKEND=host test could overwrite
+    /// the developer's real vault key. A file key keyed to the vault is
+    /// isolated by construction.
+    ///
+    /// Gated exactly like the consent bypass (S3) and the UV test backend:
+    /// it is inert on the default vault. Keying the credentials a person
+    /// actually uses off a file on disk — plantable, unencrypted at rest —
+    /// would be a NEW way to lose or subvert them, so `file` on the
+    /// default vault refuses and says so, and the caller falls back to the
+    /// honest no-backend plaintext warning.
+    private static func fileKey() -> SymmetricKey? {
+        let vault = ProcessInfo.processInfo.environment["CMUX_WEBAUTHN_VAULT"] ?? ""
+        guard !vault.isEmpty else {
+            if !fileRefusalLogged {
+                fileRefusalLogged = true
+                FileHandle.standardError.write(Data(
+                    ("cmux: webauthn vault key: file key backend ignored — "
+                     + "CMUX_WEBAUTHN_KEY_BACKEND=file requires an explicit "
+                     + "CMUX_WEBAUTHN_VAULT pointing away from the default vault, so a "
+                     + "file-backed key can never protect real credentials. Falling "
+                     + "back to no key backend.\n").utf8))
+            }
+            return nil
+        }
+        let keyPath = (vault as NSString).expandingTildeInPath + ".key"
+        if let existing = try? String(contentsOf: URL(fileURLWithPath: keyPath), encoding: .utf8),
+           let decoded = Data(base64Encoded: existing.trimmingCharacters(in: .whitespacesAndNewlines)),
+           decoded.count == 32 {
+            return SymmetricKey(data: decoded)
+        }
+        // No key file yet: mint one for THIS vault and persist it 0600.
+        // Minting here is safe — a file key is per-vault by its path, and
+        // this backend is already gated to redirected (test) vaults.
+        let key = SymmetricKey(size: .bits256)
+        let raw = key.withUnsafeBytes { Data($0) }
+        let b64 = raw.base64EncodedString()
+        let tmp = keyPath + ".\(UUID().uuidString).tmp"
+        do {
+            try Data(b64.utf8).write(to: URL(fileURLWithPath: tmp))
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tmp)
+            guard rename(tmp, keyPath) == 0 else {
+                try? FileManager.default.removeItem(atPath: tmp)
+                return nil
+            }
+        } catch { return nil }
+        return key
+    }
+
+    private static var fileRefusalLogged = false
 
     // MARK: - host backend: gnome-keyring via secret-tool
 
