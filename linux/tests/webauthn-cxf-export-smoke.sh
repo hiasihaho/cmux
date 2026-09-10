@@ -26,7 +26,7 @@ VAULT="/tmp/cmux-$APP_ID_SUFFIX-vault.json"
 OUT_E="/tmp/cmux-$APP_ID_SUFFIX-export.enc.json"
 OUT_P="/tmp/cmux-$APP_ID_SUFFIX-export.plain.json"
 suite_cleanup() {
-    rm -f "$VAULT" "$VAULT".v1.bak "$VAULT".undecryptable-*.bak "$OUT_E" "$OUT_P"
+    rm -f "$VAULT" "$VAULT".key "$VAULT".v1.bak "$VAULT".undecryptable-*.bak "$OUT_E" "$OUT_P"
     return 0
 }
 require_tools python3
@@ -36,7 +36,7 @@ python3 -c "import cryptography" 2>/dev/null \
 WORK=$(mktemp -d)
 KEEP=false
 [ "${1:-}" = "--keep" ] && KEEP=true
-rm -f "$VAULT" "$VAULT".v1.bak "$OUT_E" "$OUT_P"
+rm -f "$VAULT" "$VAULT".key "$VAULT".v1.bak "$OUT_E" "$OUT_P"
 
 PASS=0; FAIL=0
 ok()   { echo "  PASS  $1"; PASS=$((PASS+1)); }
@@ -106,7 +106,7 @@ start_xvfb
 INSTANCE_ENV=(
     CMUX_WEBAUTHN=1
     CMUX_WEBAUTHN_VAULT="$VAULT"
-    CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_KEY_BACKEND=file
     GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
 )
 start_instance || exit 2
@@ -137,7 +137,7 @@ INSTANCE_ENV=(
     CMUX_WEBAUTHN_AUTOAPPROVE=1
     CMUX_WEBAUTHN_EXPORT_AUTOAPPROVE=1
     CMUX_WEBAUTHN_VAULT="$VAULT"
-    CMUX_WEBAUTHN_KEY_BACKEND=host
+    CMUX_WEBAUTHN_KEY_BACKEND=file
     GHOSTTY_RESOURCES_DIR="$ROOT/ghostty/zig-out/share/ghostty"
 )
 start_instance || exit 2
