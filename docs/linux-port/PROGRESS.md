@@ -5500,3 +5500,67 @@ had to learn. Standing lesson: a skip is a deferred assertion, and a
 skip that can never become an assertion is a hole with a comment on it.
 
 `browser-scheme-smoke` 11 -> 12 assertions, 0 skips.
+
+## 2026-09-10 — E2 dogfood: the consent dialog nobody could answer
+
+hias at the browser, webauthn.io, on an isolated dev instance built from
+the merged tree. The first ceremony failed in the most instructive way
+available.
+
+**What he saw.** A correct consent dialog — right origin (`webauthn.io`),
+right account, reading like a passkey prompt rather than a debug box —
+and then, after approving, the site's "The authenticator was unable to
+process the specified options, or could not create a new credential".
+
+**What had actually happened.** The authenticator processed them
+perfectly: the vault went `0 passkeys / plaintext` to `1 passkey /
+encrypted (host)`, so P1b encryption engaged correctly on first write.
+The credential existed. It just never reached the page — an ORPHAN the
+relying party knows nothing about. The site's message blames the
+options; the console showed the options were entirely ordinary (ES256 +
+RS256, residentKey preferred, attestation none). The RP's error text
+pointed away from the fault, which is worth remembering the next time a
+site's message is treated as a diagnosis.
+
+**Root cause.** `webkit_script_message_reply_ref(reply)` retained the
+reply across the dialog — the comment above it even says "the reply
+outlives this stack frame whenever a dialog is shown" — but nothing
+retained the `JSCContext` that has to BUILD the reply's value.
+`jsc_value_get_context` is transfer-none: the context belongs to the
+message value, which WebKit releases the moment the callback returns.
+One main-loop turn later the user clicks, `jsc_value_new_string` runs on
+freed memory, `returnWebAuthnJSON` bails on its guard, and the page's
+promise never settles.
+
+**Why 24/24 green never saw it, which is the real finding.** Every leg
+set `CMUX_WEBAUTHN_AUTOAPPROVE=1`, which approves INLINE, on the message
+handler's own stack — before anything is released, so the dangling
+context is never touched. The escape hatch that lets a headless suite
+skip a GTK dialog also skips ASYNCHRONY, and asynchrony is the only
+thing that makes the real path different. The suite covered a path no
+human takes; the path every human takes had no coverage at all. New
+mode `CMUX_WEBAUTHN_AUTOAPPROVE=async` approves from an idle callback —
+the dialog's lifetime without the click — so the shipping path is
+testable headlessly.
+
+**The bug is nondeterministic, and that matters.** Under hias' click it
+was a GLib CRITICAL (`assertion 'JSC_IS_CONTEXT(context)' failed`); in
+the suite the same use-after-free SEGFAULTED with a core dump. That is
+almost certainly why "webauthn.io verified live" could be recorded
+truthfully on 2026-09-01 and be false today: freed memory sometimes
+still reads as valid. A page can trigger a ceremony, so this was a
+remotely-reachable use-after-free.
+
+**My own vacuous pass, in the leg written to prevent vacuous passes.**
+The third assertion checked the instance log for the CRITICAL — and
+PASSED over the core dump, because a dead instance writes no log line.
+It now asserts liveness BEFORE the symptom. Guarding against a failure
+mode and then shipping it in the same file is worth recording rather
+than quietly editing away.
+
+RED `2dfb8bd850` (25 passed / 2 failed + core dump), GREEN 27/0 with no
+crash line anywhere in the run. Checked and ruled out: this is the only
+site with the pattern — `BrowserWebAuthn.swift` is the sole user of
+`jsc_value_get_context`, and the CXF export never replies to the page.
+
+`webauthn-smoke` 24 -> 27 assertions.

@@ -217,11 +217,16 @@ private func runWebAuthnCeremony(
     }
 
     let creating = kind == "createCredential"
+    // Balances the two refs taken below, on every path out of `finish`.
+    let release: () -> Void = {
+        webkit_script_message_reply_unref(reply)
+        if let context { g_object_unref(UnsafeMutableRawPointer(context)) }
+    }
     let finish: (Bool) -> Void = { approved in
         guard approved else {
             returnWebAuthnError(reply, context: context, name: "NotAllowedError",
                                 message: "The passkey request was declined.")
-            webkit_script_message_reply_unref(reply)
+            release()
             return
         }
         do {
@@ -239,11 +244,19 @@ private func runWebAuthnCeremony(
             returnWebAuthnError(reply, context: context, name: "UnknownError",
                                 message: "The passkey request failed.")
         }
-        webkit_script_message_reply_unref(reply)
+        release()
     }
 
-    // The reply outlives this stack frame whenever a dialog is shown.
+    // The reply outlives this stack frame whenever a dialog is shown —
+    // and so does the CONTEXT that has to build the reply's value.
+    // jsc_value_get_context is transfer-none: the context belongs to the
+    // message value, which WebKit releases the moment this callback
+    // returns. Retaining the reply but not the context is what made a
+    // real consent dialog fail while every auto-approved suite passed —
+    // approving inline replies before anything is released, so the
+    // dangling context is never touched.
     webkit_script_message_reply_ref(reply)
+    if let context { g_object_ref(UnsafeMutableRawPointer(context)) }
     switch BrowserWebAuthn.approval {
     case .immediate:
         finish(true)
