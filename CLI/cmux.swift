@@ -28657,9 +28657,16 @@ struct CMUXCLI {
     /// existed; this is the strain gauge so the NEXT restore (or a human) can
     /// diagnose a record-less surface instead of overwriting the only evidence.
     /// Best-effort and Linux-only; any failure here must never disturb the Stop.
+    /// `write` is the ACTUAL outcome of the record write this Stop attempted
+    /// ("written" / "failed" / "skipped-no-target"), SEPARATE from `restorable`
+    /// (whether a restorable record was *intended* for this kind). The store
+    /// persists via temp+rename and `upsert` THROWS on save failure, so the
+    /// caller must pass the observed outcome — logging intent alone would say
+    /// "restorable written" even when the rename failed and nothing landed
+    /// (helper cross-check 2026-09-11).
     func appendAgentStopRestorableAudit(
         kind: String, sessionId: String, surfaceId: String,
-        cwd: String?, restorable: Bool, reason: String, env: [String: String]
+        cwd: String?, restorable: Bool, write: String, reason: String, env: [String: String]
     ) {
         let dir: String
         if let override = normalizedHookValue(env["CMUX_AGENT_HOOK_STATE_DIR"]) {
@@ -28669,10 +28676,6 @@ struct CMUXCLI {
         }
         let fileURL = URL(fileURLWithPath: dir, isDirectory: true)
             .appendingPathComponent("resume-stop-audit.jsonl", isDirectory: false)
-        // Cheap unbounded-growth guard: one line per turn-end is tiny, but never
-        // let the diagnostic file itself become a disk problem.
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
-           let size = attrs[.size] as? Int, size > 5_000_000 { return }
         let obj: [String: Any] = [
             "ts": Date().timeIntervalSince1970,
             "kind": kind,
@@ -28680,6 +28683,7 @@ struct CMUXCLI {
             "surfaceId": surfaceId,
             "cwd": cwd ?? NSNull(),
             "restorable": restorable,
+            "write": write,
             "origin": "generic-stop",
             "reason": reason,
         ]
@@ -28691,6 +28695,15 @@ struct CMUXCLI {
             at: URL(fileURLWithPath: dir, isDirectory: true),
             withIntermediateDirectories: true
         )
+        // Bounded growth by TAIL-rotation, not a silent stop: when the log
+        // passes the cap, keep the most RECENT lines (the ones a restore needs)
+        // rather than freezing it at its oldest 5 MB (helper side-note).
+        if let attrs = try? fm.attributesOfItem(atPath: fileURL.path),
+           let size = attrs[.size] as? Int, size > 5_000_000,
+           let existing = try? String(contentsOf: fileURL, encoding: .utf8) {
+            let kept = existing.split(separator: "\n", omittingEmptySubsequences: true).suffix(1000)
+            try? (kept.joined(separator: "\n") + "\n").write(to: fileURL, atomically: true, encoding: .utf8)
+        }
         if let handle = try? FileHandle(forWritingTo: fileURL) {
             defer { try? handle.close() }
             _ = try? handle.seekToEnd()
@@ -31675,6 +31688,15 @@ export default CMUXSessionRestore;
             }
             let mapped = sessionId.isEmpty ? nil : (try? store.lookup(sessionId: sessionId))
             guard let target = resolveAgentHookTarget(mapped: mapped) else {
+                #if os(Linux)
+                // Part 3 (helper side-note): a Stop that cannot bind to a surface
+                // writes NO record — log that too, so a record-less restore is
+                // diagnosable here rather than silently absent.
+                appendAgentStopRestorableAudit(
+                    kind: def.name, sessionId: sessionId, surfaceId: "",
+                    cwd: mapped?.cwd, restorable: false, write: "skipped-no-target",
+                    reason: "no-target", env: env)
+                #endif
                 didSendFeedTelemetry = true
                 print("{}")
                 return
@@ -31848,7 +31870,15 @@ export default CMUXSessionRestore;
                 #endif
             }()
             if !sessionId.isEmpty, !suppressVisibleMutations {
-                try? store.upsert(sessionId: sessionId, workspaceId: workspaceId, surfaceId: surfaceId, cwd: cwd,
+                #if os(Linux)
+                var stopUpsertOutcome = "written"
+                #endif
+                // The store persists via temp+rename and upsert THROWS on save
+                // failure; capture the outcome instead of swallowing it with
+                // `try?`, so Part 3 logs the ACTUAL write result (helper
+                // cross-check). The hook itself stays best-effort / exit 0.
+                do {
+                    try store.upsert(sessionId: sessionId, workspaceId: workspaceId, surfaceId: surfaceId, cwd: cwd,
                                   transcriptPath: input.transcriptPath ?? mapped?.transcriptPath,
                                   pid: pid,
                                   launchCommand: resumeLaunchCommand,
@@ -31860,12 +31890,19 @@ export default CMUXSessionRestore;
                                   updateLastNotificationStatus: true,
                                   runtimeStatus: (antigravityHasActiveBackgroundWork && stopNotificationStatus == .idle) ? .running : runtimeStatus(for: stopNotificationStatus),
                                   updateRuntimeStatus: true)
+                } catch {
+                    #if os(Linux)
+                    stopUpsertOutcome = "failed"
+                    #endif
+                }
                 #if os(Linux)
-                // Part 3: durable, per-kind record of whether this Stop persisted a
-                // restorable record (the strain gauge for the next restore).
+                // Part 3: durable, per-kind record of WHETHER a restorable record
+                // was actually written this Stop — `write` is the observed upsert
+                // outcome, `restorable` the intended property. The strain gauge
+                // for the next restore (a "failed" line is the strand warning).
                 appendAgentStopRestorableAudit(
                     kind: def.name, sessionId: sessionId, surfaceId: surfaceId,
-                    cwd: cwd, restorable: stopWritesRestorableRecord,
+                    cwd: cwd, restorable: stopWritesRestorableRecord, write: stopUpsertOutcome,
                     reason: stopWritesRestorableRecord ? "resumable-kind" : "unresumable-kind",
                     env: env)
                 #endif

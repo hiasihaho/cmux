@@ -5933,3 +5933,45 @@ This turn delivers parts 2/3 green; helper's cross-check is the next step,
 then the single re-promote (P1-fprintd + resume). No passkey dogfood until
 the re-promote. The exact past trigger of the three strands stays
 instrumented-open (Part 3) and non-blocking, as ruled.
+
+### 2026-09-11 (parts 2/3, part-3 fix) — the audit must log the WRITE OUTCOME, not the intent
+
+helper's independent cross-check of parts 2/3 (`helper/dossiers/2026-09-11-crosscheck-parts23.md`,
+measured with a FRESH CLI from the merge, own socket, isolated stores)
+CONFIRMED RR-SWAP (2a), the stop success-path (2b), the part-1 fallback, and
+that 2b's Linux-gating is macOS-justified — and caught one real blocker in
+Part 3.
+
+**The bug:** the Part 3 audit logged INTENT, not the write OUTCOME. The store
+persists via temp+rename (`saveUnlocked`) and `store.upsert` THROWS on a save
+failure, but the generic stop called it under `try?` (swallowed) and the audit
+logged `restorable:true` purely from resumable-kind membership. Deterministic
+repro (helper): make `codex-hook-sessions.json` a DIRECTORY → the rename onto
+it throws → NO record is written, yet the audit claimed a restorable write.
+That directly contradicts the field's own contract ("WHETHER a restorable
+record was written"). A sensor that lies exactly when the write fails is worse
+than none.
+
+**Fix:**
+- The generic stop now wraps `upsert` in `do/catch` (no longer `try?`) and
+  the audit records the observed outcome in a new `write` field
+  (`written` / `failed`), SEPARATE from `restorable` (the intended property).
+  The hook stays best-effort / exit 0 — the catch only records the outcome.
+- **STOP-WRITE-FAIL** (red-first): store path made a directory → `write:failed`
+  + hook still exits 0. Red before the fix with exactly helper's signature
+  (`expected 'failed', got 'written'`); green after.
+- helper side-note 1: a Stop that can't bind to a surface returned BEFORE any
+  audit — now logs `write:skipped-no-target` so a record-less restore is
+  diagnosable there too.
+- helper side-note 2: the 5 MB cap silently STOPPED logging — now tail-rotates
+  (keeps the most recent ~1000 lines), so recent diagnostics survive.
+
+**Honest limit (helper, standing):** stub execution still does NOT prove a
+real agent checkpoint restore (RR3) — the suite proves the resolver decision,
+the resume command, its execution with the right session id + cwd, and the
+record/audit write outcome, but not a live `codex resume <id>` reconstituting
+a real conversation. That remains the open acceptance beyond this round.
+
+`agent-resume-smoke` 28 → 30, green on ghostty AND vte. macOS path unchanged
+(the `write`-outcome capture is `#if os(Linux)`; on macOS the `do/catch`
+reduces to the prior `try?` swallow with no audit).
