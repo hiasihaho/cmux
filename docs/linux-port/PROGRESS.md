@@ -5829,3 +5829,30 @@ stop-instrumentation (Part 3) are the next increment; Part 2 needs the
 measured nuance that a null-isRestorable record already resumes, so
 writing the flag explicitly is correctness/self-description, not the
 strand-fix.
+
+### 2026-09-11 (later) — resume gap (b) CORRECTED after helper cross-check
+
+helper's independent cross-check (117 pre-registered observations) confirmed
+the isRestorable reversal and the cwd fix, and raised two measured caveats,
+both correct:
+
+1. **The `cd && resume` form BLOCKS** if the target vanishes between resolve
+   and exec — worse than the bug it fixes, in that window. So "never blocks"
+   + "exact macOS parity" were overclaims. Corrected to the true macOS shell
+   form `cd '<dir>' || [ ! -d '<dir>' ] && <resume>`: it runs the agent when
+   the cd succeeds OR the dir is gone (start cwd), and withholds resume only
+   on a permission-denied-but-exists dir (deliberate). Verified at the shell:
+   `&&` swallows a gone dir, the `||` form runs. The form is regression-
+   guarded by RR-HOME/RR-CODEX asserting the exact string (red under `&&`).
+2. **RR3 was plan-strings only.** RR-CODEX now restarts and proves EXECUTED
+   evidence — the codex stub's real argv (the session id ran) and real pwd
+   (the recorded cwd), for a second agent kind, not just the resolver output.
+
+Also removed a flawed RR-RACE leg I had added: the resolver's `fileExists`
+runs at RESTORE time, so deleting the dir before the restart just yields the
+bare command (identical to RR-GONE) — it never exercises the microsecond
+resolve→exec race, which is not reachable from the restart harness. A test
+that claims to cover it would be dishonest; the shell-semantics check plus
+the form-string guard are the honest coverage.
+
+`agent-resume-smoke` 18 → 20, green; red under the plain `&&` form.

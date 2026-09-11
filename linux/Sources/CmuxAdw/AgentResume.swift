@@ -155,21 +155,30 @@ enum AgentResume {
         return nil
     }
 
-    /// `cd <dir> && <command>` when `cwd` is an existing absolute
-    /// directory, else the bare command. macOS parity: its command
-    /// builder prefixes the agent's own cwd (RestorableAgentSession) so a
-    /// resumed agent lands in its recorded project, not wherever the
-    /// pane's shell happened to restore — the "bare shell in $HOME" shape
-    /// when the two diverge. The directory is single-quoted (typed into a
-    /// live shell); a non-absolute or vanished path is ignored so a gone
-    /// target never BLOCKS resume.
+    /// `cd <dir> || [ ! -d <dir> ] && <command>` when `cwd` is an existing
+    /// absolute directory at resolve time, else the bare command. macOS
+    /// parity — its command builder uses this exact shell form
+    /// (RestorableAgentSession) so a resumed agent lands in its recorded
+    /// project, not wherever the pane's shell happened to restore (the
+    /// "bare shell in $HOME" shape when the two diverge).
+    ///
+    /// The form, not a plain `&&`, is load-bearing (helper cross-check
+    /// 2026-09-11): `cd && cmd` BLOCKS the resume if the directory
+    /// vanishes between resolve and the shell running the line. This form
+    /// runs the command when the `cd` succeeds OR the target is gone (the
+    /// `[ ! -d ]` fallback → run in the start cwd); it withholds resume
+    /// only when `cd` fails while the directory still exists (a
+    /// permission-denied — deliberately not running the agent in the
+    /// wrong place). So it is NOT "never blocks": a vanished dir runs, a
+    /// permission-denied dir does not. Single-quoted twice (typed into a
+    /// live shell).
     static func cwdPrefixedCommand(_ command: String, cwd: String?) -> String {
         guard let cwd, cwd.hasPrefix("/") else { return command }
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: cwd, isDirectory: &isDir),
               isDir.boolValue else { return command }
-        let quoted = "'" + cwd.replacingOccurrences(of: "'", with: "'\\''") + "'"
-        return "cd \(quoted) && \(command)"
+        let q = "'" + cwd.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        return "cd \(q) || [ ! -d \(q) ] && \(command)"
     }
 
     /// Resolves the resume command for a restored surface: newest
