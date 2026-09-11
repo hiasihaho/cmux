@@ -513,15 +513,53 @@ echo "{\"session_id\":\"$SW_U\",\"cwd\":\"/tmp\"}" | \
       CMUX_SURFACE_ID=$SW_SID CMUX_WORKSPACE_ID=workspace:1 "$CLI" hooks codex stop >/dev/null 2>&1
 expect "STOP-WRITE: generic codex Stop writes isRestorable:true" "True" \
     "$(python3 -c "import json;print(json.load(open('$FIXDIR/codex-hook-sessions.json'))['sessions'].get('$SW_U',{}).get('isRestorable'))" 2>/dev/null)"
-expect "STOP-WRITE: Part 3 audit records a restorable write for codex" "yes" \
+# The audit must record the ACTUAL write outcome ("written"), not merely the
+# intended restorable property (helper cross-check).
+expect "STOP-WRITE: Part 3 audit records write=written for the codex record" "yes" \
     "$(python3 -c "
 import json
 try:
     hit=[x for x in (json.loads(l) for l in open('$FIXDIR/resume-stop-audit.jsonl'))
-         if x.get('sessionId')=='$SW_U' and x.get('restorable') is True and x.get('kind')=='codex']
+         if x.get('sessionId')=='$SW_U' and x.get('kind')=='codex'
+         and x.get('restorable') is True and x.get('write')=='written']
     print('yes' if hit else 'no')
 except Exception:
     print('no')" 2>/dev/null)"
+
+# --- phase STOP-WRITE-FAIL: the audit must NOT claim a write that failed -
+# helper cross-check (2026-09-11): the store persists via temp+rename and the
+# generic stop's upsert THROWS on save failure — which `try?` used to swallow,
+# so the audit logged restorable:true even when nothing landed. Deterministic
+# repro: make the store file a DIRECTORY so the rename onto it fails. The
+# audit MUST then record write=failed (the strand warning), not a restorable
+# write. The hook itself stays best-effort (exit 0). Store dir pinned to the
+# fixture; the developer's ~/.cmuxterm is never touched.
+rm -f "$FIXDIR"/*-hook-sessions.json "$FIXDIR/resume-stop-audit.jsonl"
+kill_instance
+start_instance || exit 2
+SF_SID=$(v2 '{"id":1,"method":"surface.list"}' | jfield "['result']['surfaces'][0]['id']")
+SF_U="ffffffff-6666-4666-8666-666666666666"
+# the store path is a DIRECTORY -> temp+rename save cannot replace it
+rm -rf "$FIXDIR/codex-hook-sessions.json"
+mkdir -p "$FIXDIR/codex-hook-sessions.json"
+echo "{\"session_id\":\"$SF_U\",\"cwd\":\"/tmp\"}" | \
+  env CMUX_SOCKET_PATH=$SOCK CMUX_HOOK_SESSIONS_DIR=$FIXDIR CMUX_AGENT_HOOK_STATE_DIR=$FIXDIR \
+      CMUX_SURFACE_ID=$SF_SID CMUX_WORKSPACE_ID=workspace:1 "$CLI" hooks codex stop >/dev/null 2>&1
+fail_hook_rc=$?
+[ "$fail_hook_rc" = "0" ] \
+    && ok "STOP-WRITE-FAIL: the hook stays best-effort (exit 0) on a failed write" \
+    || bad "STOP-WRITE-FAIL hook exit" "hook exited $fail_hook_rc, expected 0"
+expect "STOP-WRITE-FAIL: audit records write=failed (not a restorable write)" "failed" \
+    "$(python3 -c "
+import json
+try:
+    hits=[x for x in (json.loads(l) for l in open('$FIXDIR/resume-stop-audit.jsonl'))
+          if x.get('sessionId')=='$SF_U' and x.get('kind')=='codex']
+    print(hits[-1].get('write') if hits else 'no-line')
+except Exception:
+    print('no-file')" 2>/dev/null)"
+# undo the directory so the final cleanup and any later run start clean
+rm -rf "$FIXDIR/codex-hook-sessions.json"
 
 rm -rf "$FIXDIR" "$STUBDIR"
 rm -f "$MARKER" "$MARKER.pwd"
