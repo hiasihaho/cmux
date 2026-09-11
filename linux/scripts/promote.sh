@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Promote the freshly built binary to the DAILY cmux instance.
 #
-#   linux/scripts/promote.sh [--no-build] [--test] [--vte|--ghostty]
+#   linux/scripts/promote.sh [--no-build] [--test] [--vte|--ghostty] [--webauthn]
 #
 # The daily instance runs the binary from linux/.build/debug, so `swift
 # build` already put the new code on disk — promotion is "restart the
@@ -31,6 +31,7 @@ START="$ROOT/linux/scripts/start.sh"
 
 build=true
 test=false
+webauthn=false
 slot="daily"
 passthrough=()
 while [ $# -gt 0 ]; do
@@ -39,6 +40,7 @@ while [ $# -gt 0 ]; do
         --test) test=true ;;
         --slot) slot="$2"; shift ;;
         --vte | --ghostty) passthrough+=("$1") ;;
+        --webauthn) webauthn=true ;;
         *) echo "promote.sh: unknown option $1" >&2; exit 2 ;;
     esac
     shift
@@ -152,6 +154,14 @@ else
     echo "== $target_desc not running — starting fresh"
 fi
 
+if $webauthn; then
+    # Browser passkeys/WebAuthn (CMUX_WEBAUTHN=1) are off by default; --webauthn
+    # brings the instance up with them on. start.sh passes the ambient env to the
+    # binary (it only scrubs the workspace/surface/socket vars), so exporting it
+    # here reaches the instance. Verified on a disposable dev2 slot 2026-09-11.
+    export CMUX_WEBAUTHN=1
+    echo "== CMUX_WEBAUTHN=1 — browser passkeys enabled for this $target_desc"
+fi
 echo "== starting the $target_desc on the new binary"
 "$START" "$slot" "${passthrough[@]+"${passthrough[@]}"}"
 
