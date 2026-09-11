@@ -131,6 +131,28 @@ enum LinuxSettings {
         return "https://www.google.com/search?q=%s"
     }
 
+    /// Whether the browser WebAuthn client (the `navigator.credentials` +
+    /// `PublicKeyCredential` polyfill backed by the software passkey vault)
+    /// installs on browser panes. DEFAULT OFF: browser passkeys are a
+    /// security-sensitive surface still earning a solid dogfood (the
+    /// ceremony use-after-free was fixed 2026-09-10), so on-by-default is a
+    /// later, separately-dogfooded decision.
+    ///
+    /// The env var is a HARD OVERRIDE in the ON direction only —
+    /// `CMUX_WEBAUTHN=1` forces it on regardless of the file — so suites,
+    /// the `cmux_pk` launcher and `promote --webauthn` keep working. This
+    /// is the ONE setting whose env does not also force OFF: anything but
+    /// "1" falls through to the setting, because the env's whole job here
+    /// is to be the always-available on-switch. Applies to browser panes
+    /// opened AFTER a change (the polyfill is injected at pane creation),
+    /// not retroactively to open ones.
+    /// Env: CMUX_WEBAUTHN=1. Key: linux.browserWebAuthn (bool, default false).
+    static var browserWebAuthn: Bool {
+        if ProcessInfo.processInfo.environment["CMUX_WEBAUTHN"] == "1" { return true }
+        if let value = linuxSection()["browserWebAuthn"] as? Bool { return value }
+        return false
+    }
+
     /// Terminal backend for shim-linked builds. Startup-only: the Ghostty
     /// runtime initializes once, so a change applies to the next launch
     /// (the preferences window says so).

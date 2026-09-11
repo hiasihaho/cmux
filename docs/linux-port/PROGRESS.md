@@ -5975,3 +5975,36 @@ a real conversation. That remains the open acceptance beyond this round.
 `agent-resume-smoke` 28 → 30, green on ghostty AND vte. macOS path unchanged
 (the `write`-outcome capture is `#if os(Linux)`; on macOS the `do/catch`
 reduces to the prior `try?` swallow with no audit).
+
+## 2026-09-11 — browser WebAuthn behind a cmux.json setting (default off)
+
+The "WebAuthn isn't supported in the daily browser" finding had a
+one-line cause: the daily runs without `CMUX_WEBAUTHN=1`, so the
+flag-gated polyfill never installs (`navigator.credentials` undefined —
+confirmed by dumping all 489 WebKitFeatures on 2.52.4: there is NO
+WebAuthn/CredentialManagement toggle; the only "WebAuthn" match is
+`LoginStatusAPIRequiresWebAuthn`, an unrelated internal flag. The cmux
+desk's proposed "enable the WebKitFeature" fix had no feature to enable
+and was reverted, `e2aeef9c7e`). So the real fix is the standing
+flag-flip roadmap item, done as a setting.
+
+`linux.browserWebAuthn` (bool, DEFAULT OFF) now gates the client via
+`LinuxSettings.browserWebAuthn`, and `BrowserWebAuthn.isEnabled` reads
+it. The env keeps working as a HARD ON-OVERRIDE: `isEnabled =
+(CMUX_WEBAUTHN == "1") OR setting`. This is the one setting whose env
+does not also force OFF — the env's whole job is to be the
+always-available on-switch for suites, the cmux_pk launcher and
+`promote --webauthn` (cmux desk's lane). Default off is hias' call
+(2026-09-11): browser passkeys earn on-by-default after a solid dogfood,
+the ceremony use-after-free having been fixed only 2026-09-10.
+
+Suite `webauthn-setting-smoke` (4): setting=true exposes
+`navigator.credentials`+`PublicKeyCredential` with no env and `status`
+reflects it; default (no setting, no env) stays undefined; `CMUX_WEBAUTHN=1`
+hard-overrides a false setting. `webauthn-smoke` 41/41 unchanged (env
+override path). No `CLI/cmux.swift` touched (status verb already surfaces
+`isEnabled`), so no macos-verify needed. Localization: no new UI string —
+a file-only setting, no label yet; nothing to add to a catalog (the
+Linux port has none). The flatpak side (the setting is inert under
+flatpak until the config split-brain is resolved) is the cmux desk's
+lane, tracked in the GAPS "Flatpak reads a config file nobody edits" row.

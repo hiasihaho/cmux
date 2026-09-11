@@ -53,10 +53,13 @@ enum BrowserWebAuthn {
     /// registered here.
     static let scriptWorld = "cmuxWebAuthnWorld"
 
-    /// Strictly opt-in while the feature hardens (same posture as
-    /// CMUX_WEBDRIVER). Flip to a setting once dogfooded.
+    /// Whether the WebAuthn client installs on browser panes. Off by
+    /// default; enabled by the `linux.browserWebAuthn` cmux.json setting
+    /// or hard-overridden on by `CMUX_WEBAUTHN=1` (suites / cmux_pk
+    /// launcher / promote --webauthn). Resolution lives in
+    /// LinuxSettings.browserWebAuthn.
     static var isEnabled: Bool {
-        ProcessInfo.processInfo.environment["CMUX_WEBAUTHN"] == "1"
+        LinuxSettings.browserWebAuthn
     }
 
     /// Test/dev escape hatch: skip the consent dialog. Headless suites

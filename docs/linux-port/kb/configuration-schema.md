@@ -162,6 +162,18 @@ from there or from the schema JSON.
   actions block; "Default for New Workspace" sets `ui.newWorkspace.action`
   (project-local wins).
 
+## linux (Linux-port-only section)
+
+Keys under a top-level `"linux"` object, read by `LinuxSettings`
+(env var > file > default). `scrollbackLimit` (chars; 0 = keep all) ·
+`autoResumeAgentSessions` (default true) · `searchUrl` (`%s` = query) ·
+`terminalBackend` (`ghostty`|`vte`, startup-only) ·
+`browserWebAuthn` (bool, **default false**): installs the browser
+WebAuthn client (the `navigator.credentials`/`PublicKeyCredential`
+polyfill backed by the software passkey vault) on browser panes opened
+after the change. `CMUX_WEBAUTHN=1` is a hard on-override regardless of
+this key.
+
 ## dock.json (separate file, same trust model)
 
 `.cmux/dock.json` (project, nearest parent, nested trees) >
