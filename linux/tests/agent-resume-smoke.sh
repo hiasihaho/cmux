@@ -318,7 +318,7 @@ EOF
 force_save
 plan=$(v2 '{"id":2,"method":"debug.resume_plan"}')
 expect "RR-HOME: plan carries a cd-prefix to the recorded cwd" \
-    "cd '/etc' && claude --resume $RHU" \
+    "cd '/etc' || [ ! -d '/etc' ] && claude --resume $RHU" \
     "$(echo "$plan" | jfield "['result']['surfaces'][0].get('resume_command','')")"
 # and prove it end to end: the resumed stub's real pwd is /etc
 kill_instance
@@ -346,8 +346,22 @@ EOF
 force_save
 plan=$(v2 '{"id":2,"method":"debug.resume_plan"}')
 expect "RR-CODEX: codex resume also carries the cd-prefix" \
-    "cd '/usr' && codex resume $RCU" \
+    "cd '/usr' || [ ! -d '/usr' ] && codex resume $RCU" \
     "$(echo "$plan" | jfield "['result']['surfaces'][0].get('resume_command','')")"
+# RR3 executed evidence (helper cross-check): not the plan string — the
+# codex stub REALLY ran (argv proves the session id) in its recorded cwd
+# (real pwd), for a second agent kind.
+kill_instance
+start_instance || exit 2
+found=""
+for _ in $(seq 1 30); do [ -f "$MARKER.pwd" ] && { found=yes; break; }; sleep 0.5; done
+if [ "$found" = "yes" ]; then
+    expect "RR-CODEX: codex stub really ran with its session id" \
+        "codex resume $RCU" "$(cat "$MARKER")"
+    expect "RR-CODEX: codex stub's real pwd is the recorded cwd" "/usr" "$(cat "$MARKER.pwd")"
+else
+    bad "RR-CODEX exec" "codex stub never ran"; bad "RR-CODEX pwd" "no marker"
+fi
 
 # --- phase RR-GONE: a VANISHED cwd never blocks resume -----------------
 # A cd-prefix to a missing directory would abort the resume entirely —
