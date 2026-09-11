@@ -384,6 +384,145 @@ expect "RR-GONE: a vanished cwd falls back to the bare command" \
     "claude --resume $RGU" \
     "$(echo "$plan" | jfield "['result']['surfaces'][0].get('resume_command','')")"
 
+
+# --- phase RR-SWAP: the index must not cross two same-kind sessions -----
+# helper cross-check (2026-09-11): the resolver trusted
+# activeSessionsBySurface BLINDLY and never checked the record's own
+# surfaceId. Cross two same-kind sessions' index entries and each surface
+# resumes the OTHER's session. The fix honours an index entry only when the
+# record it points at names THIS surface; on a mismatch it falls back to the
+# surfaceId record-scan and recovers this surface's own session. Real
+# executed presence: the resumed stub's argv (session id) AND pwd (that
+# session's recorded cwd) — not the plan string alone.
+rm -f "$MARKER" "$MARKER.pwd" "$FIXDIR"/*-hook-sessions.json
+kill_instance
+start_instance || exit 2
+RS_SID=$(v2 '{"id":1,"method":"surface.list"}' | jfield "['result']['surfaces'][0]['id']")
+RS_OWN="aaaaaaaa-1111-4111-8111-111111111111"       # belongs to THIS surface, cwd /etc
+RS_FOREIGN="bbbbbbbb-2222-4222-8222-222222222222"    # belongs to ANOTHER surface, cwd /usr
+RS_FOREIGN_SURFACE="cccccccc-3333-4333-8333-333333333333"
+# MUTANT: the live surface's index entry points at the FOREIGN session,
+# whose record says it belongs to RS_FOREIGN_SURFACE. Higher updatedAt too,
+# so a naive newest-wins scan would also mispick it — only the surfaceId
+# coupling gets this right.
+cat > "$FIXDIR/claude-hook-sessions.json" << EOF
+{ "version": 1,
+  "sessions": {
+    "$RS_OWN":     { "isRestorable": true, "agentLifecycle": "idle", "updatedAt": 300, "cwd": "/etc", "surfaceId": "$RS_SID" },
+    "$RS_FOREIGN": { "isRestorable": true, "agentLifecycle": "idle", "updatedAt": 400, "cwd": "/usr", "surfaceId": "$RS_FOREIGN_SURFACE" }
+  },
+  "activeSessionsBySurface": { "$RS_SID": { "sessionId": "$RS_FOREIGN", "updatedAt": 400 } },
+  "activeSessionsByWorkspace": {} }
+EOF
+force_save
+plan=$(v2 '{"id":2,"method":"debug.resume_plan"}')
+expect "RR-SWAP: a crossed index falls back to this surface's own session" \
+    "cd '/etc' || [ ! -d '/etc' ] && claude --resume $RS_OWN" \
+    "$(echo "$plan" | jfield "['result']['surfaces'][0].get('resume_command','')")"
+kill_instance
+start_instance || exit 2
+found=""
+for _ in $(seq 1 30); do [ -f "$MARKER.pwd" ] && { found=yes; break; }; sleep 0.5; done
+if [ "$found" = "yes" ]; then
+    expect "RR-SWAP: resumed the surface's OWN session (real argv)" \
+        "claude --resume $RS_OWN" "$(cat "$MARKER")"
+    expect "RR-SWAP: resumed in the OWN session's cwd (real pwd)" "/etc" "$(cat "$MARKER.pwd")"
+else
+    bad "RR-SWAP exec" "stub never ran"; bad "RR-SWAP pwd" "no marker"
+fi
+# positive control: an UNcrossed index still resumes via the index path
+# (the coupling check must not break the normal case).
+rm -f "$MARKER" "$MARKER.pwd"
+kill_instance
+python3 - "$FIXDIR/claude-hook-sessions.json" "$RS_SID" "$RS_OWN" << 'PY'
+import json, sys
+p, surface, own = sys.argv[1], sys.argv[2], sys.argv[3]
+d = json.load(open(p))
+d["activeSessionsBySurface"] = {surface: {"sessionId": own, "updatedAt": 300}}
+json.dump(d, open(p, "w"))
+PY
+start_instance || exit 2
+found=""
+for _ in $(seq 1 30); do [ -f "$MARKER" ] && { found=yes; break; }; sleep 0.5; done
+[ "$found" = "yes" ] \
+    && expect "RR-SWAP control: a correct index still resumes its session" "claude --resume $RS_OWN" "$(cat "$MARKER")" \
+    || bad "RR-SWAP control" "stub never ran"
+
+# --- phase RR-SHELL: no restorable record => bare shell, agent absent ---
+# The "bare shell in $HOME" strand shape: a surface restores but its agent
+# never resumes. This leg bounds the presence oracle — a non-restorable
+# record leaves ONLY the shell (agent absent), a restorable one brings the
+# agent back — both proven by real executed presence (marker present/absent
+# + argv). Part 2b makes the generic Stop write that flag for real; here the
+# two states are fixtured to prove the oracle can tell them apart.
+rm -f "$MARKER" "$MARKER.pwd" "$FIXDIR"/*-hook-sessions.json
+kill_instance
+start_instance || exit 2
+RSH_SID=$(v2 '{"id":1,"method":"surface.list"}' | jfield "['result']['surfaces'][0]['id']")
+RSH_U="dddddddd-4444-4444-8444-444444444444"
+cat > "$FIXDIR/claude-hook-sessions.json" << EOF
+{ "version": 1,
+  "sessions": { "$RSH_U": { "isRestorable": false, "agentLifecycle": "idle", "updatedAt": 300 } },
+  "activeSessionsBySurface": { "$RSH_SID": { "sessionId": "$RSH_U", "updatedAt": 300 } },
+  "activeSessionsByWorkspace": {} }
+EOF
+force_save
+kill_instance
+start_instance || exit 2
+sleep 5
+[ ! -f "$MARKER" ] \
+    && ok "RR-SHELL: a non-restorable record leaves a bare shell (agent absent)" \
+    || bad "RR-SHELL absent" "agent resumed despite isRestorable:false: $(cat "$MARKER")"
+python3 - "$FIXDIR/claude-hook-sessions.json" << 'PY'
+import json, sys
+p = sys.argv[1]; d = json.load(open(p))
+for r in d["sessions"].values(): r["isRestorable"] = True
+json.dump(d, open(p, "w"))
+PY
+kill_instance
+start_instance || exit 2
+found=""
+for _ in $(seq 1 30); do [ -f "$MARKER" ] && { found=yes; break; }; sleep 0.5; done
+[ "$found" = "yes" ] \
+    && expect "RR-SHELL control: a restorable record resumes the agent" "claude --resume $RSH_U" "$(cat "$MARKER")" \
+    || bad "RR-SHELL control" "restorable record did not resume"
+
+
+# --- phase STOP-WRITE: the generic Stop self-describes as restorable -----
+# Part 2b/3, exercised through the REAL generic Stop hook (not a fabricated
+# store): invoke `cmux hooks codex stop` against the live instance and prove
+# it (a) writes isRestorable:true into the codex record (closing the measured
+# claude-6/6 vs others-0/6 omission) and (b) appends a Part 3 audit line
+# recording that a restorable record was written. CMUX_AGENT_HOOK_STATE_DIR is
+# pinned to the fixture so the developer's ~/.cmuxterm is never touched.
+rm -f "$FIXDIR"/*-hook-sessions.json "$FIXDIR/resume-stop-audit.jsonl"
+kill_instance
+start_instance || exit 2
+SW_SID=$(v2 '{"id":1,"method":"surface.list"}' | jfield "['result']['surfaces'][0]['id']")
+SW_U="eeeeeeee-5555-4555-8555-555555555555"
+# Seed AFTER startup (so startup auto-resume cannot race the store) a codex
+# record with NO isRestorable flag — the measured 0/6 shape.
+cat > "$FIXDIR/codex-hook-sessions.json" << EOF
+{ "version": 1,
+  "sessions": { "$SW_U": { "agentLifecycle": "running", "updatedAt": 500, "cwd": "/tmp", "surfaceId": "$SW_SID" } },
+  "activeSessionsBySurface": { "$SW_SID": { "sessionId": "$SW_U", "updatedAt": 500 } },
+  "activeSessionsByWorkspace": {} }
+EOF
+echo "{\"session_id\":\"$SW_U\",\"cwd\":\"/tmp\"}" | \
+  env CMUX_SOCKET_PATH=$SOCK CMUX_HOOK_SESSIONS_DIR=$FIXDIR CMUX_AGENT_HOOK_STATE_DIR=$FIXDIR \
+      CMUX_SURFACE_ID=$SW_SID CMUX_WORKSPACE_ID=workspace:1 "$CLI" hooks codex stop >/dev/null 2>&1
+expect "STOP-WRITE: generic codex Stop writes isRestorable:true" "True" \
+    "$(python3 -c "import json;print(json.load(open('$FIXDIR/codex-hook-sessions.json'))['sessions'].get('$SW_U',{}).get('isRestorable'))" 2>/dev/null)"
+expect "STOP-WRITE: Part 3 audit records a restorable write for codex" "yes" \
+    "$(python3 -c "
+import json
+try:
+    hit=[x for x in (json.loads(l) for l in open('$FIXDIR/resume-stop-audit.jsonl'))
+         if x.get('sessionId')=='$SW_U' and x.get('restorable') is True and x.get('kind')=='codex']
+    print('yes' if hit else 'no')
+except Exception:
+    print('no')" 2>/dev/null)"
+
 rm -rf "$FIXDIR" "$STUBDIR"
 rm -f "$MARKER" "$MARKER.pwd"
 finish
