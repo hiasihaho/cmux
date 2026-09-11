@@ -5975,3 +5975,41 @@ a real conversation. That remains the open acceptance beyond this round.
 `agent-resume-smoke` 28 → 30, green on ghostty AND vte. macOS path unchanged
 (the `write`-outcome capture is `#if os(Linux)`; on macOS the `do/catch`
 reduces to the prior `try?` swallow with no audit).
+
+### 2026-09-11 (cmux_pk) — click-to-dogfood launcher + promote --webauthn for browser passkeys
+
+hias's first post-re-promote passkey dogfood hit "WebAuthn isn't supported" in a
+daily browser pane. Root cause (not an unmerged worktree — all passkey branches
+are in linux-port): cmux ships its own browser WebAuthn (BrowserWebAuthn.swift —
+an injected navigator.credentials/PublicKeyCredential polyfill + ES256 software
+authenticator), gated by `BrowserWebAuthn.isEnabled == env CMUX_WEBAUTHN=="1"`,
+which is off by default and "not folded into any promote" (PROGRESS 2026-09-02).
+The dev build hias clicked was launched with CMUX_WEBAUTHN=1; the daily isn't.
+(palma/AUTO-DECISIONS already recorded this: "CMUX_WEBAUTHN ist Laufzeit, kein
+Build, ein Promote hätte nichts geändert".)
+
+Two host-side conveniences so hias can dogfood the ceremony on the PRODUCTIVE
+daily now, without waiting on the durable fix (flag → cmux.json setting, pk3 lane):
+
+- **`cmux_pk` desktop launcher** (`install-desktop-entry.sh` now installs it
+  alongside `cmux`): `Exec=env CMUX_WEBAUTHN=1 <start.sh> daily`. Same productive
+  line as `cmux` (app-id/socket/session), just with browser passkeys on. Goes
+  through `start.sh daily`, so the double-daily guard + backend selection still
+  apply — it refuses to start a second daily, so quit `cmux` first. One line, run
+  one at a time.
+- **`promote.sh --webauthn`**: additive flag; exports `CMUX_WEBAUTHN=1` before the
+  start, so a promote can bring the daily up with passkeys on. Default unchanged.
+
+Why the env passthrough works: `start.sh` only scrubs the workspace/surface/socket
+vars before `nohup "$BIN"`, so an ambient `CMUX_WEBAUTHN` reaches the instance.
+**Verified end to end on a disposable dev2 slot, headless** (never the daily,
+never the screen): `--webauthn` → the dev2 `/proc/environ` carries
+`CMUX_WEBAUTHN=1`; the default run does NOT (additive, no regression). Generated
+`com.manaflow.cmux.pk.desktop` passes `desktop-file-validate`.
+
+Kept the env var as the hard-override path deliberately: even after the flag
+graduates to a cmux.json setting, `isEnabled = env OR setting` keeps these
+launchers (and dev/suites) working. Paired follow-on (cmux desk): the flatpak
+config split-brain so the setting isn't inert under flatpak (host daily
+unaffected). This turn is launcher/script only — no Swift change, no daily
+restart to build it.
