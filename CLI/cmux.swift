@@ -28637,6 +28637,70 @@ struct CMUXCLI {
             .path
     }
 
+#if os(Linux)
+    /// Kinds whose native resume command the Linux resolver can build (keep in
+    /// sync with `linux/Sources/CmuxAdw/AgentResume.command`). `claude` is
+    /// absent: it flows through its own hook path, which already writes
+    /// `isRestorable` on Stop. Used only to decide whether the generic Stop
+    /// self-describes its record as restorable on Linux (Part 2b) — the resolver
+    /// still gates the actual resume on being able to build a command, so a kind
+    /// that drifts out of this set degrades safely to "flagged but skipped".
+    static let linuxResumableAgentKinds: Set<String> = [
+        "codex", "opencode", "gemini", "cursor", "amp", "copilot",
+        "hermes-agent", "grok", "pi", "codebuddy", "factory", "qoder", "kimi",
+    ]
+
+    /// Part 3 (resume-restore round, 2026-09-11): append one durable audit line
+    /// per generic agent Stop recording WHETHER a restorable record was written
+    /// for that surface. The pre-promote "bare shell in $HOME" strand could not
+    /// be root-caused because nothing logged whether a restorable record ever
+    /// existed; this is the strain gauge so the NEXT restore (or a human) can
+    /// diagnose a record-less surface instead of overwriting the only evidence.
+    /// Best-effort and Linux-only; any failure here must never disturb the Stop.
+    func appendAgentStopRestorableAudit(
+        kind: String, sessionId: String, surfaceId: String,
+        cwd: String?, restorable: Bool, reason: String, env: [String: String]
+    ) {
+        let dir: String
+        if let override = normalizedHookValue(env["CMUX_AGENT_HOOK_STATE_DIR"]) {
+            dir = NSString(string: override).expandingTildeInPath
+        } else {
+            dir = NSString(string: "~/.cmuxterm").expandingTildeInPath
+        }
+        let fileURL = URL(fileURLWithPath: dir, isDirectory: true)
+            .appendingPathComponent("resume-stop-audit.jsonl", isDirectory: false)
+        // Cheap unbounded-growth guard: one line per turn-end is tiny, but never
+        // let the diagnostic file itself become a disk problem.
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+           let size = attrs[.size] as? Int, size > 5_000_000 { return }
+        let obj: [String: Any] = [
+            "ts": Date().timeIntervalSince1970,
+            "kind": kind,
+            "sessionId": sessionId,
+            "surfaceId": surfaceId,
+            "cwd": cwd ?? NSNull(),
+            "restorable": restorable,
+            "origin": "generic-stop",
+            "reason": reason,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: obj),
+              let json = String(data: data, encoding: .utf8) else { return }
+        let line = Data((json + "\n").utf8)
+        let fm = FileManager.default
+        try? fm.createDirectory(
+            at: URL(fileURLWithPath: dir, isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        if let handle = try? FileHandle(forWritingTo: fileURL) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: line)
+        } else {
+            try? line.write(to: fileURL)
+        }
+    }
+#endif
+
     private func sanitizedAgentLaunchArguments(
         _ arguments: [String],
         launcher: String,
@@ -31765,11 +31829,30 @@ export default CMUXSessionRestore;
             let suppressCompletionNotification = suppressVisibleMutations
                 || codexSubagentSignals.hasSubagentNotificationRelay
 
+            // Part 2b (resume-restore round, 2026-09-11): the generic Stop now
+            // self-describes its record as restorable for resume-capable kinds,
+            // the way claude's own Stop hook does — closing the measured
+            // claude-6/6 vs others-0/6 omission behind the "bare shell in $HOME"
+            // strand. Linux-only: macOS restores from the layout snapshot and
+            // gates codex/others on transcript/launch evidence
+            // (RestorableAgentSession.hookRecordIsRestorable), so flagging a macOS
+            // record restorable here would contradict its own evidence rules.
+            // Measured 2026-09-11: on Linux a nil flag ALREADY resumes (the
+            // resolver skips only isRestorable==false / lifecycle==ended), so this
+            // is forward-correct self-description, not a change to nil's resume.
+            let stopWritesRestorableRecord: Bool = {
+                #if os(Linux)
+                return Self.linuxResumableAgentKinds.contains(def.name)
+                #else
+                return false
+                #endif
+            }()
             if !sessionId.isEmpty, !suppressVisibleMutations {
                 try? store.upsert(sessionId: sessionId, workspaceId: workspaceId, surfaceId: surfaceId, cwd: cwd,
                                   transcriptPath: input.transcriptPath ?? mapped?.transcriptPath,
                                   pid: pid,
                                   launchCommand: resumeLaunchCommand,
+                                  isRestorable: stopWritesRestorableRecord ? true : nil,
                                   agentLifecycle: lifecycleAfterStop,
                                   lastSubtitle: subtitle,
                                   lastBody: body,
@@ -31777,6 +31860,15 @@ export default CMUXSessionRestore;
                                   updateLastNotificationStatus: true,
                                   runtimeStatus: (antigravityHasActiveBackgroundWork && stopNotificationStatus == .idle) ? .running : runtimeStatus(for: stopNotificationStatus),
                                   updateRuntimeStatus: true)
+                #if os(Linux)
+                // Part 3: durable, per-kind record of whether this Stop persisted a
+                // restorable record (the strain gauge for the next restore).
+                appendAgentStopRestorableAudit(
+                    kind: def.name, sessionId: sessionId, surfaceId: surfaceId,
+                    cwd: cwd, restorable: stopWritesRestorableRecord,
+                    reason: stopWritesRestorableRecord ? "resumable-kind" : "unresumable-kind",
+                    env: env)
+                #endif
                 publishAgentSurfaceResumeBinding(
                     client: client,
                     workspaceId: workspaceId,

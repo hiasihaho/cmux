@@ -181,6 +181,24 @@ enum AgentResume {
         return "cd \(q) || [ ! -d \(q) ] && \(command)"
     }
 
+    /// Whether the per-surface index entry may be trusted for `surface`.
+    ///
+    /// The index (`activeSessionsBySurface`) and the record's own `surfaceId`
+    /// field are two independent mappings; the resolver used to trust the index
+    /// blindly (helper cross-check, 2026-09-11: the RR-SWAP gap). When the record
+    /// the index points at names a DIFFERENT surface, the two contradict and the
+    /// index must not win — otherwise a surface resumes a same-kind neighbour's
+    /// session. A record with no (or empty) surfaceId field carried no second
+    /// mapping to contradict and stays trusted (legacy / index-only writers).
+    static func indexEntryMatchesSurface(
+        sessions: [String: Any], sessionId: String, surface: String
+    ) -> Bool {
+        guard let rec = sessions[sessionId] as? [String: Any],
+              let recSurface = rec["surfaceId"] as? String,
+              !recSurface.isEmpty else { return true }
+        return recSurface == surface
+    }
+
     /// Resolves the resume command for a restored surface: newest
     /// restorable active session across all agents' hook stores.
     static func resumeCommand(surfaceId: UUID) -> String? {
@@ -204,7 +222,17 @@ enum AgentResume {
             var sessionId: String?
             if let active = root["activeSessionsBySurface"] as? [String: Any],
                let entry = active[surfaceId.uuidString] as? [String: Any],
-               let indexed = entry["sessionId"] as? String {
+               let indexed = entry["sessionId"] as? String,
+               // RR-SWAP coupling (helper cross-check, 2026-09-11): trust the
+               // per-surface index only when it does not CONTRADICT the record's
+               // own surfaceId. A record whose surfaceId names a DIFFERENT surface
+               // means the index was crossed (two same-kind sessions swapped), and
+               // resuming it here lands this surface on the wrong agent session.
+               // A record with no surfaceId field is legacy (the index was the only
+               // mapping - phases A/B/B2/B3) and stays trusted. On a mismatch we
+               // fall through to the record-scan, which recovers THIS surface's own
+               // session by its surfaceId field.
+               indexEntryMatchesSurface(sessions: sessions, sessionId: indexed, surface: surfaceId.uuidString) {
                 sessionId = indexed
             } else {
                 var newest = -Double.infinity

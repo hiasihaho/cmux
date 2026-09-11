@@ -5856,3 +5856,80 @@ that claims to cover it would be dishonest; the shell-semantics check plus
 the form-string guard are the honest coverage.
 
 `agent-resume-smoke` 18 → 20, green; red under the plain `&&` form.
+
+### 2026-09-11 (parts 2/3) — the strand-fix: surface↔session coupling + restorable self-description + stop instrumentation
+
+Parts 2/3 of the resume round (ruling `kb-decision-20260911-resume-fix-scope`,
+brief `loop/2026-09-11-cmux-parts23-brief.md`). Part 1 fixed records that
+EXIST; these close the measured gaps behind record-less / mis-coupled strands.
+All three landed red-first with REAL executed presence (argv + pwd), not plan
+strings — helper's part-1 lesson.
+
+**Part 2a — the resolver must cross-check the index against the record's own
+surfaceId (`AgentResume.indexEntryMatchesSurface`, Linux-only).** helper's
+cross-check flagged it: the resolver trusted `activeSessionsBySurface`
+blindly and never checked `sessions[id].surfaceId`. Two same-kind sessions
+whose index entries are crossed would each resume the OTHER's session — a
+pane landing on the wrong agent. The index is now honoured only when the
+record it points at names THIS surface (a record with no surfaceId field is
+legacy / index-only and stays trusted); on a mismatch the resolver falls back
+to the surfaceId record-scan and recovers this surface's own session.
+  - **RR-SWAP** (red-first, executed): the live surface's index points at a
+    foreign-surface record (higher updatedAt, so a naive newest-scan also
+    mispicks it). Without the check the stub really runs the FOREIGN session
+    in the foreign cwd (`claude --resume bbbb…` in `/usr`); with it, the
+    stub runs the surface's OWN session in its cwd (`…aaaa…` in `/etc`) —
+    proven by real argv AND pwd. Positive control: a correct index still
+    resumes via the index path (the check must not break the normal case).
+
+**Part 2b — the generic agent-Stop self-describes its record as restorable
+(Linux-only).** Measured omission (helper): only claude's Stop wrote
+`isRestorable` (claude 6/6, others 0/6). Measured nuance, also confirmed: on
+Linux a nil flag ALREADY resumes (the resolver skips only
+`isRestorable==false` / `lifecycle==ended`), so this is forward-correct
+self-description, NOT a change to how nil resumes. The generic `.stop` now
+writes `isRestorable: true` for resume-capable kinds
+(`CMUXCLI.linuxResumableAgentKinds`, kept in sync with `AgentResume.command`).
+  - **Kept Linux-only, deliberately** (new measurement, a refinement of the
+    ruling's "Linux-only, macOS-konform" assumption): a blanket flip on the
+    SHARED stop path is NOT macOS-safe. macOS restores from the layout
+    snapshot and gates codex/others on transcript/launch evidence
+    (`RestorableAgentSession.hookRecordIsRestorable`,
+    `AgentHookRestoreEvidence`), and `SessionsList` uses `isRestorable==true`
+    for default visibility — so writing true there would mark codex records
+    restorable that macOS's own evidence rules deliberately withhold. The
+    change is `#if os(Linux)`; on macOS `stopWritesRestorableRecord` is
+    `false` and the upsert passes `isRestorable: nil` exactly as before
+    (behaviour-identical, macOS-inert). macOS compile not re-run here (ultmos
+    CLT VM unreachable); the change is a guarded constant on that side.
+  - **RR-SHELL** (executed presence oracle): a non-restorable record leaves a
+    bare shell — the strand shape — with the agent ABSENT (no marker);
+    flipping it restorable brings the agent back (argv proves the session).
+  - **STOP-WRITE** (red-first, the real hook): `cmux hooks codex stop` is
+    invoked against the live instance (store dirs pinned to the fixture —
+    `~/.cmuxterm` never touched) and proves the record gains
+    `isRestorable:true`. Red without 2b (record stays `None`).
+
+**Part 3 — per-kind stop instrumentation (`appendAgentStopRestorableAudit`,
+Linux-only).** The pre-promote strand could not be root-caused because
+nothing logged whether a restorable record ever existed. The generic Stop now
+appends one durable JSONL line per turn-end to `resume-stop-audit.jsonl`
+(kind, sessionId, surfaceId, cwd, restorable, origin, reason) — the strain
+gauge so the NEXT restore (or a human) diagnoses a record-less surface
+instead of overwriting the only evidence. Additive, best-effort, size-capped.
+  - Covered by STOP-WRITE's second assertion (the audit records a restorable
+    write for codex); red without the write.
+
+`agent-resume-smoke` 20 → 28, green on BOTH backends (ghostty + vte).
+Red-first verified by neutralising each fix in turn: neutralising 2a reddens
+the three RR-SWAP assertions (stub ran `bbbb…` in `/usr`, not `aaaa…` in
+`/etc`); neutralising 2b reddens both STOP-WRITE assertions (record `None`,
+no audit hit). RR-SHELL and the RR-SWAP control stay green throughout (they
+bound the oracle / guard the normal path, independent of the fixes).
+
+**Gate:** per the brief, the re-promote gate opens when parts 2/3 are
+red-first green (part 1 already stood) AND helper cross-checks independently.
+This turn delivers parts 2/3 green; helper's cross-check is the next step,
+then the single re-promote (P1-fprintd + resume). No passkey dogfood until
+the re-promote. The exact past trigger of the three strands stays
+instrumented-open (Part 3) and non-blocking, as ruled.
