@@ -98,6 +98,7 @@ anything, then promote to Now.
 
 | Gap | Notes | Effort |
 |---|---|---|
+| `cmux omx` wedges on a stale-dead OMX session pointer (optional wrapper safety-net) | `cmux omx` aborts (`session_pointer_unusable`) when OMX's `<cwd>/.omx/state/session.json` points at a verified-dead session and OMX's own `session pointer recover` returns `unsupported` ("atomic no-replace rename unsupported on this platform" — really a Node gap: no `renameat2`/`RENAME_NOREPLACE` + a fixed backup name that already exists, NOT the OS). The real bug is OMX-upstream; the honest cmux scope is a narrow, signature-gated wrapper safety-net (surface the one-liner, or re-verify-dead then unique-name move-aside + relaunch). Full analysis + generic fix (lock → verify-dead → unique-timestamped move-aside → relaunch) banked for later pickup: [omx-session-pointer-recovery-analysis.md](omx-session-pointer-recovery-analysis.md). Analysis only, not scheduled. qmp-team request relayed 2026-10 | S (wrapper) |
 
 ## Later / only if needed — honest macOS-only feature families
 
