@@ -23,6 +23,42 @@ struct MobileShellWidget: AdwaitaWidget {
         gtk_widget_set_hexpand(box, 1)
         gtk_widget_set_vexpand(box, 1)
 
+        if runtime.variant == .tabview {
+            // Variant B: AdwTabView pages + AdwTabOverview (GNOME thumbnail
+            // grid; tap picks, native touch semantics). No swipe between
+            // pages in focus mode — ‹ › and the overview navigate.
+            let tabView = adw_tab_view_new()!
+            let tabViewWidget: UnsafeMutablePointer<GtkWidget> = cast(tabView)
+            gtk_widget_set_hexpand(tabViewWidget, 1)
+            gtk_widget_set_vexpand(tabViewWidget, 1)
+            let tabOverviewWidget = adw_tab_overview_new()!
+            let tabOverview = OpaquePointer(tabOverviewWidget)
+            gtk_widget_set_hexpand(tabOverviewWidget, 1)
+            gtk_widget_set_vexpand(tabOverviewWidget, 1)
+            adw_tab_overview_set_view(tabOverview, tabView)
+            adw_tab_overview_set_child(tabOverview, tabViewWidget)
+            adw_tab_overview_set_enable_new_tab(tabOverview, 1)
+            adw_tab_overview_set_show_start_title_buttons(tabOverview, 0)
+            adw_tab_overview_set_show_end_title_buttons(tabOverview, 0)
+            runtime.tabView = tabView
+            runtime.tabOverview = tabOverview
+            gtk_box_append(cast(box), tabOverviewWidget)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(tabView), "notify::selected-page",
+                unsafeBitCast(mobileSelectedPageChanged, to: GCallback.self),
+                nil, nil, GConnectFlags(0)
+            )
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(tabOverview), "notify::open",
+                unsafeBitCast(mobileOverviewOpenChanged, to: GCallback.self),
+                nil, nil, GConnectFlags(0)
+            )
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(tabOverview), "create-tab",
+                unsafeBitCast(mobileOverviewCreateTab, to: GCallback.self),
+                nil, nil, GConnectFlags(0)
+            )
+        } else {
         let carousel = adw_carousel_new()!
         gtk_widget_set_hexpand(carousel, 1)
         gtk_widget_set_vexpand(carousel, 1)
@@ -36,7 +72,6 @@ struct MobileShellWidget: AdwaitaWidget {
 
         gtk_box_append(cast(box), carousel)
         gtk_box_append(cast(box), dots)
-        gtk_box_append(cast(box), ExtraKeys.build())
 
         // page-changed(carousel, index) — raw connect, the index is wanted.
         g_signal_connect_data(
@@ -60,7 +95,13 @@ struct MobileShellWidget: AdwaitaWidget {
         )
         gtk_widget_add_controller(carousel, click)
 
+        }
+        gtk_box_append(cast(box), ExtraKeys.build())
         MobileStyle.install()
+        if ProcessInfo.processInfo.environment["MOBILE_DEBUG_SIZES"] != nil {
+            runtime.debugBox = box
+            _ = g_timeout_add(1500, mobileDebugSizes, nil)
+        }
         let storage = ViewStorage(OpaquePointer(box))
         sync(storage)
         return storage
@@ -78,8 +119,6 @@ struct MobileShellWidget: AdwaitaWidget {
         runtime.onTitleChanged = onTitleChanged
         runtime.onExitOverview = onExitOverview
         runtime.onFontScale = onFontScale
-        guard let carousel = runtime.carousel else { return }
-
         if closeRequest != runtime.handledCloseRequest {
             runtime.handledCloseRequest = closeRequest
             runtime.closeCurrentPane()
@@ -93,6 +132,14 @@ struct MobileShellWidget: AdwaitaWidget {
         }
         if runtime.overview != overview {
             runtime.overview = overview
+            if runtime.variant == .tabview {
+                if let tabOverview = runtime.tabOverview {
+                    adw_tab_overview_set_open(tabOverview, overview ? 1 : 0)
+                }
+                if !overview { runtime.focusCurrentTerminal() }
+                return
+            }
+            guard let carousel = runtime.carousel else { return }
             adw_carousel_set_interactive(carousel, overview ? 1 : 0)
             adw_carousel_set_allow_mouse_drag(carousel, overview ? 1 : 0)
             adw_carousel_set_spacing(carousel, overview ? 24 : 0)
@@ -120,10 +167,20 @@ struct MobilePane {
     let terminal: UnsafeMutablePointer<VteTerminal>
 }
 
+enum MobileVariant: String { case carousel, tabview }
+
 final class MobileShellRuntime {
     static let shared = MobileShellRuntime()
 
+    /// MOBILE_VARIANT=carousel (default) | tabview. Both variants share
+    /// panes, key row, fit and titles; only the host widget differs.
+    let variant = MobileVariant(
+        rawValue: ProcessInfo.processInfo.environment["MOBILE_VARIANT"] ?? "") ?? .carousel
     var carousel: OpaquePointer?
+    var tabView: OpaquePointer?
+    var tabOverview: OpaquePointer?
+    var tabPages: [OpaquePointer] = []
+    var debugBox: UnsafeMutablePointer<GtkWidget>?   // AdwTabPage per pane (tabview variant)
     var panes: [MobilePane] = []
     var overview = false
     var fontScale = 1.0
@@ -168,6 +225,10 @@ final class MobileShellRuntime {
     var onFontScale: (Double) -> Void = { _ in }
 
     var currentIndex: Int {
+        if variant == .tabview {
+            guard let tabView, let page = adw_tab_view_get_selected_page(tabView) else { return 0 }
+            return max(0, Int(adw_tab_view_get_page_position(tabView, page)))
+        }
         guard let carousel else { return 0 }
         let position = adw_carousel_get_position(carousel)
         return max(0, min(panes.count - 1, Int(position.rounded())))
@@ -178,7 +239,6 @@ final class MobileShellRuntime {
     }
 
     func appendPane(fontScale: Double) {
-        guard let carousel else { return }
         guard let widget = vte_terminal_new() else { return }
         let terminal = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: VteTerminal.self)
         gtk_widget_set_hexpand(widget, 1)
@@ -196,9 +256,16 @@ final class MobileShellRuntime {
         gtk_widget_add_css_class(scrolled, "mobile-pane")
         gtk_widget_set_can_target(scrolled, overview ? 0 : 1)
 
-        adw_carousel_append(carousel, scrolled)
         panes.append(MobilePane(page: scrolled, terminal: terminal))
         let index = panes.count - 1
+        if variant == .tabview, let tabView {
+            let page = adw_tab_view_append(tabView, scrolled)!
+            adw_tab_page_set_title(page, "Pane \(index + 1)")
+            adw_tab_page_set_live_thumbnail(page, 1)
+            tabPages.append(page)
+        } else if let carousel {
+            adw_carousel_append(carousel, scrolled)
+        }
 
         g_signal_connect_data(
             UnsafeMutableRawPointer(widget), "window-title-changed",
@@ -213,17 +280,28 @@ final class MobileShellRuntime {
         )
         spawnShell(in: terminal)
         onPageChanged(currentIndex, panes.count)
-        if panes.count > 1 {
-            adw_carousel_scroll_to(carousel, scrolled, 1)
+        if panes.count > 1 { scroll(to: index) }
+    }
+
+    func scroll(to index: Int) {
+        guard index >= 0, index < panes.count else { return }
+        if variant == .tabview, let tabView {
+            adw_tab_view_set_selected_page(tabView, tabPages[index])
+        } else if let carousel {
+            adw_carousel_scroll_to(carousel, panes[index].page, 1)
         }
-        _ = index
     }
 
     func closeCurrentPane() {
-        guard let carousel, !panes.isEmpty else { return }
+        guard !panes.isEmpty else { return }
         let index = currentIndex
         let pane = panes.remove(at: index)
-        adw_carousel_remove(carousel, pane.page)
+        if variant == .tabview, let tabView {
+            let page = tabPages.remove(at: index)
+            adw_tab_view_close_page(tabView, page)
+        } else if let carousel {
+            adw_carousel_remove(carousel, pane.page)
+        }
         onPageChanged(currentIndex, panes.count)
         focusCurrentTerminal()
     }
@@ -275,6 +353,30 @@ let mobilePageChanged: @convention(c) (UnsafeMutableRawPointer?, UInt32, UnsafeM
     if !runtime.overview { runtime.focusCurrentTerminal() }
 }
 
+let mobileSelectedPageChanged: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void
+= { _, _, _ in
+    let runtime = MobileShellRuntime.shared
+    runtime.onPageChanged(runtime.currentIndex, runtime.panes.count)
+    if !runtime.overview { runtime.focusCurrentTerminal() }
+}
+
+/// The overview closed itself (thumbnail tapped, Escape, …): mirror into state.
+let mobileOverviewOpenChanged: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void
+= { overview, _, _ in
+    guard let overview else { return }
+    let runtime = MobileShellRuntime.shared
+    let open = adw_tab_overview_get_open(OpaquePointer(overview)) != 0
+    if !open, runtime.overview { runtime.onExitOverview() }
+}
+
+/// The overview's own "+" button: spawn a pane and hand its page back.
+let mobileOverviewCreateTab: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> OpaquePointer?
+= { _, _ in
+    let runtime = MobileShellRuntime.shared
+    runtime.appendPane(fontScale: runtime.fontScale)
+    return runtime.tabPages.last
+}
+
 /// First map: the width is allocated, fit the column target once.
 let mobileTerminalMapped: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void
 = { _, _ in
@@ -296,6 +398,9 @@ let mobileTitleChanged: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableR
     guard let index = runtime.index(ofTerminal: terminal) else { return }
     let vte = terminal.assumingMemoryBound(to: VteTerminal.self)
     guard let title = vte_terminal_get_window_title(vte) else { return }
+    if runtime.variant == .tabview, index < runtime.tabPages.count {
+        adw_tab_page_set_title(runtime.tabPages[index], title)
+    }
     runtime.onTitleChanged(index, String(cString: title))
 }
 
@@ -361,4 +466,18 @@ func cast<T>(_ pointer: OpaquePointer) -> UnsafeMutablePointer<T> {
 }
 func cast<T, U>(_ pointer: UnsafeMutablePointer<U>) -> UnsafeMutablePointer<T> {
     UnsafeMutableRawPointer(pointer).assumingMemoryBound(to: T.self)
+}
+
+let mobileDebugSizes: @convention(c) (UnsafeMutableRawPointer?) -> Int32 = { _ in
+    guard let box = MobileShellRuntime.shared.debugBox else { return 0 }
+    var child = gtk_widget_get_first_child(box)
+    var line = "sizes box=\(gtk_widget_get_width(box))x\(gtk_widget_get_height(box))"
+    while let c = child {
+        var minH: Int32 = 0, natH: Int32 = 0, minB: Int32 = 0, natB: Int32 = 0
+        gtk_widget_measure(c, GTK_ORIENTATION_VERTICAL, -1, &minH, &natH, &minB, &natB)
+        line += " | \(String(cString: gtk_widget_get_css_name(c))) alloc=\(gtk_widget_get_height(c)) min=\(minH) nat=\(natH)"
+        child = gtk_widget_get_next_sibling(c)
+    }
+    FileHandle.standardError.write((line + "\n").data(using: .utf8)!)
+    return 0
 }

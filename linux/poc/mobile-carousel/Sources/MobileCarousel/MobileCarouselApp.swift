@@ -62,7 +62,9 @@ struct MobileCarouselApp: App {
                 }
                 .headerBarTitle {
                     WindowTitle(
-                        subtitle: overview ? "swipe · tap to pick" : "\(page + 1) / \(paneCount)",
+                        subtitle: overview
+                            ? (MobileShellRuntime.shared.variant == .tabview ? "tap a pane" : "swipe · tap to pick")
+                            : "\(page + 1) / \(paneCount)",
                         title: page < titles.count && !titles[page].isEmpty
                             ? titles[page] : "Pane \(page + 1)"
                     )

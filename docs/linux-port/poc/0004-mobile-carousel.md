@@ -46,10 +46,12 @@ feels right migrates; what does not is deleted with the directory.
 | **focus mode** | carousel `interactive=false`, `allow-mouse-drag=false`: the terminal owns every drag (selection) — the swipe/selection conflict is resolved by never arming both |
 | **overview mode** | header toggle (grid icon). Carousel `interactive` + `allow-mouse-drag`, 24 px spacing, pages `can-target=false` + margins + dimmed card style; **swipe** moves pages (long swipes allowed), **tap** picks the page under the pointer and returns to focus. Tap vs swipe is discriminated by press/release distance (>12 px = swipe), because `GtkGestureClick` still emits `released` after a drag the swipe tracker handled |
 | indicator | `AdwCarouselIndicatorDots` under the panes |
+| **variant B: `MOBILE_VARIANT=tabview`** | same panes in an `AdwTabView` wrapped by `AdwTabOverview`: GNOME's own thumbnail grid (live thumbnails, titles from the VTE title, per-pane close, its own "new tab" button wired to `create-tab`). Overview toggle = `adw_tab_overview_set_open`; `notify::open` mirrors a thumbnail tap or Escape back into state; `notify::selected-page` drives the header. No swipe between pages in focus mode — `‹ ›` and the overview navigate. The carousel variant is untouched: both live in one binary, one env var apart |
 | header | `WindowTitle`: VTE title + `n / count`, or `swipe · tap to pick` in overview |
 | **extra keys** | Termux-style row: Esc, Tab, **sticky Ctrl**, arrows, `/ \| - ~ : ' "`, `⇔80` (re-fit), `A− A+`, `‹ ›` (prev/next). Buttons are `focus-on-click=false` so the terminal keeps focus. Sticky Ctrl is a capture-phase key controller on each terminal: next printable key → control byte, toggle disarms. Verified: `sleep 30`, Ctrl, `c` → `^C` |
+| key row scrolling | `GtkScrolledWindow` pans only for touch sequences, and over RDP a finger is a mouse — so a capture-phase `GtkGestureDrag` pans the row by hand and claims the sequence past 8 px, which keeps the button underneath from clicking. Verified headless with a mouse drag (hias had noticed the row did not scroll) |
 | column fit | `MOBILE_FIT_COLS` (default 80): after first map, estimate the font scale, then step down every third 120 ms tick until the measured column count reaches the target (VTE cells are whole pixels and the pty resize lags the font change) |
-| env | `MOBILE_W`/`MOBILE_H` (default 392×844), `MOBILE_PANES` (3), `MOBILE_FONT_SCALE` (0.8), `MOBILE_FIT_COLS`, `MOBILE_APP_ID` |
+| env | `MOBILE_VARIANT` (carousel\|tabview), `MOBILE_W`/`MOBILE_H` (default 392×844), `MOBILE_PANES` (3), `MOBILE_FONT_SCALE` (0.8), `MOBILE_FIT_COLS`, `MOBILE_APP_ID`, `MOBILE_DEBUG_SIZES` (logs the box children's measured heights) |
 
 ## Running it headless (phone geometry)
 
@@ -68,6 +70,10 @@ CMUX_SCRATCH_GEOMETRY=392x844 linux/scripts/scratch.sh start mobile
 CMUX_SCRATCH_APP=linux/poc/mobile-carousel/.build/debug/MobileCarousel \
 CMUX_SCRATCH_GEOMETRY=1080x2340 linux/scripts/scratch.sh start mobile2 \
     GDK_SCALE=2 MOBILE_W=540 MOBILE_H=1170
+# variant B (thumbnail overview) on the same geometry
+CMUX_SCRATCH_APP=linux/poc/mobile-carousel/.build/debug/MobileCarousel \
+CMUX_SCRATCH_GEOMETRY=1080x2340 linux/scripts/scratch.sh start mobile3 \
+    GDK_SCALE=2 MOBILE_W=540 MOBILE_H=1170 MOBILE_VARIANT=tabview
 linux/scripts/scratch.sh watch mobile2      # live in a pane of your cmux (ADR-0010)
 linux/scripts/scratch.sh shot mobile2 out.png
 ```
@@ -100,7 +106,15 @@ mouseup for a swipe). Use THIS branch's `scratch.sh` for `stop`: the
    bring GNOME's own touch/tap semantics.
 4. **Sticky Ctrl via capture-phase key controller is enough** for Ctrl+C/
    D/Z/L/R; it needs no VTE patch and no modifier injection.
-5. **The header is tight at 392 px**: title + 4 buttons already truncate
+5. **Variant B works out of the box** (2026-11-04, second pass): three
+   live thumbnails in a row at 540 logical px, titles, close buttons,
+   GNOME's "Neuer Reiter"; tapping a thumbnail selects the pane, closes
+   the overview and the header reads `1 / 3` with focus in the terminal.
+   The key row stays visible under the overview (it sits outside the
+   `AdwTabOverview` child). Cost: no swipe in focus mode. This is the
+   trade to feel on the phone: carousel = swipe but no thumbnails,
+   tabview = thumbnails but no swipe.
+6. **The header is tight at 392 px**: title + 4 buttons already truncate
    the VTE title. The product version wants the sidebar hamburger too;
    budget for a title-only header with actions in a bottom bar.
 
@@ -111,6 +125,9 @@ mouseup for a swipe). Use THIS branch's `scratch.sh` for `stop`: the
 - Tap targets in the key row at the device's DPR; is Ctrl discoverable?
 - Column count / legibility on the real Guacamole negotiation (finding 2).
 - Whether the "no peeking neighbours" limitation is felt (finding 3).
+- **Carousel or tabview** (finding 5): does the thumbnail grid beat the
+  swipe, or do you want both (tabview overview + swipe-tracker on the
+  tab view is possible but custom)?
 
 ## Path into cmux (only after the verdict)
 

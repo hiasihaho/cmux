@@ -17,6 +17,23 @@ enum ExtraKeys {
         let row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4)!
         gtk_widget_add_css_class(row, "mobile-keys")
         gtk_scrolled_window_set_child(OpaquePointer(scroller), row)
+        // Over RDP a finger is a mouse: GtkScrolledWindow only pans for
+        // touch sequences, so a mouse drag must pan the row by hand. The
+        // gesture runs in capture phase; once it claims (past the drag
+        // threshold) the button underneath never sees a click.
+        let drag = gtk_gesture_drag_new()!
+        gtk_event_controller_set_propagation_phase(drag, GTK_PHASE_CAPTURE)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(drag), "drag-begin",
+            unsafeBitCast(extraKeysDragBegin, to: GCallback.self),
+            UnsafeMutableRawPointer(scroller), nil, GConnectFlags(0)
+        )
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(drag), "drag-update",
+            unsafeBitCast(extraKeysDragUpdate, to: GCallback.self),
+            UnsafeMutableRawPointer(scroller), nil, GConnectFlags(0)
+        )
+        gtk_widget_add_controller(scroller, drag)
 
         let runtime = MobileShellRuntime.shared
         func key(_ label: String, _ bytes: [UInt8]) {
@@ -46,9 +63,9 @@ enum ExtraKeys {
 
     private static func scroll(by delta: Int) {
         let runtime = MobileShellRuntime.shared
-        guard let carousel = runtime.carousel, !runtime.panes.isEmpty else { return }
+        guard !runtime.panes.isEmpty else { return }
         let target = max(0, min(runtime.panes.count - 1, runtime.currentIndex + delta))
-        adw_carousel_scroll_to(carousel, runtime.panes[target].page, 1)
+        runtime.scroll(to: target)
     }
 
     private static func append(_ row: UnsafeMutablePointer<GtkWidget>, _ child: UnsafeMutablePointer<GtkWidget>) {
@@ -81,6 +98,8 @@ enum ExtraKeys {
         gtk_widget_add_controller(terminal, controller)
     }
 
+    static var dragStartValue = 0.0
+
     static var ctrlArmed: Bool {
         guard let ctrlButton else { return false }
         return gtk_toggle_button_get_active(cast(ctrlButton)) != 0
@@ -109,4 +128,21 @@ let extraKeyPressed: @convention(c) (UnsafeMutableRawPointer?, UInt32, UInt32, U
     ExtraKeys.disarmCtrl()
     MobileShellRuntime.shared.feed([byte & 0x1f])
     return 1
+}
+
+let extraKeysDragBegin: @convention(c) (UnsafeMutableRawPointer?, Double, Double, UnsafeMutableRawPointer?) -> Void
+= { _, _, _, scroller in
+    guard let scroller else { return }
+    let adjustment = gtk_scrolled_window_get_hadjustment(OpaquePointer(scroller))
+    ExtraKeys.dragStartValue = gtk_adjustment_get_value(adjustment)
+}
+
+let extraKeysDragUpdate: @convention(c) (UnsafeMutableRawPointer?, Double, Double, UnsafeMutableRawPointer?) -> Void
+= { gesture, offsetX, _, scroller in
+    guard let scroller, let gesture else { return }
+    if abs(offsetX) > 8 {
+        gtk_gesture_set_state(OpaquePointer(gesture), GTK_EVENT_SEQUENCE_CLAIMED)
+    }
+    let adjustment = gtk_scrolled_window_get_hadjustment(OpaquePointer(scroller))
+    gtk_adjustment_set_value(adjustment, ExtraKeys.dragStartValue - offsetX)
 }
