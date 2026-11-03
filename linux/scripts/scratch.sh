@@ -32,6 +32,14 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # libghostty-gtk.so MAPPED, and overwriting it can SIGBUS a live instance).
 APP="${CMUX_TEST_BUILD_DIR:-$ROOT/linux/.build}/debug/cmux-adw"
 CLI="${CMUX_TEST_BUILD_DIR:-$ROOT/linux/.build}/debug/cmux"
+# CMUX_SCRATCH_APP runs another GTK binary on the scratch display (the
+# mobile-carousel spike, poc/0004); it has no socket, so readiness is
+# "process alive" instead of ping. CMUX_SCRATCH_GEOMETRY sizes the Xvfb
+# screen (WxH; default desktop; 392x844 for a phone-sized RDP viewport —
+# gnome-remote-desktop wants multiples of 4).
+if [ -n "${CMUX_SCRATCH_APP:-}" ]; then APP="$CMUX_SCRATCH_APP"; fi
+APP_NAME="$(basename "$APP")"
+GEOMETRY="${CMUX_SCRATCH_GEOMETRY:-1280x800}"
 
 cmd="${1:-help}"
 tag="${2:-}"
@@ -52,7 +60,7 @@ require_tag() {
 
 kill_by_app_id() {
     local wanted="$1" pid
-    for pid in $(pgrep -x cmux-adw); do
+    for pid in $(pgrep -x "$APP_NAME"); do
         if tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -q "^CMUX_APP_ID=$wanted$"; then
             kill "$pid" 2>/dev/null || true
         fi
@@ -69,7 +77,7 @@ start)
         [ -e "/tmp/.X11-unix/X$d" ] || { display=":$d"; break; }
     done
     [ -n "$display" ] || { echo "scratch.sh: no free display in :140-:159" >&2; exit 2; }
-    Xvfb "$display" -screen 0 1280x800x24 >/dev/null 2>&1 &
+    Xvfb "$display" -screen 0 "${GEOMETRY}x24" >/dev/null 2>&1 &
     xvfb_pid=$!
     sleep 2
     state_dir="$HOME/.local/state/cmux/scratch/$tag"
@@ -79,12 +87,22 @@ start)
     # typo pops a modal dialog over the window and eats pointer probes.
     # Pass XDG_CONFIG_HOME=... as an extra arg to override deliberately.
     env -u WAYLAND_DISPLAY DISPLAY="$display" GDK_BACKEND=x11 \
-        CMUX_APP_ID="$(app_id "$tag")" \
+        CMUX_APP_ID="$(app_id "$tag")" MOBILE_APP_ID="$(app_id "$tag")" \
         CMUX_SOCKET_PATH="$(sock_path "$tag")" \
         CMUX_SESSION_PATH="$state_dir/session.json" \
         XDG_CONFIG_HOME="$state_dir/confighome" \
         "$@" nohup "$APP" >"$state_dir/app.log" 2>&1 &
-    printf 'display=%s\nxvfb_pid=%s\n' "$display" "$xvfb_pid" > "$(info_file "$tag")"
+    app_pid=$!
+    printf 'display=%s\nxvfb_pid=%s\napp=%s\n' "$display" "$xvfb_pid" "$APP_NAME" > "$(info_file "$tag")"
+    if [ -n "${CMUX_SCRATCH_APP:-}" ]; then
+        sleep 2
+        if kill -0 "$app_pid" 2>/dev/null; then
+            echo "scratch '$tag' up: app=$APP_NAME display=$display geometry=$GEOMETRY log=$state_dir/app.log"
+            exit 0
+        fi
+        echo "scratch.sh: $APP_NAME exited — see $state_dir/app.log" >&2
+        exit 1
+    fi
     for _ in $(seq 1 40); do
         CMUX_SOCKET_PATH="$(sock_path "$tag")" "$CLI" ping >/dev/null 2>&1 && break
         sleep 0.5
@@ -242,6 +260,8 @@ unwatch)
 stop)
     require_tag
     "$0" unwatch "$tag" >/dev/null 2>&1 || true
+    recorded_app=$(sed -n 's/^app=//p' "$(info_file "$tag")" 2>/dev/null)
+    [ -n "$recorded_app" ] && APP_NAME="$recorded_app"
     kill_by_app_id "$(app_id "$tag")"
     xvfb_pid=$(sed -n 's/^xvfb_pid=//p' "$(info_file "$tag")" 2>/dev/null)
     [ -n "$xvfb_pid" ] && kill "$xvfb_pid" 2>/dev/null || true

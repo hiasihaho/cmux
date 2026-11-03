@@ -5,6 +5,18 @@ project could send elsewhere — manaflow (§1–4) and third-party harnesses
 and providers (§5: pi, opencode, hermes, regio-ai). Nothing has been sent;
 a dedicated session will do that.
 
+**2026-11-04: mobile spike (branch `mobile-carousel-spike`, worktree
+`~/cmux-mobile`).** hias wants cmux on phones through the adminvm
+Guacamole → gnome-remote-desktop path. Decision: a raw adwaita-swift
+spike FIRST (`linux/poc/mobile-carousel`, POC 0004), the product shell
+only after the phone verdict. Built and driven headless: full-width VTE
+panes in an `AdwCarousel`, focus/overview two-mode model (the one-pointer
+swipe-vs-selection conflict), tap-to-pick, Termux-style key row with
+sticky Ctrl, column auto-fit. Key finding: legibility is decided by
+whether Guacamole hands the session physical pixels (88 cols at 1080 px
+/ 200 % vs 76–95 unreadable cols at 392 px) — confirm on the real path.
+`scratch.sh` gained `CMUX_SCRATCH_APP` / `CMUX_SCRATCH_GEOMETRY`.
+
 **2026-09-10: the passkey day.** hias dogfooded the WebAuthn verbs at
 the browser (E2) and the ceremony failed, which turned into five merged
 increments and one destroyed credential. `linux-port` @ `999e189a6f`,
