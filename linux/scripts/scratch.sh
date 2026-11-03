@@ -274,7 +274,19 @@ list)
         [ -e "$f" ] || continue
         found=1
         t=$(basename "$f" .info); t="${t#cmux-scratch-}"
-        if CMUX_SOCKET_PATH="$(sock_path "$t")" "$CLI" ping 2>/dev/null | grep -q PONG; then
+        recorded_app=$(sed -n 's/^app=//p' "$f")
+        if [ -n "$recorded_app" ] && [ "$recorded_app" != cmux-adw ]; then
+            # Foreign binary (CMUX_SCRATCH_APP): no socket, liveness by env match.
+            alive=0
+            for pid in $(pgrep -x "$recorded_app"); do
+                tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -q "^CMUX_APP_ID=$(app_id "$t")$" && alive=1
+            done
+            if [ "$alive" = 1 ]; then
+                echo "$t: running ($(sed -n 's/^display=//p' "$f"), $recorded_app)"
+            else
+                echo "$t: stale info file"
+            fi
+        elif CMUX_SOCKET_PATH="$(sock_path "$t")" "$CLI" ping 2>/dev/null | grep -q PONG; then
             echo "$t: running ($(sed -n 's/^display=//p' "$f"))"
         else
             echo "$t: stale info file"
