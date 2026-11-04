@@ -2,7 +2,7 @@
 title: Mobile pane carousel (phone-sized RDP viewport)
 area: shell
 kind: spike
-status: wip
+status: wip   # v2 = workflow shell, awaiting phone verdict
 linux: proven-headless
 mac: n-a
 substrate: standalone adwaita-swift package (linux/poc/mobile-carousel) × VTE × scratch.sh phone geometry
@@ -118,6 +118,55 @@ mouseup for a swipe). Use THIS branch's `scratch.sh` for `stop`: the
    the VTE title. The product version wants the sidebar hamburger too;
    budget for a title-only header with actions in a bottom bar.
 
+## Spike v2 — the web-app workflow shell (2026-11-04, same day)
+
+hias's target (ruling after the v1 review): mobile cmux first serves the
+web-app dev environment. One cmux workspace per git worktree, created by
+the feature workflow; in each workspace a shell pane and a preview pane
+the Claude session drives. On the phone the sidebar is replaced by the
+workspace overview, and the panes are swiped. v1's "carousel or tabview"
+trade dissolves into two levels:
+
+| level | widget | navigation |
+|---|---|---|
+| workspaces (worktrees) | `AdwTabView` + `AdwTabOverview` | header grid button → thumbnail grid, tap picks; overview "+" = new workspace |
+| panes in a workspace | `AdwCarousel` of Shell + Vorschau (WebKit) | bottom `AdwToggleGroup` (always works), **edge-strip swipe** (22 px strips on both sides, a drag past 40 px flips the pane; the middle stays the terminal's / page's own drag), key row only on Shell |
+
+Second binary in the same package: `MobileWorkflow`
+(`Sources/MobileWorkflow`), v1 untouched. Carousel is never interactive
+itself — the edge strips carry the gesture, which sidesteps the
+one-pointer conflict for both VTE and WebKit without a mode switch.
+
+**The handshake the spike pretends** (what `feature-start` will do over
+the socket in step 2): `MOBILE_WORKSPACE_NAMES=theme-dark,login-form`
+(one workspace per name), `MOBILE_WORKTREE_ROOT` (shell cwd =
+`<root>/<name>` when it exists), `MOBILE_PREVIEW_URL` (dev server;
+unset → a placeholder page showing the workspace, viewport, DPR and
+"touch: nein (RDP = Maus)"). Shells get `MOBILE_WORKSPACE=<name>`.
+
+```sh
+cd ~/cmux-mobile/linux/poc/mobile-carousel && swift build --product MobileWorkflow
+cd ~/cmux-mobile
+CMUX_SCRATCH_APP=linux/poc/mobile-carousel/.build/debug/MobileWorkflow \
+CMUX_SCRATCH_GEOMETRY=1080x2340 linux/scripts/scratch.sh start wf \
+    GDK_SCALE=2 MOBILE_W=540 MOBILE_H=1170 MOBILE_WORKSPACE_NAMES=theme-dark,login-form
+linux/scripts/scratch.sh watch wf
+```
+
+Verified headless (xdotool + screenshots): toggle Shell→Vorschau renders
+the placeholder at 530×1072 CSS px, DPR 2; the workspace overview shows
+both worktrees as live thumbnails, each of its *current* pane (shell for
+one, preview for the other) — that is the "what is this feature doing"
+glance for free; tapping a thumbnail returns to it; left-strip swipe
+goes back to Shell, right-strip swipe forward to Vorschau, the toggle
+follows; `tput cols` = 88 in each workspace's shell.
+
+Known gaps of v2: no live finger-tracking on the edge swipe (it flips
+on release, animated); the strips are faintly tinted so they are
+discoverable — the product may want them invisible plus a first-run
+hint; closing a workspace does not touch the worktree (by design,
+`feature-end` owns that).
+
 ## What hias judges on the phone
 
 - Does swipe-in-overview feel like GNOME, or like a mode you forget
@@ -125,9 +174,10 @@ mouseup for a swipe). Use THIS branch's `scratch.sh` for `stop`: the
 - Tap targets in the key row at the device's DPR; is Ctrl discoverable?
 - Column count / legibility on the real Guacamole negotiation (finding 2).
 - Whether the "no peeking neighbours" limitation is felt (finding 3).
-- **Carousel or tabview** (finding 5): does the thumbnail grid beat the
-  swipe, or do you want both (tabview overview + swipe-tracker on the
-  tab view is possible but custom)?
+- **v2:** is the toggle + edge-swipe pair enough, or must the whole
+  pane follow the finger? Is the 22 px strip hittable on glass?
+- Does the overview-of-current-pane thumbnail read as "what each feature
+  is doing", or should the thumbnail always show the preview?
 
 ## Path into cmux (only after the verdict)
 

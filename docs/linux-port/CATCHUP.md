@@ -16,6 +16,12 @@ sticky Ctrl, column auto-fit. Key finding: legibility is decided by
 whether Guacamole hands the session physical pixels (88 cols at 1080 px
 / 200 % vs 76–95 unreadable cols at 392 px) — confirm on the real path.
 `scratch.sh` gained `CMUX_SCRATCH_APP` / `CMUX_SCRATCH_GEOMETRY`.
+Same day, **spike v2** (`MobileWorkflow`): hias's workflow shape — one
+workspace per worktree as AdwTabOverview thumbnails, Shell + Vorschau
+(WebKit) carousel per workspace with bottom toggle and edge-strip
+swipe. Verified headless. Next: step 2, `feature-start`/`feature-end`
+against desktop cmux (hias supplies the web-app details), then the
+breakpoint mode in cmux-adw.
 
 **2026-09-10: the passkey day.** hias dogfooded the WebAuthn verbs at
 the browser (E2) and the ceremony failed, which turned into five merged

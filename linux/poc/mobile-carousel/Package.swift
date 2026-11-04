@@ -20,6 +20,7 @@ let package = Package(
     targets: [
         .systemLibrary(name: "CVte", path: "Sources/CVte", pkgConfig: "vte-2.91-gtk4"),
         .systemLibrary(name: "CAdwShim", path: "Sources/CAdwShim", pkgConfig: "libadwaita-1"),
+        .systemLibrary(name: "CWebKit", path: "Sources/CWebKit", pkgConfig: "webkitgtk-6.0"),
         .executableTarget(
             name: "MobileCarousel",
             dependencies: [
@@ -28,6 +29,21 @@ let package = Package(
                 "CAdwShim",
             ],
             path: "Sources/MobileCarousel",
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "--allow-shlib-undefined"])]
+        ),
+        // Spike v2 (2026-11-04): the two-level workflow shell — workspaces
+        // (one per worktree) as AdwTabView + AdwTabOverview, inside each a
+        // carousel of shell + preview (WebKit). v1 above stays untouched.
+        .executableTarget(
+            name: "MobileWorkflow",
+            dependencies: [
+                .product(name: "Adwaita", package: "adwaita-swift"),
+                "CVte",
+                "CAdwShim",
+                "CWebKit",
+            ],
+            path: "Sources/MobileWorkflow",
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [.unsafeFlags(["-Xlinker", "--allow-shlib-undefined"])]
         ),
