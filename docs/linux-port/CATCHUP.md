@@ -23,7 +23,11 @@ swipe, plus an on-demand URL bar on the preview (hias: "the human asks
 the LLM to inspect a specific page") with a ⋮ zoom menu. Touch over RDP
 works with Guacamole `enable-touch` + gnome-remote-desktop ≥ 49 (Ubuntu
 26.04 target has it; Fedora host has 49.3 → phone test via
-`~/adminvm/poc-web-console/run-guac-phone.sh`). Next: step 2, `feature-start`/`feature-end`
+`~/adminvm/poc-web-console/run-guac-phone.sh`; phone test went well,
+☰ menu-hint Guacamole extension replaces the unreachable Ctrl+Alt+Shift).
+2026-11-05: **test VM harness** `linux/mobile-vm/` — Ubuntu 26.04 /
+GNOME 50 libvirt VM, spike flatpak, headless g-r-d session per user,
+Guacamole with touch; the gift for the Hetzner session. Next: step 2, `feature-start`/`feature-end`
 against desktop cmux (hias supplies the web-app details), then the
 breakpoint mode in cmux-adw.
 

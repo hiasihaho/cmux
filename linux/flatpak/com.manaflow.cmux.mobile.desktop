@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=cmux mobile spike
+Comment=POC 0004 — phone-sized workflow shell (workspaces, shell + preview carousel)
+Exec=mobile-workflow
+Icon=utilities-terminal
+Terminal=false
+Categories=Development;System;TerminalEmulator;

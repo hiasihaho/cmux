@@ -1,0 +1,9 @@
+<meta name="before" content="#guac-menu">
+<!-- menu-hint: a tappable edge tab that opens the Guacamole menu, because the
+     Ctrl+Alt+Shift chord does not exist on phones and the left-edge swipe
+     collides with Android's browser back gesture. Lives inside the client
+     view's scope, so ng-click toggles the same state the chord does. The tab
+     stays visible while the menu is open (the menu is capped to leave the
+     strip free, see css), so closing is a second tap, not a swipe. -->
+<div class="menu-hint-button" ng-class="{open: menu.shown}" ng-click="menu.shown = !menu.shown"
+     title="Guacamole menu">&#9776;</div>

@@ -209,6 +209,19 @@ discoverable — the product may want them invisible plus a first-run
 hint; closing a workspace does not touch the worktree (by design,
 `feature-end` owns that).
 
+## Test VM harness (2026-11-05)
+
+hias's ruling: build our own reproducible test environment on the Fedora
+host — a libvirt VM from the Ubuntu 26.04 cloud image in the adminvm
+devbox "minimal GNOME 50" shape, the spike as a flatpak
+(`linux/flatpak/com.manaflow.cmux.mobile.yml`), one headless
+gnome-remote-desktop session per test user with the spike as autostart
+(Guacamole login → the app, no GDM), Guacamole on the host with
+`enable-touch` and the ☰ menu-hint extension. Everything lives in
+`linux/mobile-vm/` (`vm.sh all`); its README carries the traps. The
+Hetzner/Incus session lifts `provision.sh` + `guac.sh` into its
+playbook; the VM boundary is theirs.
+
 ## What hias judges on the phone
 
 - Does swipe-in-overview feel like GNOME, or like a mode you forget

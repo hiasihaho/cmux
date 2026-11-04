@@ -1,0 +1,24 @@
+.menu-hint-button {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 56px;
+    line-height: 56px;
+    text-align: center;
+    font-size: 18px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 10px 0 0 10px;
+    z-index: 110;            /* above .menu (100) so it stays tappable when open */
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+}
+.menu-hint-button:active { background: rgba(0, 0, 0, 0.75); }
+.menu-hint-button.open { background: rgba(0, 0, 0, 0.75); }
+/* The menu is 480px wide capped to the viewport; on a phone that is the whole
+   width. Leave a strip for the tab so the menu ends just before it. */
+.menu { max-width: calc(100% - 36px) !important; }

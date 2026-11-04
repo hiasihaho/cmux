@@ -1,0 +1,7 @@
+{
+    "guacamoleVersion": "1.6.0",
+    "name": "Menu hint button",
+    "namespace": "menu-hint",
+    "html": [ "html/menu-button.html" ],
+    "css":  [ "css/menu-button.css" ]
+}

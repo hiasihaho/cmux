@@ -1,0 +1,78 @@
+# Flatpak manifest for the MOBILE SPIKE (POC 0004, linux/poc/mobile-carousel).
+# Separate app id on purpose: the spike is a throwaway UX probe that must
+# install next to the real cmux flatpak on a test VM without touching it.
+# Same pins as com.manaflow.cmux.yml (runtime 49, swift6 25.08, vte 0.82.3)
+# so the two share runtimes on the VM. Build with:
+#   linux/mobile-vm/vm.sh flatpak        # builds + exports mobile-spike.flatpak
+app-id: com.manaflow.cmux.mobile
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.swift6
+command: mobile-workflow
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --env=GDK_DISABLE=vulkan
+  - --env=LD_LIBRARY_PATH=/app/lib
+  # DEV-ONLY breadth, like the cmux round-1 manifest: the preview pane
+  # must reach a dev server on the VM, the shell pane is a real shell.
+  - --share=network
+  - --filesystem=home
+  - --talk-name=org.freedesktop.Flatpak
+
+build-options:
+  append-path: /usr/lib/sdk/swift6/bin
+  prepend-ld-library-path: /usr/lib/sdk/swift6/lib
+
+modules:
+  - name: vte-gtk4
+    buildsystem: meson
+    config-opts:
+      - -Dgtk4=true
+      - -Dgtk3=false
+      - -Dvapi=false
+      - -Dgir=false
+      - -Ddocs=false
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/vte/0.82/vte-0.82.3.tar.xz
+        sha256: 6dc6278f6fee30d07d1a03e2ba3335b1ea4e8d2956ceb59d861943115d930a85
+
+  - name: mobile-spike
+    buildsystem: simple
+    build-options:
+      build-args:
+        # DEV-ONLY: SwiftPM fetches adwaita-swift/meta at build time.
+        - --share=network
+    build-commands:
+      - cd spike && rm -rf .build .swiftpm && swift build --product MobileWorkflow
+      - install -Dm755 spike/.build/debug/MobileWorkflow /app/bin/MobileWorkflow
+      - mkdir -p /app/lib && cp -a /usr/lib/sdk/swift6/lib/swift/linux/*.so* /app/lib/
+      - install -Dm755 mobile-workflow /app/bin/mobile-workflow
+      - install -Dm644 com.manaflow.cmux.mobile.desktop /app/share/applications/com.manaflow.cmux.mobile.desktop
+    sources:
+      - type: dir
+        path: ../poc/mobile-carousel
+        dest: spike
+        skip:
+          - .build
+          - .swiftpm
+      - type: file
+        path: com.manaflow.cmux.mobile.desktop
+      - type: script
+        dest-filename: mobile-workflow
+        commands:
+          # Defaults a phone test wants; every var can still be overridden
+          # from the environment (the headless session's autostart sets none).
+          - 'export MOBILE_WORKSPACE_NAMES="${MOBILE_WORKSPACE_NAMES:-theme-dark,login-form}"'
+          # A flatpak may only own bus names under its app id; any other id
+          # (the spike's default, or one leaking in from scratch.sh's env)
+          # fails registration with a bare "ServiceUnknown" (2026-11-05).
+          # Forced, not defaulted: inside the sandbox nothing else can work.
+          - 'export MOBILE_APP_ID=com.manaflow.cmux.mobile'
+          - 'exec /app/bin/MobileWorkflow "$@"'
