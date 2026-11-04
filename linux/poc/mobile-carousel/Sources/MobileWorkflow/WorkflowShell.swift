@@ -91,6 +91,7 @@ final class Workspace {
     var urlRevealer: OpaquePointer!                // GtkRevealer
     var urlEntry: UnsafeMutablePointer<GtkWidget>!
     var urlButton: UnsafeMutablePointer<GtkWidget>!     // toggles the bar, preview only
+    var zoomLabel: UnsafeMutablePointer<GtkWidget>!
     var toggle: OpaquePointer!                     // AdwToggleGroup
     var keyRow: UnsafeMutablePointer<GtkWidget>!
     init(name: String) { self.name = name }
@@ -198,6 +199,39 @@ final class WorkflowRuntime {
             UnsafeMutableRawPointer(bitPattern: index + 1), nil, GConnectFlags(0))
         gtk_box_append(cast(urlBar), urlEntry)
         gtk_box_append(cast(urlBar), reload)
+        // ⋮ menu: page zoom (hias 2026-11-04 — pinch does not arrive over a
+        // mouse-emulated RDP path, buttons always work)
+        let menu = gtk_menu_button_new()!
+        gtk_menu_button_set_icon_name(OpaquePointer(menu), "view-more-symbolic")
+        gtk_widget_add_css_class(menu, "flat")
+        gtk_widget_set_focus_on_click(menu, 0)
+        let popover = gtk_popover_new()!
+        let menuBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2)!
+        let zoomRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4)!
+        let zoomLabel = gtk_label_new("100 %")!
+        gtk_widget_set_size_request(zoomLabel, 56, -1)
+        ws.zoomLabel = zoomLabel
+        for (icon, delta) in [("zoom-out-symbolic", -1), ("zoom-in-symbolic", 1)] {
+            let b = gtk_button_new_from_icon_name(icon)!
+            gtk_widget_add_css_class(b, "flat")
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(b), "clicked",
+                unsafeBitCast(workflowZoomClicked, to: GCallback.self),
+                UnsafeMutableRawPointer(bitPattern: (index + 1) * 4 + (delta + 2)), nil, GConnectFlags(0))
+            if delta < 0 { gtk_box_append(cast(zoomRow), b) }
+            else { gtk_box_append(cast(zoomRow), zoomLabel); gtk_box_append(cast(zoomRow), b) }
+        }
+        let zoomReset = gtk_button_new_with_label("Zoom zurücksetzen")!
+        gtk_widget_add_css_class(zoomReset, "flat")
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(zoomReset), "clicked",
+            unsafeBitCast(workflowZoomClicked, to: GCallback.self),
+            UnsafeMutableRawPointer(bitPattern: (index + 1) * 4 + 2), nil, GConnectFlags(0))
+        gtk_box_append(cast(menuBox), zoomRow)
+        gtk_box_append(cast(menuBox), zoomReset)
+        gtk_popover_set_child(cast(popover), menuBox)
+        gtk_menu_button_set_popover(OpaquePointer(menu), popover)
+        gtk_box_append(cast(urlBar), menu)
         let revealer = gtk_revealer_new()!
         gtk_revealer_set_child(OpaquePointer(revealer), urlBar)
         gtk_revealer_set_transition_type(OpaquePointer(revealer), GTK_REVEALER_TRANSITION_TYPE_SLIDE_DOWN)
@@ -389,6 +423,15 @@ final class WorkflowRuntime {
         gtk_widget_grab_focus(ws.webView)
     }
 
+    /// delta −1 / +1 steps the WebKit zoom by 10 %, 0 resets to 100 %.
+    func zoom(_ ws: Workspace, delta: Int) {
+        let view = webView(ws)
+        var level = delta == 0 ? 1.0 : webkit_web_view_get_zoom_level(view) + Double(delta) * 0.1
+        level = max(0.3, min(3.0, (level * 10).rounded() / 10))
+        webkit_web_view_set_zoom_level(view, level)
+        gtk_label_set_text(OpaquePointer(ws.zoomLabel), "\(Int((level * 100).rounded())) %")
+    }
+
     func syncUrlEntry(_ ws: Workspace) {
         guard let uri = webkit_web_view_get_uri(webView(ws)) else { return }
         let text = String(cString: uri)
@@ -548,6 +591,16 @@ let workflowReloadClicked: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutab
     let runtime = WorkflowRuntime.shared
     guard let ws = runtime.workspace(forUserData: userData) else { return }
     webkit_web_view_reload(runtime.webView(ws))
+}
+
+/// userData = (workspace index + 1) * 4 + (delta + 2); delta ∈ {−1, 0, +1}.
+let workflowZoomClicked: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void
+= { _, userData in
+    guard let userData else { return }
+    let packed = Int(bitPattern: userData)
+    let runtime = WorkflowRuntime.shared
+    guard let ws = runtime.workspace(forUserData: UnsafeMutableRawPointer(bitPattern: packed / 4)) else { return }
+    runtime.zoom(ws, delta: packed % 4 - 2)
 }
 
 let workflowUriChanged: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void

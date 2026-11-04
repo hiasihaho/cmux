@@ -20,7 +20,10 @@ Same day, **spike v2** (`MobileWorkflow`): hias's workflow shape — one
 workspace per worktree as AdwTabOverview thumbnails, Shell + Vorschau
 (WebKit) carousel per workspace with bottom toggle and edge-strip
 swipe, plus an on-demand URL bar on the preview (hias: "the human asks
-the LLM to inspect a specific page"). Verified headless. Next: step 2, `feature-start`/`feature-end`
+the LLM to inspect a specific page") with a ⋮ zoom menu. Touch over RDP
+works with Guacamole `enable-touch` + gnome-remote-desktop ≥ 49 (Ubuntu
+26.04 target has it; Fedora host has 49.3 → phone test via
+`~/adminvm/poc-web-console/run-guac-phone.sh`). Next: step 2, `feature-start`/`feature-end`
 against desktop cmux (hias supplies the web-app details), then the
 breakpoint mode in cmux-adw.
 

@@ -176,6 +176,27 @@ scratch `app.log`. Verified headless: button appears on Vorschau only,
 bar slides in, `http://localhost:1/x` loads (and fails, as expected),
 entry keeps the URL, bar slides out, toggle still flips both ways.
 
+**Zoom via ⋮ menu (hias, same day):** right of reload a `GtkMenuButton`
+opens a popover with − / percentage / + (10 % steps, 30–300 %) and
+"Zoom zurücksetzen" (`webkit_web_view_set_zoom_level`). Verified: three
+taps → 130 %, placeholder reports viewport 407×791 at DPR 2.6; reset →
+530×1029 at DPR 2. Rationale: pinch never arrives over a mouse-emulated
+RDP path, buttons always work.
+
+**Touch over RDP is not a dead end** (corrects my "RDP = Maus" claim):
+Guacamole ≥ 1.4 forwards multi-touch through the RDPEI channel when the
+connection sets `enable-touch=true` (default off; the adminvm POC does
+not set it) and the client input mode is Touchscreen;
+gnome-remote-desktop understands RDPEI since 49.alpha (MR !314). Debian
+13 ships 48.1 → no touch; the adminvm server is moving to Ubuntu 26.04 /
+GNOME 50, which has it. The Fedora 43 host has g-r-d 49.3, so the whole
+chain is testable from a phone on the WLAN today: host "Remote Login"
+(system g-r-d, separate GDM session at the phone's resolution, the daily
+untouched) + `~/adminvm/poc-web-console/run-guac-phone.sh` (LAN-bound
+Guacamole, `enable-touch`, warns on port/firewall/3389). Guacamole's own
+pinch zooms the remote display client-side, a second kind of zoom to
+compare on the phone.
+
 Testing note that cost twenty minutes: on Vorschau the bottom toggle
 sits lower than on Shell because the key row is hidden — xdotool
 clicks at the Shell-mode y land in the WebView and look like a dead
