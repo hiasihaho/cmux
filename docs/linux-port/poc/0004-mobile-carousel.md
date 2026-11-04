@@ -161,6 +161,27 @@ glance for free; tapping a thumbnail returns to it; left-strip swipe
 goes back to Shell, right-strip swipe forward to Vorschau, the toggle
 follows; `tput cols` = 88 in each workspace's shell.
 
+**URL bar (hias, same day):** in the human ↔ AI workflow the human
+asks the session to inspect a specific page, so the preview's address
+must be visible and editable — but only on demand. A `GtkRevealer`
+above the WebView holds an entry (`input-purpose=url`, bare hosts get
+`http://`, dev servers are plain http) plus a reload button; a toggle
+button right of the Shell | Vorschau switch shows/hides it, and that
+button itself exists only on the Vorschau pane (like the key row on
+Shell). `notify::uri` keeps the entry in sync with navigation, except
+for `about:blank` / empty, which WebKit reports after a failed load —
+the typed URL stays so reload makes sense. `MOBILE_URL_BAR=1` shows it
+from the start; `MOBILE_DEBUG=1` logs toggle/page/uri events to the
+scratch `app.log`. Verified headless: button appears on Vorschau only,
+bar slides in, `http://localhost:1/x` loads (and fails, as expected),
+entry keeps the URL, bar slides out, toggle still flips both ways.
+
+Testing note that cost twenty minutes: on Vorschau the bottom toggle
+sits lower than on Shell because the key row is hidden — xdotool
+clicks at the Shell-mode y land in the WebView and look like a dead
+toggle. The product may want the bottom row at a fixed height so the
+thumb target does not move between panes.
+
 Known gaps of v2: no live finger-tracking on the edge swipe (it flips
 on release, animated); the strips are faintly tinted so they are
 discoverable — the product may want them invisible plus a first-run

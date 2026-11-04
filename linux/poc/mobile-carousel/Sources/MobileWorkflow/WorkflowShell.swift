@@ -87,6 +87,10 @@ final class Workspace {
     var terminal: UnsafeMutablePointer<VteTerminal>!
     var shellPage: UnsafeMutablePointer<GtkWidget>!
     var webView: UnsafeMutablePointer<GtkWidget>!
+    var previewPage: UnsafeMutablePointer<GtkWidget>!   // [url bar revealer, web view]
+    var urlRevealer: OpaquePointer!                // GtkRevealer
+    var urlEntry: UnsafeMutablePointer<GtkWidget>!
+    var urlButton: UnsafeMutablePointer<GtkWidget>!     // toggles the bar, preview only
     var toggle: OpaquePointer!                     // AdwToggleGroup
     var keyRow: UnsafeMutablePointer<GtkWidget>!
     init(name: String) { self.name = name }
@@ -166,7 +170,45 @@ final class WorkflowRuntime {
         gtk_widget_set_hexpand(webView, 1)
         gtk_widget_set_vexpand(webView, 1)
         ws.webView = webView
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(webView), "notify::uri",
+            unsafeBitCast(workflowUriChanged, to: GCallback.self),
+            UnsafeMutableRawPointer(bitPattern: index + 1), nil, GConnectFlags(0))
         loadPreview(ws)
+
+        // optional URL bar above the preview (hias 2026-11-04: the human asks the
+        // LLM to inspect a specific page, so the address must be visible/editable)
+        let urlBar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4)!
+        gtk_widget_add_css_class(urlBar, "url-bar")
+        let urlEntry = gtk_entry_new()!
+        gtk_widget_set_hexpand(urlEntry, 1)
+        gtk_entry_set_placeholder_text(cast(urlEntry), "URL")
+        gtk_entry_set_input_purpose(cast(urlEntry), GTK_INPUT_PURPOSE_URL)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(urlEntry), "activate",
+            unsafeBitCast(workflowUrlActivated, to: GCallback.self),
+            UnsafeMutableRawPointer(bitPattern: index + 1), nil, GConnectFlags(0))
+        ws.urlEntry = urlEntry
+        let reload = gtk_button_new_from_icon_name("view-refresh-symbolic")!
+        gtk_widget_add_css_class(reload, "flat")
+        gtk_widget_set_focus_on_click(reload, 0)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(reload), "clicked",
+            unsafeBitCast(workflowReloadClicked, to: GCallback.self),
+            UnsafeMutableRawPointer(bitPattern: index + 1), nil, GConnectFlags(0))
+        gtk_box_append(cast(urlBar), urlEntry)
+        gtk_box_append(cast(urlBar), reload)
+        let revealer = gtk_revealer_new()!
+        gtk_revealer_set_child(OpaquePointer(revealer), urlBar)
+        gtk_revealer_set_transition_type(OpaquePointer(revealer), GTK_REVEALER_TRANSITION_TYPE_SLIDE_DOWN)
+        gtk_revealer_set_reveal_child(OpaquePointer(revealer), WorkflowRuntime.urlBarDefault ? 1 : 0)
+        ws.urlRevealer = OpaquePointer(revealer)
+        let previewPage = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        gtk_widget_set_hexpand(previewPage, 1)
+        gtk_widget_set_vexpand(previewPage, 1)
+        gtk_box_append(cast(previewPage), revealer)
+        gtk_box_append(cast(previewPage), webView)
+        ws.previewPage = previewPage
 
         // carousel + edge strips
         let carouselWidget = adw_carousel_new()!
@@ -177,7 +219,7 @@ final class WorkflowRuntime {
         adw_carousel_set_allow_mouse_drag(carousel, 0)
         adw_carousel_set_allow_scroll_wheel(carousel, 0)
         adw_carousel_append(carousel, scrolled)
-        adw_carousel_append(carousel, webView)
+        adw_carousel_append(carousel, previewPage)
         ws.carousel = carousel
         let overlay = gtk_overlay_new()!
         gtk_overlay_set_child(OpaquePointer(overlay), carouselWidget)
@@ -213,6 +255,34 @@ final class WorkflowRuntime {
         gtk_widget_set_margin_bottom(toggleWidget, 2)
         gtk_widget_set_focus_on_click(toggleWidget, 0)
         ws.toggle = toggle
+        gtk_widget_set_hexpand(toggleWidget, 1)
+        // URL-bar toggle sits right of the pane toggle, shown on the preview only
+        let urlButton = gtk_toggle_button_new()!
+        gtk_button_set_icon_name(cast(urlButton), "web-browser-symbolic")
+        gtk_widget_set_tooltip_text(urlButton, "Adressleiste")
+        gtk_widget_add_css_class(urlButton, "flat")
+        gtk_widget_set_focus_on_click(urlButton, 0)
+        gtk_widget_set_margin_end(urlButton, 8)
+        gtk_widget_set_margin_top(urlButton, 6)
+        gtk_widget_set_margin_bottom(urlButton, 2)
+        gtk_widget_set_visible(urlButton, 0)
+        gtk_toggle_button_set_active(cast(urlButton), WorkflowRuntime.urlBarDefault ? 1 : 0)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(urlButton), "toggled",
+            unsafeBitCast(workflowUrlButtonToggled, to: GCallback.self),
+            UnsafeMutableRawPointer(bitPattern: index + 1), nil, GConnectFlags(0))
+        ws.urlButton = urlButton
+        let bottomRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+        if workflowDebug {
+            let probe = gtk_gesture_click_new()!
+            gtk_event_controller_set_propagation_phase(probe, GTK_PHASE_CAPTURE)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(probe), "pressed",
+                unsafeBitCast(workflowProbePressed, to: GCallback.self), nil, nil, GConnectFlags(0))
+            gtk_widget_add_controller(bottomRow, probe)
+        }
+        gtk_box_append(cast(bottomRow), toggleWidget)
+        gtk_box_append(cast(bottomRow), urlButton)
         g_signal_connect_data(
             UnsafeMutableRawPointer(toggleWidget), "notify::active",
             unsafeBitCast(workflowToggleChanged, to: GCallback.self),
@@ -228,7 +298,7 @@ final class WorkflowRuntime {
 
         let box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
         gtk_box_append(cast(box), overlay)
-        gtk_box_append(cast(box), toggleWidget)
+        gtk_box_append(cast(box), bottomRow)
         gtk_box_append(cast(box), keyRow)
 
         let page = adw_tab_view_append(tabView, box)!
@@ -252,16 +322,18 @@ final class WorkflowRuntime {
     // MARK: panes
 
     func scroll(_ ws: Workspace, toPane pane: Int) {
-        let target = pane == 0 ? ws.shellPage! : ws.webView!
+        let target = pane == 0 ? ws.shellPage! : ws.previewPage!
         adw_carousel_scroll_to(ws.carousel, target, 1)
     }
 
     func paneChanged(_ ws: Workspace) {
         let pane = ws.paneIndex
+        dbg("page-changed \(ws.name) pane=\(pane) pos=\(adw_carousel_get_position(ws.carousel)) toggle=\(adw_toggle_group_get_active(ws.toggle))")
         if Int(adw_toggle_group_get_active(ws.toggle)) != pane {
             adw_toggle_group_set_active(ws.toggle, UInt32(pane))
         }
         gtk_widget_set_visible(ws.keyRow, pane == 0 ? 1 : 0)
+        gtk_widget_set_visible(ws.urlButton, pane == 1 ? 1 : 0)
         if ws === current {
             onPaneChanged(pane)
             if !overview { focusCurrentPane() }
@@ -290,6 +362,41 @@ final class WorkflowRuntime {
     }
 
     // MARK: preview
+
+    /// MOBILE_URL_BAR=1 shows the address bar from the start; default hidden.
+    static let urlBarDefault = ProcessInfo.processInfo.environment["MOBILE_URL_BAR"] == "1"
+
+    func webView(_ ws: Workspace) -> UnsafeMutablePointer<WebKitWebView> {
+        UnsafeMutableRawPointer(ws.webView).assumingMemoryBound(to: WebKitWebView.self)
+    }
+
+    func setUrlBarVisible(_ ws: Workspace, _ visible: Bool) {
+        gtk_revealer_set_reveal_child(ws.urlRevealer, visible ? 1 : 0)
+        if gtk_toggle_button_get_active(cast(ws.urlButton)) != (visible ? 1 : 0) {
+            gtk_toggle_button_set_active(cast(ws.urlButton), visible ? 1 : 0)
+        }
+        if visible, ws.paneIndex == 1 { gtk_widget_grab_focus(ws.urlEntry) }
+    }
+
+    /// Entry text → load; bare hosts get http://, since dev servers are plain http.
+    func navigate(_ ws: Workspace) {
+        let buffer = gtk_entry_get_buffer(cast(ws.urlEntry))
+        guard let raw = gtk_entry_buffer_get_text(buffer) else { return }
+        var text = String(cString: raw).trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        if !text.contains("://"), !text.hasPrefix("about:") { text = "http://" + text }
+        webkit_web_view_load_uri(webView(ws), text)
+        gtk_widget_grab_focus(ws.webView)
+    }
+
+    func syncUrlEntry(_ ws: Workspace) {
+        guard let uri = webkit_web_view_get_uri(webView(ws)) else { return }
+        let text = String(cString: uri)
+        dbg("uri: \(text)")
+        // about:blank is the placeholder page; keep whatever the human typed then
+        guard !text.isEmpty, !text.hasPrefix("about:") else { return }
+        gtk_editable_set_text(OpaquePointer(ws.urlEntry), text)
+    }
 
     private func loadPreview(_ ws: Workspace) {
         let view = UnsafeMutableRawPointer(ws.webView).assumingMemoryBound(to: WebKitWebView.self)
@@ -408,6 +515,7 @@ let workflowToggleChanged: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutab
     let runtime = WorkflowRuntime.shared
     guard let ws = runtime.workspace(forUserData: userData) else { return }
     let active = Int(adw_toggle_group_get_active(OpaquePointer(toggle)))
+    dbg("toggle \(ws.name) active=\(active) pane=\(ws.paneIndex) pos=\(adw_carousel_get_position(ws.carousel))")
     if active != ws.paneIndex { runtime.scroll(ws, toPane: active) }
 }
 
@@ -418,6 +526,35 @@ let workflowEdgeDragEnd: @convention(c) (UnsafeMutableRawPointer?, Double, Doubl
     guard let ws = runtime.workspace(forUserData: userData) else { return }
     if offsetX < -40, ws.paneIndex == 0 { runtime.scroll(ws, toPane: 1) }
     if offsetX > 40, ws.paneIndex == 1 { runtime.scroll(ws, toPane: 0) }
+}
+
+let workflowUrlButtonToggled: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void
+= { button, userData in
+    guard let button else { return }
+    let runtime = WorkflowRuntime.shared
+    guard let ws = runtime.workspace(forUserData: userData) else { return }
+    runtime.setUrlBarVisible(ws, gtk_toggle_button_get_active(button.assumingMemoryBound(to: GtkToggleButton.self)) != 0)
+}
+
+let workflowUrlActivated: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void
+= { _, userData in
+    let runtime = WorkflowRuntime.shared
+    guard let ws = runtime.workspace(forUserData: userData) else { return }
+    runtime.navigate(ws)
+}
+
+let workflowReloadClicked: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void
+= { _, userData in
+    let runtime = WorkflowRuntime.shared
+    guard let ws = runtime.workspace(forUserData: userData) else { return }
+    webkit_web_view_reload(runtime.webView(ws))
+}
+
+let workflowUriChanged: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void
+= { _, _, userData in
+    let runtime = WorkflowRuntime.shared
+    guard let ws = runtime.workspace(forUserData: userData) else { return }
+    runtime.syncUrlEntry(ws)
 }
 
 let workflowTerminalMapped: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void
@@ -432,6 +569,12 @@ let workflowFitTick: @convention(c) (UnsafeMutableRawPointer?) -> Int32 = { _ in
     return (runtime.fitted || runtime.fitTicks > 60) ? 0 : 1
 }
 
+let workflowProbePressed: @convention(c) (UnsafeMutableRawPointer?, Int32, Double, Double, UnsafeMutableRawPointer?) -> Void
+= { _, n, x, y, _ in dbg("bottomRow pressed n=\(n) x=\(x) y=\(y)") }
+
+let workflowDebug = ProcessInfo.processInfo.environment["MOBILE_DEBUG"] != nil
+func dbg(_ line: String) { if workflowDebug { fputs(line + "\n", stderr) } }
+
 enum WorkflowStyle {
     static var installed = false
     static func install() {
@@ -439,6 +582,7 @@ enum WorkflowStyle {
         installed = true
         let css = """
         .edge-strip { background: alpha(@accent_bg_color, 0.08); }
+        .url-bar { padding: 4px 6px; border-bottom: 1px solid @borders; }
         .mobile-keys { padding: 4px 6px; border-top: 1px solid @borders; }
         .mobile-keys button { min-width: 36px; min-height: 36px; padding: 0 8px; }
         """
