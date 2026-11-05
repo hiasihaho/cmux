@@ -59,6 +59,21 @@ shows it as left. The system "Remote Login" mode (GDM greeter) is NOT
 used: it takes over a local session of the same user (bit us on the
 Fedora host 2026-11-04) and always shows the greeter.
 
+## Surviving a network / location change
+
+The laptop's WLAN address changes between locations, which used to strand the
+Guacamole pod on a stale IP. Now:
+
+- `guac.sh` binds **all interfaces** by default (`-p 8080:8080`), so Guacamole
+  is reachable at whatever the host's current IP is — no restart after a move.
+  `vm.sh url` (or `vm.sh status`) prints the live URL(s); `BIND_IP=<addr>` pins
+  one interface if you need to.
+- The VM's address on libvirt's NAT is stable, but a pause/resume or a dnsmasq
+  restart clears the DHCP **lease table**. `vm_ip` falls back lease → guest
+  agent → host ARP (by the VM's MAC), so the harness keeps finding the VM.
+- A suspended laptop leaves the VM `paused`; `virsh -c qemu:///system resume
+  cmux-mobile-vm` (or `vm.sh start`) brings it back.
+
 ## Traps recorded while building this
 
 - **pasta gives the pod the host's own LAN IP** — a Guacamole connection

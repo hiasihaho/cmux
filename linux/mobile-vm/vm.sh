@@ -9,7 +9,8 @@
 #   vm.sh flatpak          # build linux/flatpak/com.manaflow.cmux.mobile.yml → bundle
 #   vm.sh runtime          # export org.gnome.Platform//49 from the host as a bundle (flathub is slow)
 #   vm.sh provision        # scp provision.sh + bundle, run as root (idempotent)
-#   vm.sh guac             # Guacamole pod on the host, one connection per user
+#   vm.sh guac             # Guacamole pod on the host (binds all interfaces)
+#   vm.sh url              # current reachable Guacamole URL(s) — after an IP change
 #   vm.sh ip | ssh [cmd] | start | stop | status | destroy
 #   vm.sh all              # image → create → flatpak → provision → guac
 #
@@ -42,8 +43,21 @@ V() { virsh -c qemu:///system "$@"; }
 die() { echo "vm.sh: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null || die "missing tool: $1"; }
 
+# The VM's address on libvirt's NAT is stable, but the DHCP lease TABLE is
+# cleared when dnsmasq restarts (host network change / a VM pause-resume on a
+# laptop that moved location — hias 2026-11-05). So: try the lease table, then
+# the guest agent, then the host ARP cache keyed by the VM's own MAC.
 vm_ip() {
-    V net-dhcp-leases default 2>/dev/null | awk -v h="$NAME" '$0 ~ h {print $5}' | cut -d/ -f1 | head -1
+    local ip mac
+    # Each probe is wrapped so a failing virsh (e.g. guest agent not answering)
+    # does not trip `set -e` and abort the whole script.
+    ip="$( { V net-dhcp-leases default 2>/dev/null || true; } | awk -v h="$NAME" '$0 ~ h {print $5}' | cut -d/ -f1 | head -1)"
+    [ -n "$ip" ] && { echo "$ip"; return; }
+    ip="$( { V domifaddr "$NAME" --source agent 2>/dev/null || true; } | awk '/ipv4/ && $4 !~ /^127\./ {print $4}' | cut -d/ -f1 | head -1)"
+    [ -n "$ip" ] && { echo "$ip"; return; }
+    mac="$( { V domiflist "$NAME" 2>/dev/null || true; } | awk '/network/ {print $5; exit}')"
+    [ -n "$mac" ] && { ip neigh show dev virbr0 2>/dev/null || true; } | awk -v m="$mac" 'tolower($0) ~ tolower(m) {print $1; exit}'
+    return 0
 }
 ssh_vm() {
     local ip; ip="$(vm_ip)"; [ -n "$ip" ] || die "no DHCP lease for $NAME"
@@ -165,9 +179,17 @@ cmd_guac() {
         HEADLESS_PORT_BASE="$HEADLESS_PORT_BASE" bash "$HERE/guac.sh"
 }
 
+# Current reachable Guacamole URL(s) — the pod binds all interfaces, so this
+# just reads the host's live global IPs (no restart on an IP change).
+cmd_url() {
+    local port="${GUAC_PORT:-8080}"
+    ip -4 -o addr show scope global | awk '!/virbr|podman|docker|lxd/ {sub(/\/.*/,"",$4); print "http://" $4 ":'"$port"'/guacamole"}'
+}
+
 cmd_status() {
     V dominfo "$NAME" 2>/dev/null | grep -E "^(Name|State|CPU\(s\)|Max memory)" || echo "$NAME: not defined"
     echo "ip: $(vm_ip)"
+    echo "guac url(s):"; cmd_url | sed 's/^/  /'
     [ -f "$BUNDLE" ] && echo "bundle: $BUNDLE ($(du -h "$BUNDLE" | cut -f1))" || echo "bundle: none"
     podman pod ps --filter name=cmux-mobile-guac --format '{{.Name}}: {{.Status}}' 2>/dev/null
 }
@@ -186,6 +208,7 @@ case "${1:-}" in
     runtime)   cmd_runtime ;;
     provision) cmd_provision ;;
     guac)      cmd_guac ;;
+    url)       cmd_url ;;
     ip)        vm_ip ;;
     ssh)       shift; ssh_vm "$@" ;;
     start)     V start "$NAME" ;;

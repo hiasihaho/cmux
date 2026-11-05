@@ -19,7 +19,13 @@ HEADLESS_PASS="${HEADLESS_PASS:-mobile}"
 HEADLESS_PORT_BASE="${HEADLESS_PORT_BASE:-3390}"
 TAG="${GUAC_TAG:-1.6.0}"
 PORT="${GUAC_PORT:-8080}"
-BIND_IP="${BIND_IP:-$(ip -4 -o addr show scope global | awk '!/virbr|podman|docker|lxd/ {sub(/\/.*/,"",$4); print $4; exit}')}"
+# Bind ALL interfaces by default so a change of the host's WLAN / IP does not
+# strand the pod on a stale address (hias 2026-11-05: new network address at a
+# new location). Set BIND_IP=<addr> to pin one interface instead.
+host_ips() { ip -4 -o addr show scope global | awk '!/virbr|podman|docker|lxd/ {sub(/\/.*/,"",$4); print $4}'; }
+BIND_IP="${BIND_IP:-}"
+if [ -n "$BIND_IP" ]; then PUBLISH="${BIND_IP}:${PORT}:8080"; URL_IP="$BIND_IP"
+else PUBLISH="${PORT}:8080"; URL_IP="$(host_ips | head -1)"; fi
 POD=cmux-mobile-guac
 HOME_DIR="${GUAC_HOME_DIR:-$HOME/.cache/cmux-mobile-vm/guac-home}"
 # GUAC_FORCE_SIZE=WxH pins the RDP resolution instead of resizing to the
@@ -105,13 +111,19 @@ EOF
 chmod 644 "$HOME_DIR/user-mapping.xml"   # Tomcat user inside the container must read it
 
 podman pod rm -f "$POD" >/dev/null 2>&1 || true
-podman pod create --name "$POD" -p "${BIND_IP}:${PORT}:8080" >/dev/null
+podman pod create --name "$POD" -p "${PUBLISH}" >/dev/null
 podman run -d --pod "$POD" --name "$POD-guacd" -e GUACD_LOG_LEVEL=info \
     docker.io/guacamole/guacd:${TAG} >/dev/null
 podman run -d --pod "$POD" --name "$POD-web" \
     -e GUACAMOLE_HOME=/etc/guacamole -e GUACD_HOSTNAME=127.0.0.1 -e GUACD_PORT=4822 \
     -v "$HOME_DIR":/etc/guacamole:Z docker.io/guacamole/guacamole:${TAG} >/dev/null
 
-echo "Guacamole up (give it ~15 s): http://${BIND_IP}:${PORT}/guacamole   login poc / poc"
+echo "Guacamole up (give it ~15 s), login poc / poc. Reachable on every current IP:"
+if [ -n "$BIND_IP" ]; then
+    echo "   http://${URL_IP}:${PORT}/guacamole   (pinned to BIND_IP)"
+else
+    host_ips | while read -r a; do echo "   http://${a}:${PORT}/guacamole"; done
+    echo "   bound to all interfaces — survives an IP change, no restart needed"
+fi
 echo "Connections: $(for u in $MOBILE_USERS; do printf '%s ' "$u"; done)→ $VM_IP headless sessions"
 echo "Logs: podman logs -f $POD-guacd | podman logs -f $POD-web    Stop: podman pod rm -f $POD"
