@@ -369,7 +369,7 @@ enum UIDialogs {
             UnsafeMutableRawPointer(dialog), "response",
             unsafeBitCast(renameDialogResponse, to: GCallback.self),
             Unmanaged.passRetained(box).toOpaque(),
-            renameDialogBoxDestroy, GConnectFlags(0)
+            renameDialogBoxDestroy, GConnectFlags(rawValue: 0)
         )
         let dialogPtr = UnsafeMutableRawPointer(dialog).assumingMemoryBound(to: AdwDialog.self)
         // Initial focus must be the ENTRY, not the suggested button —

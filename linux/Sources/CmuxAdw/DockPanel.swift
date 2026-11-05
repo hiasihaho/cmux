@@ -204,8 +204,8 @@ struct DockPanelWidget: AdwaitaWidget {
             g_strfreev(envv)
         }
         vte_terminal_spawn_async(
-            terminal, VTE_PTY_DEFAULT, cwd, argv, envv,
-            G_SPAWN_DEFAULT, nil, nil, nil, -1, nil, nil, nil
+            terminal, VtePtyFlags(rawValue: 0), cwd, argv, envv,
+            GSpawnFlags(rawValue: 0), nil, nil, nil, -1, nil, nil, nil
         )
         return box
     }

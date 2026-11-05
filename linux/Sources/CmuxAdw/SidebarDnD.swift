@@ -53,17 +53,17 @@ enum SidebarDnD {
             g_signal_connect_data(
                 UnsafeMutableRawPointer(source), "prepare",
                 unsafeBitCast(sidebarDragPrepare, to: GCallback.self),
-                nil, nil, GConnectFlags(0)
+                nil, nil, GConnectFlags(rawValue: 0)
             )
             g_signal_connect_data(
                 UnsafeMutableRawPointer(source), "drag-begin",
                 unsafeBitCast(sidebarDragBegin, to: GCallback.self),
-                nil, nil, GConnectFlags(0)
+                nil, nil, GConnectFlags(rawValue: 0)
             )
             g_signal_connect_data(
                 UnsafeMutableRawPointer(source), "drag-end",
                 unsafeBitCast(sidebarDragEnd, to: GCallback.self),
-                nil, nil, GConnectFlags(0)
+                nil, nil, GConnectFlags(rawValue: 0)
             )
             gtk_widget_add_controller(widget, source)
         }
@@ -74,17 +74,17 @@ enum SidebarDnD {
         g_signal_connect_data(
             UnsafeMutableRawPointer(target), "motion",
             unsafeBitCast(sidebarDropMotion, to: GCallback.self),
-            UnsafeMutableRawPointer(list), nil, GConnectFlags(0)
+            UnsafeMutableRawPointer(list), nil, GConnectFlags(rawValue: 0)
         )
         g_signal_connect_data(
             UnsafeMutableRawPointer(target), "leave",
             unsafeBitCast(sidebarDropLeave, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
+            nil, nil, GConnectFlags(rawValue: 0)
         )
         g_signal_connect_data(
             UnsafeMutableRawPointer(target), "drop",
             unsafeBitCast(sidebarDropCommit, to: GCallback.self),
-            UnsafeMutableRawPointer(list), nil, GConnectFlags(0)
+            UnsafeMutableRawPointer(list), nil, GConnectFlags(rawValue: 0)
         )
         gtk_widget_add_controller(list, target)
     }

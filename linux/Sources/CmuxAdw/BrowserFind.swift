@@ -276,7 +276,7 @@ enum BrowserFindBar {
             g_signal_connect_data(
                 instance, signal, callback,
                 Unmanaged.passRetained(state).toOpaque(),
-                browserFindStateDestroy, GConnectFlags(0)
+                browserFindStateDestroy, GConnectFlags(rawValue: 0)
             )
         }
 

@@ -359,7 +359,7 @@ extension WebAuthnCXFExport {
         g_signal_connect_data(
             UnsafeMutableRawPointer(raw), "response",
             unsafeBitCast(cxfExportResponse, to: GCallback.self),
-            box, cxfExportDestroy, GConnectFlags(0)
+            box, cxfExportDestroy, GConnectFlags(rawValue: 0)
         )
         // Expiry: a dialog nobody answers resolves as `expired`, never a
         // pending that never resolves. g_timeout_add repeats while the

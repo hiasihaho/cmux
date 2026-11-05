@@ -64,7 +64,7 @@ private func cmuxAutomationStarted(_ session: OpaquePointer) {
         UnsafeMutableRawPointer(session),
         "create-web-view",
         unsafeBitCast(createView, to: GCallback.self),
-        nil, nil, GConnectFlags(0)
+        nil, nil, GConnectFlags(rawValue: 0)
     )
 }
 
@@ -164,7 +164,7 @@ enum BrowserWebDriver {
             UnsafeMutableRawPointer(context),
             "automation-started",
             unsafeBitCast(started, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
+            nil, nil, GConnectFlags(rawValue: 0)
         )
 
         webkit_web_context_set_automation_allowed(context, 1)

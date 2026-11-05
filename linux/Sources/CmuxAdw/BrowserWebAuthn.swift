@@ -148,7 +148,7 @@ func installBrowserWebAuthn(_ webView: UnsafeMutablePointer<WebKitWebView>) {
         unsafeBitCast(callback, to: GCallback.self),
         box,
         destroy,
-        GConnectFlags(0)
+        GConnectFlags(rawValue: 0)
     )
     _ = webkit_user_content_manager_register_script_message_handler_with_reply(
         manager, BrowserWebAuthn.handlerName, BrowserWebAuthn.scriptWorld
@@ -570,7 +570,7 @@ private func presentWebAuthnConsentDialog(
     g_signal_connect_data(
         UnsafeMutableRawPointer(dialog), "response",
         unsafeBitCast(webAuthnConsentResponse, to: GCallback.self),
-        box, webAuthnConsentDestroy, GConnectFlags(0)
+        box, webAuthnConsentDestroy, GConnectFlags(rawValue: 0)
     )
     let dialogPtr = UnsafeMutableRawPointer(dialog).assumingMemoryBound(to: AdwDialog.self)
     let parent = UnsafeMutableRawPointer(webView).assumingMemoryBound(to: GtkWidget.self)

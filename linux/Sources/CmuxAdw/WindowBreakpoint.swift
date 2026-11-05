@@ -58,7 +58,7 @@ let breakpointRealized: @convention(c) (
     g_signal_connect_data(
         windowRaw, "notify::default-width",
         unsafeBitCast(breakpointWidthChanged, to: GCallback.self),
-        userData, nil, GConnectFlags(0))
+        userData, nil, GConnectFlags(rawValue: 0))
     let box = Unmanaged<BreakpointBox>.fromOpaque(userData).takeUnretainedValue()
     box.evaluate(width: gtk_widget_get_width(windowRaw.assumingMemoryBound(to: GtkWidget.self)))
 }
@@ -81,7 +81,7 @@ struct WindowBreakpointObserver: AdwaitaWidget {
         g_signal_connect_data(
             UnsafeMutableRawPointer(box!), "realize",
             unsafeBitCast(breakpointRealized, to: GCallback.self),
-            Unmanaged.passUnretained(state).toOpaque(), nil, GConnectFlags(0))
+            Unmanaged.passUnretained(state).toOpaque(), nil, GConnectFlags(rawValue: 0))
         return storage
     }
 
@@ -131,7 +131,7 @@ let fullscreenRealized: @convention(c) (
     g_signal_connect_data(
         UnsafeMutableRawPointer(root), "notify::fullscreened",
         unsafeBitCast(fullscreenNotify, to: GCallback.self),
-        userData, nil, GConnectFlags(0))
+        userData, nil, GConnectFlags(rawValue: 0))
     let box = Unmanaged<FullscreenBox>.fromOpaque(userData).takeUnretainedValue()
     let window = UnsafeMutableRawPointer(root).assumingMemoryBound(to: GtkWindow.self)
     box.report(gtk_window_is_fullscreen(window) != 0)
@@ -153,7 +153,7 @@ struct WindowFullscreenObserver: AdwaitaWidget {
         g_signal_connect_data(
             UnsafeMutableRawPointer(box!), "realize",
             unsafeBitCast(fullscreenRealized, to: GCallback.self),
-            Unmanaged.passUnretained(state).toOpaque(), nil, GConnectFlags(0))
+            Unmanaged.passUnretained(state).toOpaque(), nil, GConnectFlags(rawValue: 0))
         return storage
     }
 

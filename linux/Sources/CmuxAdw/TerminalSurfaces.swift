@@ -127,11 +127,11 @@ final class SurfaceRegistry {
         spawnTimes[surfaceId] = Date()
         vte_terminal_spawn_async(
             terminal,
-            VTE_PTY_DEFAULT,
+            VtePtyFlags(rawValue: 0),
             workingDirectory,
             argv,
             envv,
-            G_SPAWN_DEFAULT,
+            GSpawnFlags(rawValue: 0),
             nil, nil, nil,
             -1,
             nil,
@@ -915,11 +915,11 @@ struct TerminalStackWidget: AdwaitaWidget {
 
         vte_terminal_spawn_async(
             terminal,
-            VTE_PTY_DEFAULT,
+            VtePtyFlags(rawValue: 0),
             leaf.workingDirectory,
             argv,
             envv,
-            G_SPAWN_DEFAULT,
+            GSpawnFlags(rawValue: 0),
             nil, nil, nil,
             -1,
             nil,

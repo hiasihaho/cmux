@@ -246,7 +246,7 @@ final class PaneTabsView {
                     UnsafeMutableRawPointer(button), "clicked",
                     unsafeBitCast(paneTabsEndAction, to: GCallback.self),
                     Unmanaged.passRetained(box).toOpaque(),
-                    paneEndActionBoxDestroy, GConnectFlags(0)
+                    paneEndActionBoxDestroy, GConnectFlags(rawValue: 0)
                 )
                 gtk_box_append(actionsBox, button)
             }
@@ -269,13 +269,13 @@ final class PaneTabsView {
             UnsafeMutableRawPointer(tabViewWidget), "notify::selected-page",
             unsafeBitCast(paneTabsSelectionChanged, to: GCallback.self),
             Unmanaged.passRetained(state).toOpaque(),
-            paneTabsStateDestroy, GConnectFlags(0)
+            paneTabsStateDestroy, GConnectFlags(rawValue: 0)
         )
         g_signal_connect_data(
             UnsafeMutableRawPointer(tabViewWidget), "close-page",
             unsafeBitCast(paneTabsClosePage, to: GCallback.self),
             Unmanaged.passRetained(state).toOpaque(),
-            paneTabsStateDestroy, GConnectFlags(0)
+            paneTabsStateDestroy, GConnectFlags(rawValue: 0)
         )
         // A user drag emits this per position change. Without the handler
         // the drag was accepted visually and silently reverted by the next
@@ -285,7 +285,7 @@ final class PaneTabsView {
             UnsafeMutableRawPointer(tabViewWidget), "page-reordered",
             unsafeBitCast(paneTabsPageReordered, to: GCallback.self),
             Unmanaged.passRetained(state).toOpaque(),
-            paneTabsStateDestroy, GConnectFlags(0)
+            paneTabsStateDestroy, GConnectFlags(rawValue: 0)
         )
     }
 

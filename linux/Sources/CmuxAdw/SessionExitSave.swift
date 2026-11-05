@@ -47,7 +47,7 @@ enum SessionExitSave {
                     window, "close-request",
                     unsafeBitCast(sessionExitSaveCloseRequest, to: GCallback.self),
                     Unmanaged.passRetained(box).toOpaque(),
-                    sessionExitSaveBoxDestroy, GConnectFlags(0)
+                    sessionExitSaveBoxDestroy, GConnectFlags(rawValue: 0)
                 )
                 connected = true
             }

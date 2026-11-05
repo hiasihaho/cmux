@@ -119,7 +119,7 @@ enum BrowserURLBar {
                 UnsafeMutableRawPointer(button), "clicked",
                 unsafeBitCast(callback, to: GCallback.self),
                 Unmanaged.passRetained(state).toOpaque(),
-                browserURLBarStateDestroy, GConnectFlags(0)
+                browserURLBarStateDestroy, GConnectFlags(rawValue: 0)
             )
             gtk_box_append(box, button)
             return button
@@ -138,13 +138,13 @@ enum BrowserURLBar {
             UnsafeMutableRawPointer(webView), "load-changed",
             unsafeBitCast(browserURLBarLoadChanged, to: GCallback.self),
             Unmanaged.passRetained(state).toOpaque(),
-            browserURLBarStateDestroy, GConnectFlags(0)
+            browserURLBarStateDestroy, GConnectFlags(rawValue: 0)
         )
         g_signal_connect_data(
             UnsafeMutableRawPointer(webView), "notify::is-loading",
             unsafeBitCast(browserURLBarLoadingNotify, to: GCallback.self),
             Unmanaged.passRetained(state).toOpaque(),
-            browserURLBarStateDestroy, GConnectFlags(0)
+            browserURLBarStateDestroy, GConnectFlags(rawValue: 0)
         )
 
         // Profile button + its (single, content-rebuilt-per-open) popover.
@@ -159,7 +159,7 @@ enum BrowserURLBar {
                 UnsafeMutableRawPointer(profileButton), "clicked",
                 unsafeBitCast(browserURLBarProfileClicked, to: GCallback.self),
                 Unmanaged.passRetained(state).toOpaque(),
-                browserURLBarStateDestroy, GConnectFlags(0)
+                browserURLBarStateDestroy, GConnectFlags(rawValue: 0)
             )
             gtk_box_append(box, profileButton)
         }
@@ -168,7 +168,7 @@ enum BrowserURLBar {
             UnsafeMutableRawPointer(entry), "activate",
             unsafeBitCast(browserURLBarActivate, to: GCallback.self),
             Unmanaged.passRetained(state).toOpaque(),
-            browserURLBarStateDestroy, GConnectFlags(0)
+            browserURLBarStateDestroy, GConnectFlags(rawValue: 0)
         )
         return row
     }
@@ -234,7 +234,7 @@ enum BrowserURLBar {
                 UnsafeMutableRawPointer(item), "clicked",
                 unsafeBitCast(browserURLBarProfileChosen, to: GCallback.self),
                 Unmanaged.passRetained(choice).toOpaque(),
-                browserProfileChoiceDestroy, GConnectFlags(0)
+                browserProfileChoiceDestroy, GConnectFlags(rawValue: 0)
             )
             gtk_box_append(
                 UnsafeMutableRawPointer(list).assumingMemoryBound(to: GtkBox.self),

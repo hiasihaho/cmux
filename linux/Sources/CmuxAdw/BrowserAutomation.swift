@@ -654,7 +654,7 @@ func installBrowserConsoleCapture(
         unsafeBitCast(callback, to: GCallback.self),
         box,
         destroy,
-        GConnectFlags(0)
+        GConnectFlags(rawValue: 0)
     )
     _ = webkit_user_content_manager_register_script_message_handler(
         manager, consoleMessageHandlerName, nil
@@ -903,7 +903,7 @@ extension ControlCommandHandler {
             unsafeBitCast(navigationLoadChanged, to: GCallback.self),
             box,
             navigationBarrierDestroy,
-            GConnectFlags(0)
+            GConnectFlags(rawValue: 0)
         )
 
         start(target.webView)

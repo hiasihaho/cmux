@@ -41,7 +41,7 @@ enum SidebarContextMenu {
         g_signal_connect_data(
             UnsafeMutableRawPointer(gesture), "pressed",
             unsafeBitCast(sidebarContextMenuPressed, to: GCallback.self),
-            UnsafeMutableRawPointer(window), nil, GConnectFlags(0)
+            UnsafeMutableRawPointer(window), nil, GConnectFlags(rawValue: 0)
         )
         gtk_widget_add_controller(window, gesture)
     }
@@ -87,7 +87,7 @@ enum SidebarContextMenu {
                 UnsafeMutableRawPointer(button), "clicked",
                 unsafeBitCast(sidebarColorChosen, to: GCallback.self),
                 Unmanaged.passRetained(box).toOpaque(),
-                sidebarColorChoiceDestroy, GConnectFlags(0)
+                sidebarColorChoiceDestroy, GConnectFlags(rawValue: 0)
             )
             gtk_box_append(swatchRow, button)
         }
@@ -100,7 +100,7 @@ enum SidebarContextMenu {
                     UnsafeMutableRawPointer(clear), "clicked",
                     unsafeBitCast(sidebarColorChosen, to: GCallback.self),
                     Unmanaged.passRetained(box).toOpaque(),
-                    sidebarColorChoiceDestroy, GConnectFlags(0)
+                    sidebarColorChoiceDestroy, GConnectFlags(rawValue: 0)
                 )
                 gtk_box_append(actionsBox, clear)
             }
@@ -112,7 +112,7 @@ enum SidebarContextMenu {
                     UnsafeMutableRawPointer(custom), "clicked",
                     unsafeBitCast(sidebarColorCustomClicked, to: GCallback.self),
                     Unmanaged.passRetained(box).toOpaque(),
-                    sidebarColorChoiceDestroy, GConnectFlags(0)
+                    sidebarColorChoiceDestroy, GConnectFlags(rawValue: 0)
                 )
                 gtk_box_append(actionsBox, custom)
             }
@@ -124,7 +124,7 @@ enum SidebarContextMenu {
         g_signal_connect_data(
             UnsafeMutableRawPointer(popover), "closed",
             unsafeBitCast(sidebarMenuPopoverClosed, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
+            nil, nil, GConnectFlags(rawValue: 0)
         )
         gtk_popover_popup(popoverPtr)
     }
@@ -154,7 +154,7 @@ enum SidebarContextMenu {
                 UnsafeMutableRawPointer(button), "clicked",
                 unsafeBitCast(sidebarMenuItemClicked, to: GCallback.self),
                 Unmanaged.passRetained(box).toOpaque(),
-                sidebarMenuChoiceDestroy, GConnectFlags(0)
+                sidebarMenuChoiceDestroy, GConnectFlags(rawValue: 0)
             )
             gtk_box_append(
                 UnsafeMutableRawPointer(list).assumingMemoryBound(to: GtkBox.self), button)
@@ -166,7 +166,7 @@ enum SidebarContextMenu {
         g_signal_connect_data(
             UnsafeMutableRawPointer(popover), "closed",
             unsafeBitCast(sidebarMenuPopoverClosed, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
+            nil, nil, GConnectFlags(rawValue: 0)
         )
         gtk_popover_popup(popoverPtr)
     }

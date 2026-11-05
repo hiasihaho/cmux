@@ -53,12 +53,12 @@ enum BrowserNavigationPolicy {
         g_signal_connect_data(
             widget, "decide-policy",
             unsafeBitCast(browserDecidePolicy, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
+            nil, nil, GConnectFlags(rawValue: 0)
         )
         g_signal_connect_data(
             widget, "destroy",
             unsafeBitCast(browserNavPolicyForget, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
+            nil, nil, GConnectFlags(rawValue: 0)
         )
     }
 

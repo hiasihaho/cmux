@@ -219,13 +219,13 @@ enum BrowserSurfaceFactory {
             UnsafeMutableRawPointer(widget), "load-changed",
             unsafeBitCast(browserLoadChangedForSession, to: GCallback.self),
             Unmanaged.passRetained(PopupOpenerBox(surfaceId: surfaceId)).toOpaque(),
-            popupOpenerBoxDestroy, GConnectFlags(0)
+            popupOpenerBoxDestroy, GConnectFlags(rawValue: 0)
         )
         g_signal_connect_data(
             UnsafeMutableRawPointer(widget), "create",
             unsafeBitCast(popupCreate, to: GCallback.self),
             Unmanaged.passRetained(PopupOpenerBox(surfaceId: surfaceId)).toOpaque(),
-            popupOpenerBoxDestroy, GConnectFlags(0)
+            popupOpenerBoxDestroy, GConnectFlags(rawValue: 0)
         )
         // Tab-strip decor (mirror ⑤): the favicon and the load spinner
         // live on the AdwTabPage; refresh it when either changes.
@@ -234,7 +234,7 @@ enum BrowserSurfaceFactory {
                 UnsafeMutableRawPointer(widget), signal,
                 unsafeBitCast(browserTabDecorChanged, to: GCallback.self),
                 Unmanaged.passRetained(PopupOpenerBox(surfaceId: surfaceId)).toOpaque(),
-                popupOpenerBoxDestroy, GConnectFlags(0)
+                popupOpenerBoxDestroy, GConnectFlags(rawValue: 0)
             )
         }
 
@@ -569,13 +569,13 @@ extension ControlCommandHandler {
                 UnsafeMutableRawPointer(inspector), "attach",
                 unsafeBitCast(inspectorAttach, to: GCallback.self),
                 Unmanaged.passRetained(box).toOpaque(),
-                inspectorAttachBoxDestroy, GConnectFlags(0)
+                inspectorAttachBoxDestroy, GConnectFlags(rawValue: 0)
             )
             g_signal_connect_data(
                 UnsafeMutableRawPointer(inspector), "open-window",
                 unsafeBitCast(inspectorOpenWindow, to: GCallback.self),
                 Unmanaged.passRetained(box).toOpaque(),
-                inspectorAttachBoxDestroy, GConnectFlags(0)
+                inspectorAttachBoxDestroy, GConnectFlags(rawValue: 0)
             )
             inspectorLog("show() for surface \(newLeaf.surfaceId)")
             webkit_web_inspector_show(inspector)

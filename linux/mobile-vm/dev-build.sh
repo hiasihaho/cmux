@@ -97,16 +97,15 @@ cmd_sync() {
 }
 
 # Ubuntu's GObject/GTK headers import some C types more strictly than Fedora's,
-# so a few constructs the codebase uses on Fedora do not compile as-is on the
-# VM. We rewrite them on the SYNCED COPY only (the committed source stays on the
-# Fedora convention) until these are fixed upstream for the Ubuntu/Hetzner
-# target. Each entry is a discovered, mechanical portability delta.
+# so a few GTK enum constants the codebase reaches via `import CAdw` are not in
+# scope on Ubuntu the way they are via CVte/CWebKit. We rewrite those on the
+# SYNCED COPY only. (The version-dependent deltas — GConnectFlags on Swift 6.3+,
+# VTE_PTY_DEFAULT/G_SPAWN_DEFAULT on newer vte — are now fixed in the committed
+# source with the typed rawValue form, which also builds on Fedora 6.2, so they
+# are no longer here. The Nix build needs none of this, only include/link flags.)
 ubuntu_compat() {
     echo "== apply Ubuntu-compat transforms to the synced copy"
     ssh_vm "cd $SRC && find Sources Package.swift /var/tmp/Packages -name '*.swift' -print0 2>/dev/null | xargs -0 sed -i \
-        -e 's/GConnectFlags(0)/GConnectFlags(rawValue: 0)/g' \
-        -e 's/VTE_PTY_DEFAULT/VtePtyFlags(rawValue: 0)/g' \
-        -e 's/G_SPAWN_DEFAULT/GSpawnFlags(rawValue: 0)/g' \
         -e 's/GTK_ORIENTATION_HORIZONTAL/GtkOrientation(rawValue: 0)/g' \
         -e 's/GTK_ORIENTATION_VERTICAL/GtkOrientation(rawValue: 1)/g' \
         -e 's/GTK_ALIGN_FILL/GtkAlign(rawValue: 0)/g' \

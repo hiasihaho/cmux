@@ -105,7 +105,7 @@ enum PreferencesWindow {
         g_signal_connect_data(
             UnsafeMutableRawPointer(combo!), "notify::selected",
             unsafeBitCast(preferencesBackendChanged, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
+            nil, nil, GConnectFlags(rawValue: 0)
         )
         adw_preferences_group_add(
             UnsafeMutableRawPointer(group!).assumingMemoryBound(to: AdwPreferencesGroup.self), combo
@@ -138,7 +138,7 @@ enum PreferencesWindow {
         g_signal_connect_data(
             UnsafeMutableRawPointer(scaleWidget), "value-changed",
             unsafeBitCast(preferencesScrollbackChanged, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
+            nil, nil, GConnectFlags(rawValue: 0)
         )
         adw_action_row_add_suffix(
             UnsafeMutableRawPointer(row!).assumingMemoryBound(to: AdwActionRow.self), scaleWidget
@@ -172,7 +172,7 @@ enum PreferencesWindow {
         g_signal_connect_data(
             UnsafeMutableRawPointer(entry!), "changed",
             unsafeBitCast(preferencesSearchURLChanged, to: GCallback.self),
-            nil, nil, GConnectFlags(0)
+            nil, nil, GConnectFlags(rawValue: 0)
         )
         adw_preferences_group_add(
             UnsafeMutableRawPointer(group!).assumingMemoryBound(to: AdwPreferencesGroup.self), entry
