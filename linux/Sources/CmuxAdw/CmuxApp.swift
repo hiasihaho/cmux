@@ -20,6 +20,10 @@ struct CmuxApp: App {
     @State private var showNotifications = false
     @State private var dockVisible = false
     @State private var tabCounter = 1
+    // Mobile breakpoint (POC 0004 step 3): true when the window is narrower
+    // than ~600 px. Drives the mobile layout; iterate on the desktop by
+    // resizing the window. Foundation increment: auto-hide the sidebar.
+    @State private var isMobile = false
 
     /// Drains the MainActor executor from the GLib loop. Swift Concurrency
     /// enqueues MainActor work onto libdispatch's main queue, which only
@@ -202,6 +206,17 @@ struct CmuxApp: App {
             return true
         }()
         Window(id: "main") { _ in
+            VStack {
+            // Zero-height; only reports the mobile breakpoint up to the app.
+            WindowBreakpointObserver(threshold: 600) { mobile in
+                isMobile = mobile
+                // Foundation effect: entering mobile hides the sidebar (its
+                // job moves to the overview); leaving mobile shows it again.
+                sidebarVisible = !mobile
+                if ProcessInfo.processInfo.environment["CMUX_DEBUG_UI"] == "1" {
+                    FileHandle.standardError.write(Data("breakpoint: isMobile=\(mobile)\n".utf8))
+                }
+            }
             OverlaySplitView(visible: $sidebarVisible) {
                 EitherView(showNotifications, view1: {
                     NotificationsListView(
@@ -362,6 +377,7 @@ struct CmuxApp: App {
                         .tooltip("Menu")
                     }
                 }
+            }
             }
         }
         .title("cmux")
