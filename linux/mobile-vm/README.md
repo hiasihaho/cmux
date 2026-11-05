@@ -78,6 +78,15 @@ Fedora host 2026-11-04) and always shows the greeter.
   collides with Android's back gesture → menu-hint tab. Tapping it again
   closes the menu; the menu is capped to `100% − 36px` so the tab stays
   reachable.
+- **mutter 50.1 crashes on a title-bar double-tap over libei touch**
+  (reproduced twice 2026-11-05: segfault in libmutter right after
+  gnome-remote-desktop logs "Bug: ei_touch_up: device is not emulating";
+  the session dies, Guacamole shows nothing). Mitigations in the harness:
+  `action-double-click-titlebar=none` for the test users, the spike starts
+  fullscreen (`MOBILE_FULLSCREEN=1`), the session unit has
+  `Restart=always`, and guac.sh offers a mouse-emulation twin connection.
+  Everything else over touch worked (two-finger scroll, taps). Candidate
+  for a GNOME bug report with a backtrace.
 - **Testing with a mouse-emulated pointer**: the bottom toggle of the
   spike moves between panes (key row hidden on the preview); aim by
   screenshot, not by memory.

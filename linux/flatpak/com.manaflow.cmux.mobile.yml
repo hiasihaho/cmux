@@ -75,4 +75,6 @@ modules:
           # fails registration with a bare "ServiceUnknown" (2026-11-05).
           # Forced, not defaulted: inside the sandbox nothing else can work.
           - 'export MOBILE_APP_ID=com.manaflow.cmux.mobile'
+          # Fullscreen by default: the phone session IS the window.
+          - 'export MOBILE_FULLSCREEN="${MOBILE_FULLSCREEN:-1}"'
           - 'exec /app/bin/MobileWorkflow "$@"'

@@ -611,8 +611,16 @@ let workflowUriChanged: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableR
 }
 
 let workflowTerminalMapped: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> Void
-= { _, _ in
+= { widget, _ in
     _ = g_timeout_add(120, workflowFitTick, nil)
+    // MOBILE_FULLSCREEN=1: fill the (phone-sized) remote display from the
+    // start. hias 2026-11-05: a double-tap on the header bar to maximize
+    // crashed mutter 50.1 (libei touch-up without touch-down) — never make
+    // the user reach for the title bar over RDP.
+    if ProcessInfo.processInfo.environment["MOBILE_FULLSCREEN"] == "1", let widget,
+       let root = gtk_widget_get_root(widget.assumingMemoryBound(to: GtkWidget.self)) {
+        gtk_window_fullscreen(cast(root))
+    }
 }
 
 let workflowFitTick: @convention(c) (UnsafeMutableRawPointer?) -> Int32 = { _ in

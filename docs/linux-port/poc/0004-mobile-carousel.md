@@ -222,6 +222,12 @@ gnome-remote-desktop session per test user with the spike as autostart
 Hetzner/Incus session lifts `provision.sh` + `guac.sh` into its
 playbook; the VM boundary is theirs.
 
+Phone verdict on the VM (hias, 2026-11-05, first pass): touch arrives —
+"ging super" — until a double-tap on the header bar (to maximize) killed
+the session: mutter 50.1 segfaults on a libei touch-up without
+touch-down. Mitigated (fullscreen start, no double-click action, unit
+auto-restart, mouse-mode twin connection); see the harness README.
+
 ## What hias judges on the phone
 
 - Does swipe-in-overview feel like GNOME, or like a mode you forget

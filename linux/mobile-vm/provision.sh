@@ -78,7 +78,9 @@ fi
 # and dies with "The connection is closed" (verified 2026-11-05; as root it
 # works). DEV-ONLY drop-in until the packaging agrees with itself.
 mkdir -p /etc/systemd/system/gnome-headless-session@.service.d
-printf '[Service]\nDynamicUser=no\nUser=root\n' > /etc/systemd/system/gnome-headless-session@.service.d/ubuntu-gdm3.conf
+# Restart=always: when the session ends (gnome-shell crash) gdm-new-session
+# exits 0 and the stock Restart=on-failure leaves :339x dead.
+printf '[Service]\nDynamicUser=no\nUser=root\nRestart=always\nRestartSec=3\n' > /etc/systemd/system/gnome-headless-session@.service.d/ubuntu-gdm3.conf
 systemctl daemon-reload
 # gdm must be up before gdm-new-session can ask it for a session
 systemctl start gdm; sleep 3
@@ -105,6 +107,19 @@ for u in $MOBILE_USERS; do
     asuser grdctl --headless rdp disable-port-negotiation 2>/dev/null || true
     asuser grdctl --headless rdp set-credentials "$u" "$HEADLESS_PASS"
     asuser grdctl --headless rdp enable
+    # A headless session locks itself after the idle delay and the lock screen
+    # looks like a GDM greeter from Guacamole ("user mobile to choose") — with
+    # a password-less account nobody can unlock it (2026-11-05). No lock, no
+    # idle, and a DEV-ONLY password as the fallback key.
+    asuser gsettings set org.gnome.desktop.screensaver lock-enabled false
+    asuser gsettings set org.gnome.desktop.session idle-delay 0
+    asuser gsettings set org.gnome.desktop.lockdown disable-lock-screen true
+    # Double-tap on a title bar (maximize) crashes mutter 50.1 over libei touch
+    # (segfault in libmutter after "ei_touch_up: device is not emulating",
+    # reproduced twice 2026-11-05). Take the gesture away; the spike starts
+    # fullscreen anyway.
+    asuser gsettings set org.gnome.desktop.wm.preferences action-double-click-titlebar none
+    echo "$u:$HEADLESS_PASS" | chpasswd
     # the spike as the session's autostart app
     asuser mkdir -p "/home/$u/.config/autostart"
     asuser tee "/home/$u/.config/autostart/$APP_ID.desktop" >/dev/null <<EOF
@@ -116,7 +131,8 @@ X-GNOME-Autostart-enabled=true
 EOF
     asuser systemctl --user enable gnome-remote-desktop-headless.service >/dev/null 2>&1 || log "WARN: user unit gnome-remote-desktop-headless.service missing for $u"
     systemctl reset-failed "gnome-headless-session@$u.service" 2>/dev/null || true
-    systemctl enable --now "gnome-headless-session@$u.service" >/dev/null
+    systemctl enable "gnome-headless-session@$u.service" >/dev/null 2>&1
+    systemctl restart "gnome-headless-session@$u.service"   # picks up a new bundle / settings
     sleep 8
     systemctl is-active "gnome-headless-session@$u.service" >/dev/null && log "user $u: headless session active" || log "WARN: headless session for $u not active (journalctl -u gnome-headless-session@$u)"
 done

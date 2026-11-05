@@ -23,6 +23,7 @@ BIND_IP="${BIND_IP:-$(ip -4 -o addr show scope global | awk '!/virbr|podman|dock
 POD=cmux-mobile-guac
 HOME_DIR="${GUAC_HOME_DIR:-$HOME/.cache/cmux-mobile-vm/guac-home}"
 
+podman pod rm -f "$POD" >/dev/null 2>&1 || true   # our own previous run must not trip the port check
 if ss -ltn "( sport = :${PORT} )" | grep -q ":${PORT} "; then
     echo "port ${PORT} busy (GUAC_PORT=<n> to move):" >&2; ss -ltnp "( sport = :${PORT} )" >&2; exit 1
 fi
@@ -50,7 +51,7 @@ EOF
     for u in $MOBILE_USERS; do
         port=$((HEADLESS_PORT_BASE + i)); i=$((i + 1))
         cat <<EOF
-        <connection name="$u — cmux mobile (touch)">
+        <connection name="$u (cmux mobile, touch)">
             <protocol>rdp</protocol>
             <param name="hostname">${VM_IP}</param>
             <param name="port">${port}</param>
@@ -60,6 +61,22 @@ EOF
             <param name="ignore-cert">true</param>
             <param name="resize-method">display-update</param>
             <param name="enable-touch">true</param>
+            <param name="enable-wallpaper">false</param>
+            <param name="enable-theming">false</param>
+            <param name="enable-menu-animations">false</param>
+        </connection>
+        <!-- mouse-emulation twin: the same session without RDPEI, for when
+             the touch path misbehaves (GNOME 50.1 mutter segfault on a
+             touch-up via libei, 2026-11-05) -->
+        <connection name="$u (cmux mobile, mouse)">
+            <protocol>rdp</protocol>
+            <param name="hostname">${VM_IP}</param>
+            <param name="port">${port}</param>
+            <param name="username">${u}</param>
+            <param name="password">${HEADLESS_PASS}</param>
+            <param name="security">any</param>
+            <param name="ignore-cert">true</param>
+            <param name="resize-method">display-update</param>
             <param name="enable-wallpaper">false</param>
             <param name="enable-theming">false</param>
             <param name="enable-menu-animations">false</param>
