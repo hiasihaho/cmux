@@ -92,11 +92,23 @@ Fedora host 2026-11-04) and always shows the greeter.
   compositor for a window move. The spike now claims such presses in a
   capture-phase gesture on every header bar (buttons still work), so no
   move request ever leaves the app.
-- **Scale**: mutter derives the virtual monitor's scale from the reported
-  pixel size — Pixel 10 Pro gets 200 %, iPhone mini 100 % ("alles
-  winzig"). `cmux-mobile-scale.py` (autostart per user) re-applies
-  `MOBILE_SCALE` (default 2) over org.gnome.Mutter.DisplayConfig on every
-  MonitorsChanged.
+- **Scale**: mutter offers 200 % only when the virtual monitor's height
+  is EVEN (verified 2026-11-05 with a FreeRDP client replaying a browser
+  resize storm: 1884/1856 → 2.0 on offer, odd 1857 → only [1.0]). A phone
+  reporting an odd height under dynamic sizing (iPhone mini) therefore
+  lands at 100 % ("alles winzig"). Two parts fix it: `cmux-mobile-scale.py`
+  (autostart per user) applies `MOBILE_SCALE` (default 2) over
+  org.gnome.Mutter.DisplayConfig, debounced to fire once the monitor has
+  been quiet ~2 s (applying mid-resize froze the session — that was the
+  earlier "frozen desktop", NOT the spike's header guard); and
+  `GUAC_FORCE_SIZE=WxH` on guac.sh pins an even resolution so 200 % is
+  always offered, at the cost of per-device dynamic fit. Fractional
+  scaling (`experimental-features=['scale-monitor-framebuffer']`) is on
+  but does not rescue an odd height.
+- **The spike re-requests fullscreen on every monitor change**: a headless
+  session has no monitor until a client connects, and each resize is a
+  monitor remove+add, so a one-shot fullscreen at startup came up
+  windowed. The spike now hooks GdkMonitors items-changed.
 - **Testing with a mouse-emulated pointer**: the bottom toggle of the
   spike moves between panes (key row hidden on the preview); aim by
   screenshot, not by memory.

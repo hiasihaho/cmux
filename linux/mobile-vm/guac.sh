@@ -22,6 +22,22 @@ PORT="${GUAC_PORT:-8080}"
 BIND_IP="${BIND_IP:-$(ip -4 -o addr show scope global | awk '!/virbr|podman|docker|lxd/ {sub(/\/.*/,"",$4); print $4; exit}')}"
 POD=cmux-mobile-guac
 HOME_DIR="${GUAC_HOME_DIR:-$HOME/.cache/cmux-mobile-vm/guac-home}"
+# GUAC_FORCE_SIZE=WxH pins the RDP resolution instead of resizing to the
+# phone's viewport. mutter offers 200 % only for an EVEN monitor height
+# (verified 2026-11-05: 1884/1856 → 2.0, odd 1857 → 1.0 only), and some
+# phones (iPhone mini) report an odd height under dynamic sizing, so they
+# land at 100 % ("alles winzig"). A fixed even size here guarantees 200 %.
+# Unset = dynamic (best per-device fit; Android reported even sizes and
+# scaled fine). Example: GUAC_FORCE_SIZE=1080x2160
+FORCE_SIZE="${GUAC_FORCE_SIZE:-}"
+if [ -n "$FORCE_SIZE" ]; then
+    fw="${FORCE_SIZE%x*}"; fh="${FORCE_SIZE#*x}"
+    # round both down to even so 200 % is always on offer
+    SIZE_PARAMS="            <param name=\"width\">$((fw - fw % 2))</param>
+            <param name=\"height\">$((fh - fh % 2))</param>"
+else
+    SIZE_PARAMS="            <param name=\"resize-method\">display-update</param>"
+fi
 
 podman pod rm -f "$POD" >/dev/null 2>&1 || true   # our own previous run must not trip the port check
 if ss -ltn "( sport = :${PORT} )" | grep -q ":${PORT} "; then
@@ -59,7 +75,7 @@ EOF
             <param name="password">${HEADLESS_PASS}</param>
             <param name="security">any</param>
             <param name="ignore-cert">true</param>
-            <param name="resize-method">display-update</param>
+${SIZE_PARAMS}
             <param name="enable-touch">true</param>
             <param name="enable-wallpaper">false</param>
             <param name="enable-theming">false</param>
@@ -76,7 +92,7 @@ EOF
             <param name="password">${HEADLESS_PASS}</param>
             <param name="security">any</param>
             <param name="ignore-cert">true</param>
-            <param name="resize-method">display-update</param>
+${SIZE_PARAMS}
             <param name="enable-wallpaper">false</param>
             <param name="enable-theming">false</param>
             <param name="enable-menu-animations">false</param>

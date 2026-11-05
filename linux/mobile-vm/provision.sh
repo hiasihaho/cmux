@@ -123,6 +123,10 @@ for u in $MOBILE_USERS; do
     # reproduced twice 2026-11-05). Take the gesture away; the spike starts
     # fullscreen anyway.
     asuser gsettings set org.gnome.desktop.wm.preferences action-double-click-titlebar none
+    # Fractional scaling: without it mutter offers 200 % only when the
+    # reported size halves to integers AND the logical area stays >= 640x480;
+    # a phone reporting 1124x1857 (odd) got [1.0] only (2026-11-05).
+    asuser gsettings set org.gnome.mutter experimental-features "['scale-monitor-framebuffer']"
     echo "$u:$HEADLESS_PASS" | chpasswd
     # the spike as the session's autostart app
     asuser mkdir -p "/home/$u/.config/autostart"

@@ -621,9 +621,27 @@ let workflowTerminalMapped: @convention(c) (UnsafeMutableRawPointer?, UnsafeMuta
     if let widget, let root = gtk_widget_get_root(widget.assumingMemoryBound(to: GtkWidget.self)) {
         if ProcessInfo.processInfo.environment["MOBILE_FULLSCREEN"] == "1" {
             gtk_window_fullscreen(cast(root))
+            // A headless session has NO monitor until an RDP client connects,
+            // and every browser resize is a monitor removal + addition; the
+            // fullscreen request from startup does not survive that
+            // (2026-11-05: spike came up windowed on the VM). Re-request on
+            // every change of the display's monitor list.
+            if let display = gdk_display_get_default(), let monitors = gdk_display_get_monitors(display) {
+                g_signal_connect_data(
+                    UnsafeMutableRawPointer(monitors), "items-changed",
+                    unsafeBitCast(workflowMonitorsChanged, to: GCallback.self),
+                    UnsafeMutableRawPointer(root), nil, GConnectFlags(0))
+            }
         }
         WorkflowRuntime.shared.installHeaderGuard(root: cast(root))
     }
+}
+
+let workflowMonitorsChanged: @convention(c) (UnsafeMutableRawPointer?, UInt32, UInt32, UInt32, UnsafeMutableRawPointer?) -> Void
+= { _, _, _, _, userData in
+    guard let userData else { return }
+    dbg("monitors changed → fullscreen again")
+    gtk_window_fullscreen(userData.assumingMemoryBound(to: GtkWindow.self))
 }
 
 extension WorkflowRuntime {
