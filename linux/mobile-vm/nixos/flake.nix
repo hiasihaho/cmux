@@ -19,11 +19,23 @@
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
     in {
-      # Bootable qcow2 for libvirt:  nix build .#qcow
-      packages.${system}.qcow = nixos-generators.nixosGenerate {
-        inherit system;
-        modules = [ ./configuration.nix ];
-        format = "qcow";
+      packages.${system} = {
+        # Bootable qcow2 for libvirt:  nix build .#qcow
+        qcow = nixos-generators.nixosGenerate {
+          inherit system;
+          modules = [ ./configuration.nix ];
+          format = "qcow";
+        };
+
+        # Runtime ICU soname-collision fix (see icu-fix.nix for the full why).
+        # Swift Foundation's darwin.ICU (unsuffixed C symbols) and WebKit/GTK's
+        # icu4c-78 (suffixed) both claim soname libicuuc.so.78 and are symbol-
+        # disjoint, so cmux-adw BUILDS but crashes at startup
+        # (libicuio.so.78: undefined symbol: ucnv_close). This derivation ships
+        # private soname-renamed copies; prepend its /lib to LD_LIBRARY_PATH
+        # when RUNNING cmux-adw. Tiny (~62 MB), no toolchain/WebKit rebuild.
+        #   nix build .#icuFix
+        icuFix = import ./icu-fix.nix { inherit pkgs; };
       };
 
       # The system itself (for nixos-rebuild / inspection).
@@ -48,6 +60,14 @@
           (writeShellScriptBin "cmux-adw-build" ''
             cd "''${CMUX_LINUX_DIR:-$PWD}"
             exec swift build --product cmux-adw $CMUX_NIX_LDFLAGS "$@"
+          '')
+          # Run the built cmux-adw WITH the ICU fix on the library path. Without
+          # it the binary crashes at startup on the Foundation-vs-WebKit ICU
+          # soname collision (see icu-fix.nix). Use this, not the bare binary.
+          (writeShellScriptBin "cmux-adw-run" ''
+            cd "''${CMUX_LINUX_DIR:-$PWD}"
+            export LD_LIBRARY_PATH="${self.packages.${system}.icuFix}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            exec .build/debug/cmux-adw "$@"
           '')
         ];
         shellHook = ''
