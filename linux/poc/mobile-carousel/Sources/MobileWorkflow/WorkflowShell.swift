@@ -633,7 +633,14 @@ let workflowTerminalMapped: @convention(c) (UnsafeMutableRawPointer?, UnsafeMuta
                     UnsafeMutableRawPointer(root), nil, GConnectFlags(0))
             }
         }
-        WorkflowRuntime.shared.installHeaderGuard(root: cast(root))
+        // Title-bar touch guard: only needed on the headless RDP/touch path
+        // (mutter 50.1 libei crash). On a seated desktop it is unnecessary and
+        // a title-bar double-tap behaves normally, so it is OFF by default and
+        // the flatpak wrapper turns it on for the VM. MOBILE_HEADER_GUARD=0
+        // forces it off even there.
+        if ProcessInfo.processInfo.environment["MOBILE_HEADER_GUARD"] == "1" {
+            WorkflowRuntime.shared.installHeaderGuard(root: cast(root))
+        }
     }
 }
 

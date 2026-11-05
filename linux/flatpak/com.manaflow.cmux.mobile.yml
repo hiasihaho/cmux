@@ -77,4 +77,7 @@ modules:
           - 'export MOBILE_APP_ID=com.manaflow.cmux.mobile'
           # Fullscreen by default: the phone session IS the window.
           - 'export MOBILE_FULLSCREEN="${MOBILE_FULLSCREEN:-1}"'
+          # This flatpak IS the headless-RDP path, so the title-bar touch guard
+          # is on here; a plain desktop run of the spike leaves it off.
+          - 'export MOBILE_HEADER_GUARD="${MOBILE_HEADER_GUARD:-1}"'
           - 'exec /app/bin/MobileWorkflow "$@"'
