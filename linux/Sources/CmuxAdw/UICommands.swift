@@ -403,6 +403,25 @@ enum UIDialogs {
               let data = list.pointee.data else { return nil }
         return data.assumingMemoryBound(to: GtkWidget.self)
     }
+
+    /// Toggle the main window's fullscreen state (header-bar fullscreen icon).
+    /// Reads the real state and applies the opposite; the WindowFullscreen
+    /// observer reflects the result back into the icon, so an external F11 or
+    /// Escape stays in sync too.
+    static func toggleFullscreen() {
+        guard let widget = mainWindowWidget() else { return }
+        let window = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkWindow.self)
+        let wasFullscreen = gtk_window_is_fullscreen(window) != 0
+        if wasFullscreen {
+            gtk_window_unfullscreen(window)
+        } else {
+            gtk_window_fullscreen(window)
+        }
+        if ProcessInfo.processInfo.environment["CMUX_DEBUG_UI"] == "1" {
+            FileHandle.standardError.write(
+                Data("toggleFullscreen: was=\(wasFullscreen) -> requested=\(!wasFullscreen)\n".utf8))
+        }
+    }
 }
 
 final class RenameDialogBox {

@@ -97,3 +97,72 @@ struct WindowBreakpointObserver: AdwaitaWidget {
         (storage.fields["breakpoint-box"] as? BreakpointBox)?.onChange = onChange
     }
 }
+
+// MARK: - Fullscreen state
+
+/// Reports the toplevel window's fullscreen state, kept honest when the user
+/// toggles fullscreen outside our button (F11, Escape, the compositor). Lets
+/// the header-bar icon show enter-vs-leave correctly in both desktop and
+/// mobile. Toggle the state with `UIDialogs.toggleFullscreen()`.
+final class FullscreenBox {
+    var onChange: (Bool) -> Void
+    var last: Bool?
+    init(onChange: @escaping (Bool) -> Void) { self.onChange = onChange }
+    func report(_ value: Bool) {
+        guard last != value else { return }
+        last = value
+        onChange(value)
+    }
+}
+
+let fullscreenNotify: @convention(c) (
+    UnsafeMutableRawPointer?, OpaquePointer?, UnsafeMutableRawPointer?
+) -> Void = { object, _, userData in
+    guard let object, let userData else { return }
+    let box = Unmanaged<FullscreenBox>.fromOpaque(userData).takeUnretainedValue()
+    let window = object.assumingMemoryBound(to: GtkWindow.self)
+    box.report(gtk_window_is_fullscreen(window) != 0)
+}
+
+let fullscreenRealized: @convention(c) (
+    UnsafeMutablePointer<GtkWidget>?, UnsafeMutableRawPointer?
+) -> Void = { widget, userData in
+    guard let widget, let userData, let root = gtk_widget_get_root(widget) else { return }
+    g_signal_connect_data(
+        UnsafeMutableRawPointer(root), "notify::fullscreened",
+        unsafeBitCast(fullscreenNotify, to: GCallback.self),
+        userData, nil, GConnectFlags(0))
+    let box = Unmanaged<FullscreenBox>.fromOpaque(userData).takeUnretainedValue()
+    let window = UnsafeMutableRawPointer(root).assumingMemoryBound(to: GtkWindow.self)
+    box.report(gtk_window_is_fullscreen(window) != 0)
+}
+
+/// Zero-size; only reports the window's fullscreen state up to the app.
+struct WindowFullscreenObserver: AdwaitaWidget {
+    var onChange: (Bool) -> Void
+
+    func container<Data>(data: WidgetData, type: Data.Type) -> ViewStorage
+        where Data: ViewRenderData {
+        let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)
+        gtk_widget_set_size_request(box, 0, 0)
+        gtk_widget_set_halign(box, GTK_ALIGN_START)
+        gtk_widget_set_valign(box, GTK_ALIGN_START)
+        let storage = ViewStorage(OpaquePointer(box))
+        let state = FullscreenBox(onChange: onChange)
+        storage.fields["fullscreen-box"] = state
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(box!), "realize",
+            unsafeBitCast(fullscreenRealized, to: GCallback.self),
+            Unmanaged.passUnretained(state).toOpaque(), nil, GConnectFlags(0))
+        return storage
+    }
+
+    func update<Data>(
+        _ storage: ViewStorage,
+        data: WidgetData,
+        updateProperties: Bool,
+        type: Data.Type
+    ) where Data: ViewRenderData {
+        (storage.fields["fullscreen-box"] as? FullscreenBox)?.onChange = onChange
+    }
+}

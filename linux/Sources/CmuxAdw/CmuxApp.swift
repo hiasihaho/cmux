@@ -24,6 +24,9 @@ struct CmuxApp: App {
     // than ~600 px. Drives the mobile layout; iterate on the desktop by
     // resizing the window. Foundation increment: auto-hide the sidebar.
     @State private var isMobile = false
+    // Window fullscreen state, reflected by the header-bar fullscreen icon
+    // (useful in both desktop and mobile). Kept in sync with external F11/Esc.
+    @State private var isFullscreen = false
 
     /// Drains the MainActor executor from the GLib loop. Swift Concurrency
     /// enqueues MainActor work onto libdispatch's main queue, which only
@@ -217,6 +220,9 @@ struct CmuxApp: App {
                     FileHandle.standardError.write(Data("breakpoint: isMobile=\(mobile)\n".utf8))
                 }
             }
+            WindowFullscreenObserver { fullscreen in
+                isFullscreen = fullscreen
+            }
             OverlaySplitView(visible: $sidebarVisible) {
                 EitherView(showNotifications, view1: {
                     NotificationsListView(
@@ -328,6 +334,15 @@ struct CmuxApp: App {
                         }
                         .keyboardShortcut("b".ctrl().shift())
                         .tooltip("Open browser pane (Ctrl+Shift+B)")
+                        Button(icon: .custom(
+                            name: isFullscreen
+                                ? "view-restore-symbolic"
+                                : "view-fullscreen-symbolic"
+                        )) {
+                            UIDialogs.toggleFullscreen()
+                        }
+                        .keyboardShortcut("F11")
+                        .tooltip(isFullscreen ? "Leave fullscreen (F11)" : "Fullscreen (F11)")
                     } end: {
                         // Debug-only affordance, off the daily chrome
                         // (UX-PARITY decision: behind CMUX_DEBUG_UI=1).
