@@ -21,6 +21,7 @@ org.gnome.Platform//49).
 | `vm.sh` | host | lifecycle: `image` (cloud image → pool), `create` (overlay + cloud-init + virt-install), `flatpak` (spike bundle), `runtime` (GNOME 49 runtime bundle from the host — Flathub is ≈230 KB/s from here, the Ubuntu archive 9 MB/s), `provision`, `guac`, `ip/ssh/start/stop/status/destroy`, `all` |
 | `provision.sh` | VM, root | apt minimal GNOME + gnome-remote-desktop, flatpak runtime + spike bundle, per-user headless RDP session with the spike as autostart; idempotent |
 | `guac.sh` | host | Guacamole pod (guacd + web, podman rootless), one connection per user → headless port, `enable-touch`, menu-hint extension |
+| `cmux-mobile-scale.py` | VM, user session | pins the virtual monitor to 200 % on every monitor change |
 | `menu-hint/` | — | Guacamole extension: ☰ edge tab toggling the menu; menu capped so the tab stays free |
 | `../flatpak/com.manaflow.cmux.mobile.yml` | host | manifest for the spike (`MobileWorkflow` from `linux/poc/mobile-carousel`), same pins as the cmux manifest |
 
@@ -86,7 +87,16 @@ Fedora host 2026-11-04) and always shows the greeter.
   fullscreen (`MOBILE_FULLSCREEN=1`), the session unit has
   `Restart=always`, and guac.sh offers a mouse-emulation twin connection.
   Everything else over touch worked (two-finger scroll, taps). Candidate
-  for a GNOME bug report with a backtrace.
+  for a GNOME bug report with a backtrace. Second round (hias): any
+  touch on an EMPTY header-bar spot crashes too — that is GTK asking the
+  compositor for a window move. The spike now claims such presses in a
+  capture-phase gesture on every header bar (buttons still work), so no
+  move request ever leaves the app.
+- **Scale**: mutter derives the virtual monitor's scale from the reported
+  pixel size — Pixel 10 Pro gets 200 %, iPhone mini 100 % ("alles
+  winzig"). `cmux-mobile-scale.py` (autostart per user) re-applies
+  `MOBILE_SCALE` (default 2) over org.gnome.Mutter.DisplayConfig on every
+  MonitorsChanged.
 - **Testing with a mouse-emulated pointer**: the bottom toggle of the
   spike moves between panes (key row hidden on the preview); aim by
   screenshot, not by memory.

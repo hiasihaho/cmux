@@ -103,6 +103,7 @@ final class Workspace {
 
 final class WorkflowRuntime {
     static let shared = WorkflowRuntime()
+    var guardedHeaders = Set<UnsafeMutablePointer<GtkWidget>>()
 
     var tabView: OpaquePointer?
     var tabOverview: OpaquePointer?
@@ -617,10 +618,60 @@ let workflowTerminalMapped: @convention(c) (UnsafeMutableRawPointer?, UnsafeMuta
     // start. hias 2026-11-05: a double-tap on the header bar to maximize
     // crashed mutter 50.1 (libei touch-up without touch-down) — never make
     // the user reach for the title bar over RDP.
-    if ProcessInfo.processInfo.environment["MOBILE_FULLSCREEN"] == "1", let widget,
-       let root = gtk_widget_get_root(widget.assumingMemoryBound(to: GtkWidget.self)) {
-        gtk_window_fullscreen(cast(root))
+    if let widget, let root = gtk_widget_get_root(widget.assumingMemoryBound(to: GtkWidget.self)) {
+        if ProcessInfo.processInfo.environment["MOBILE_FULLSCREEN"] == "1" {
+            gtk_window_fullscreen(cast(root))
+        }
+        WorkflowRuntime.shared.installHeaderGuard(root: cast(root))
     }
+}
+
+extension WorkflowRuntime {
+    /// A press on an EMPTY header-bar spot makes GTK ask the compositor for a
+    /// window move; over libei touch that request crashes mutter 50.1 (hias,
+    /// 2026-11-05: "wenn man in der Titelleiste etwas nicht trifft"). A
+    /// capture-phase click gesture claims those presses before the header's
+    /// GtkWindowHandle sees them; presses that land on a button fall through.
+    func installHeaderGuard(root: UnsafeMutablePointer<GtkWidget>) {
+        // every header bar in the window: the window's own AND the one
+        // AdwTabOverview builds for the overview page
+        for header in findWidgets(root, cssName: "headerbar") where !guardedHeaders.contains(header) {
+            guardedHeaders.insert(header)
+            let click = gtk_gesture_click_new()!
+            gtk_gesture_single_set_button(click, 0)   // any button / touch
+            gtk_event_controller_set_propagation_phase(click, GTK_PHASE_CAPTURE)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(click), "pressed",
+                unsafeBitCast(workflowHeaderPressed, to: GCallback.self),
+                UnsafeMutableRawPointer(header), nil, GConnectFlags(0))
+            gtk_widget_add_controller(header, click)
+            dbg("header guard installed on \(header)")
+        }
+    }
+
+    func findWidgets(_ w: UnsafeMutablePointer<GtkWidget>, cssName: String) -> [UnsafeMutablePointer<GtkWidget>] {
+        var hits: [UnsafeMutablePointer<GtkWidget>] = []
+        if let n = gtk_widget_get_css_name(w), String(cString: n) == cssName { hits.append(w) }
+        var child = gtk_widget_get_first_child(w)
+        while let c = child {
+            hits += findWidgets(c, cssName: cssName)
+            child = gtk_widget_get_next_sibling(c)
+        }
+        return hits
+    }
+}
+
+let workflowHeaderPressed: @convention(c) (UnsafeMutableRawPointer?, Int32, Double, Double, UnsafeMutableRawPointer?) -> Void
+= { gesture, _, x, y, userData in
+    guard let gesture, let userData else { return }
+    let header = userData.assumingMemoryBound(to: GtkWidget.self)
+    var target = gtk_widget_pick(header, x, y, GTK_PICK_DEFAULT)
+    while let t = target, t != header {
+        if let n = gtk_widget_get_css_name(t), String(cString: n) == "button" { return }   // real control: let it work
+        target = gtk_widget_get_parent(t)
+    }
+    gtk_gesture_set_state(OpaquePointer(gesture), GTK_EVENT_SEQUENCE_CLAIMED)
+    dbg("header press claimed at \(Int(x)),\(Int(y)) (no window move)")
 }
 
 let workflowFitTick: @convention(c) (UnsafeMutableRawPointer?) -> Int32 = { _ in

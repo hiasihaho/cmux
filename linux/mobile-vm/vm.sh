@@ -153,7 +153,7 @@ cmd_provision() {
     [ -f "$BUNDLE" ] || die "no bundle at $BUNDLE — vm.sh flatpak first"
     local ip; ip="$(vm_ip)"
     echo "== copy provision.sh + bundle(s) to $ip"
-    scp_vm "$HERE/provision.sh" "$BUNDLE" "$ADMIN@$ip:/tmp/"
+    scp_vm "$HERE/provision.sh" "$HERE/cmux-mobile-scale.py" "$BUNDLE" "$ADMIN@$ip:/tmp/"
     [ -f "$RUNTIME_BUNDLE" ] && scp_vm "$RUNTIME_BUNDLE" "$ADMIN@$ip:/tmp/"
     echo "== run provision.sh (root, idempotent; log also in /var/log/cmux-mobile-provision.log)"
     ssh_vm "sudo env MOBILE_USERS='$MOBILE_USERS' HEADLESS_PASS='$HEADLESS_PASS' HEADLESS_PORT_BASE='$HEADLESS_PORT_BASE' bash /tmp/provision.sh 2>&1 | tee -a /var/log/cmux-mobile-provision.log"

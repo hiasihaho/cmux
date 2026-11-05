@@ -24,7 +24,7 @@ apt-get install -y -q --no-install-recommends \
     gdm3 gnome-shell gnome-session gnome-settings-daemon gnome-control-center \
     gnome-console nautilus xwayland dbus-user-session polkitd pkexec \
     fonts-ubuntu fonts-noto-color-emoji adwaita-icon-theme flatpak curl \
-    gnome-remote-desktop openssl ca-certificates
+    gnome-remote-desktop openssl ca-certificates python3-gi
 systemctl set-default graphical.target >/dev/null
 systemctl enable gdm >/dev/null 2>&1 || true
 
@@ -50,6 +50,10 @@ else
     log "WARN: no bundle at $BUNDLE — spike not installed"
 fi
 flatpak info "$APP_ID" >/dev/null 2>&1 && log "flatpak: $APP_ID installed" || log "WARN: $APP_ID missing"
+
+# scale pinning (see the script's docstring): mutter picks 100 % for small
+# phones; this re-applies MOBILE_SCALE (default 2) on every monitor change.
+install -Dm755 /tmp/cmux-mobile-scale.py /usr/local/bin/cmux-mobile-scale
 
 HEADLESS_UNIT=/usr/lib/systemd/system/gnome-headless-session@.service
 [ -f "$HEADLESS_UNIT" ] || HEADLESS_UNIT=/lib/systemd/system/gnome-headless-session@.service
@@ -127,6 +131,13 @@ for u in $MOBILE_USERS; do
 Type=Application
 Name=cmux mobile spike
 Exec=flatpak run $APP_ID
+X-GNOME-Autostart-enabled=true
+EOF
+    asuser tee "/home/$u/.config/autostart/cmux-mobile-scale.desktop" >/dev/null <<EOF
+[Desktop Entry]
+Type=Application
+Name=cmux mobile scale pin
+Exec=/usr/local/bin/cmux-mobile-scale
 X-GNOME-Autostart-enabled=true
 EOF
     asuser systemctl --user enable gnome-remote-desktop-headless.service >/dev/null 2>&1 || log "WARN: user unit gnome-remote-desktop-headless.service missing for $u"
