@@ -74,6 +74,42 @@ Guacamole pod on a stale IP. Now:
 - A suspended laptop leaves the VM `paused`; `virsh -c qemu:///system resume
   cmux-mobile-vm` (or `vm.sh start`) brings it back.
 
+## Native cmux-adw build in the VM (no flatpak) — `dev-build.sh`
+
+For fast mobile-mode iteration against the real GNOME 50 compositor,
+`dev-build.sh` builds cmux-adw natively in the VM and runs it in the
+mobile headless session (Guacamole then shows the real product, not the
+spike). `setup` once, then `iter` (sync + build + run) per change.
+
+Getting a bare-Ubuntu native build going surfaced real portability gaps
+to the Hetzner target (all handled by the harness, none require touching
+the committed source yet):
+
+- **Swift**: swift.org ships no Ubuntu-26.04 build for 6.2/6.3; the 24.04
+  Swift 6.2 toolchain runs on 26.04 with two staged 24.04 libs
+  (`libxml2.so.2`, `libicu*.so.74`) under `/opt/swift-compat`. 6.4 is
+  available but its stricter importer rejects the codebase's
+  `GConnectFlags(0)`.
+- **Fedora vs Ubuntu GObject/GTK bindings**: on Ubuntu, several C
+  constants the code uses via `import CAdw` are not in scope the way they
+  are via `CVte`/`CWebKit` (`GTK_ORIENTATION_*`, `GTK_ALIGN_*`,
+  `GTK_POS_BOTTOM`), and `GConnectFlags(0)` / `VTE_PTY_DEFAULT` /
+  `G_SPAWN_DEFAULT` need the typed `rawValue:`/flag form. `dev-build.sh`
+  rewrites these on the synced copy only (`ubuntu_compat`), so the
+  committed source stays on the Fedora convention until these are fixed
+  for the Ubuntu target as their own change. This list is the exact set
+  of deltas to fix there.
+- **Package layout**: `linux/Package.swift` pulls `../Packages/macOS/*`
+  and `Sources/CmuxCLI` is symlinks into the repo root; the sync mirrors
+  `Packages/` and dereferences those symlinks.
+- **Cross-user runtime**: build as `ubuntu`, run as `mobile`; the Swift
+  runtime path chain is made traversable + readable so the session user
+  can load it.
+
+The one source change kept in the repo is `WindowBreakpoint.swift` using
+`gtk_label_new` instead of `gtk_box_new(GTK_ORIENTATION_…)` for its
+zero-size probe — it needs no orientation enum and so builds on both.
+
 ## Traps recorded while building this
 
 - **pasta gives the pod the host's own LAN IP** — a Guacamole connection

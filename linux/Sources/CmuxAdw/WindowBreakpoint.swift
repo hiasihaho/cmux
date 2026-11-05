@@ -71,7 +71,7 @@ struct WindowBreakpointObserver: AdwaitaWidget {
 
     func container<Data>(data: WidgetData, type: Data.Type) -> ViewStorage
         where Data: ViewRenderData {
-        let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)
+        let box = gtk_label_new(nil)   // zero-size invisible; no orientation enum (CAdw lacks it on GTK 4.22)
         gtk_widget_set_size_request(box, 0, 0)
         gtk_widget_set_halign(box, GTK_ALIGN_START)
         gtk_widget_set_valign(box, GTK_ALIGN_START)
@@ -143,7 +143,7 @@ struct WindowFullscreenObserver: AdwaitaWidget {
 
     func container<Data>(data: WidgetData, type: Data.Type) -> ViewStorage
         where Data: ViewRenderData {
-        let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)
+        let box = gtk_label_new(nil)   // zero-size invisible; no orientation enum (CAdw lacks it on GTK 4.22)
         gtk_widget_set_size_request(box, 0, 0)
         gtk_widget_set_halign(box, GTK_ALIGN_START)
         gtk_widget_set_valign(box, GTK_ALIGN_START)
